@@ -1,0 +1,98 @@
+name: Build Aetheris Browser (Windows)
+
+on:
+  push:
+    branches:
+      - '**' # Trigger on pushes to any branch
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+      
+      - name: Setup Visual Studio Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          toolset: '14.3' # VS 2022
+      
+      - name: Install vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+          .\bootstrap-vcpkg.bat
+          .\vcpkg integrate install
+        shell: pwsh
+      
+      - name: Install Dependencies via vcpkg
+        run: |
+          vcpkg/vcpkg install --triplet x64-windows
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      
+      - name: Configure CMake with LTO
+        run: |
+          cmake -B build `
+            -S . `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON `
+            -DAETHERIS_ENABLE_LTO=ON
+        shell: pwsh
+      
+      - name: Build Aetheris (Release + LTO)
+        run: |
+          cmake --build build `
+            --config Release `
+            -- /m `
+            /p:CL_MPcount=8 `
+            /p:LinkTimeCodeGeneration=true `
+            /p:Optimization=MaxSpeed `
+            /p:InlineFunctionExpansion=AnySuitable
+        shell: pwsh
+      
+      - name: Locate Executable
+        id: find_exe
+        run: |
+          $exePath = Get-ChildItem -Path "build" -Recurse -Filter "aetheris.exe" -File | Select-Object -First 1 -ExpandProperty FullName
+          if ($exePath) {
+            echo "exe_path=$exePath" >> $env:GITHUB_OUTPUT
+            Write-Host "Found executable: $exePath"
+          } else {
+            Write-Host "Executable not found, searching for Ladybird..."
+            $exePath = Get-ChildItem -Path "build" -Recurse -Filter "Ladybird.exe" -File | Select-Object -First 1 -ExpandProperty FullName
+            if ($exePath) {
+              echo "exe_path=$exePath" >> $env:GITHUB_OUTPUT
+              Write-Host "Found Ladybird executable: $exePath"
+            } else {
+              Write-Host "Error: No executable found!"
+              exit 1
+            }
+          }
+        shell: pwsh
+      
+      - name: Upload Aetheris Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: aetheris-browser-windows
+          path: ${{ steps.find_exe.outputs.exe_path }}
+          retention-days: 30
+          compression-level: 9
+      
+      - name: Upload Build Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-windows
+          path: |
+            build/CMakeFiles/CMakeOutput.log
+            build/CMakeFiles/CMakeError.log
+          retention-days: 7
