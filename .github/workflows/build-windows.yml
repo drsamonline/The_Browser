@@ -21,7 +21,7 @@ jobs:
         shell: cmd
         run: |
           @echo off
-          echo Locating Visual Studio...
+          echo === Locating Visual Studio ===
           for /f "tokens=*" %%i in ('"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -find VC\Auxiliary\Build\vcvarsall.bat') do set VCVARSALL=%%i
           
           if not defined VCVARSALL (
@@ -30,8 +30,20 @@ jobs:
           )
           
           echo Found: %VCVARSALL%
-          echo Initializing x64 environment...
-          call "%VCVARSALL%" x64
+          
+          :: Clear any pre-set toolset versions that cause mismatches
+          set VCToolsVersion=
+          set VCToolsInstallDir=
+          set WindowsSDKVersion=
+          set WindowsSdkDir=
+          
+          echo === Initializing x64 environment (Latest Toolset) ===
+          call "%VCVARSALL%" x64 -vcvars_ver=14.4
+          
+          if errorlevel 1 (
+            echo Retrying with default toolset...
+            call "%VCVARSALL%" x64
+          )
           
           echo ::set-output name=has_msvc::true
           echo MSVC Ready. Cl version:
