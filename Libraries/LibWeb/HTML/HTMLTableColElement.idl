@@ -1,0 +1,16 @@
+// https://html.spec.whatwg.org/multipage/tables.html#htmltablecolelement
+[Exposed=Window]
+interface HTMLTableColElement : HTMLElement {
+
+    [HTMLConstructor] constructor();
+
+    [CEReactions] attribute unsigned long span;
+
+    // Obsolete
+    [CEReactions, Reflect] attribute Utf16DOMString align;
+    [CEReactions, Reflect=char] attribute Utf16DOMString ch;
+    [CEReactions, Reflect=charoff] attribute Utf16DOMString chOff;
+    [CEReactions, Reflect=valign] attribute Utf16DOMString vAlign;
+    [CEReactions, Reflect] attribute Utf16DOMString width;
+
+};

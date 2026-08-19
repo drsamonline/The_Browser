@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const iframe = document.getElementById("testIframe");
+
+        function navigateIframe(srcdoc) {
+            return new Promise(resolve => {
+                iframe.addEventListener("load", () => {
+                    resolve();
+                });
+                iframe.srcdoc = srcdoc;
+            });
+        }
+
+        await navigateIframe("<h1>Well</h1>");
+        println(iframe.contentWindow.document.body.innerText);
+
+        await navigateIframe("<h2>Hello friends!</h2>");
+        println(iframe.contentWindow.document.body.innerText);
+    });
+</script>
+<iframe id="testIframe" src="about:blank"></iframe>

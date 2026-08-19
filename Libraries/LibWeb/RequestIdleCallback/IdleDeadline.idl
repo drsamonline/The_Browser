@@ -1,0 +1,8 @@
+// https://w3c.github.io/requestidlecallback/#dom-idledeadline
+[Exposed=Window]
+interface IdleDeadline {
+
+    DOMHighResTimeStamp timeRemaining();
+    readonly attribute boolean didTimeout;
+
+};

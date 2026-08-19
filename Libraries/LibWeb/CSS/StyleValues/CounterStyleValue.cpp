@@ -1,0 +1,79 @@
+/*
+ * Copyright (c) 2018-2022, Andreas Kling <andreas@ladybird.org>
+ * Copyright (c) 2021, Tobias Christiansen <tobyase@serenityos.org>
+ * Copyright (c) 2024-2025, Sam Atkins <sam@ladybird.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#include <AK/Utf16StringBuilder.h>
+#include <LibWeb/CSS/CounterStyle.h>
+#include <LibWeb/CSS/CountersSet.h>
+#include <LibWeb/CSS/Enums.h>
+#include <LibWeb/CSS/Keyword.h>
+#include <LibWeb/CSS/Serialize.h>
+#include <LibWeb/CSS/StyleValues/CounterStyleStyleValue.h>
+#include <LibWeb/CSS/StyleValues/CounterStyleValue.h>
+#include <LibWeb/CSS/StyleValues/CustomIdentStyleValue.h>
+#include <LibWeb/CSS/StyleValues/StringStyleValue.h>
+#include <LibWeb/DOM/Document.h>
+#include <LibWeb/DOM/Element.h>
+
+namespace Web::CSS {
+
+// The function discriminant crosses the style value FFI as a raw code; the Rust serializer
+// depends on it.
+static_assert(to_underlying(CounterStyleValue::CounterFunction::Counter) == 0);
+static_assert(to_underlying(CounterStyleValue::CounterFunction::Counters) == 1);
+
+static StyleValueFFI::StyleValueData const* make_counter_data(CounterStyleValue::CounterFunction function, Utf16FlyString const& counter_name, ValueComparingNonnullRefPtr<StyleValue const> const& counter_style, Utf16FlyString const& join_string)
+{
+    // The Rust allocation takes ownership of one strong reference to the counter style data.
+    return StyleValueFFI::rust_style_value_create_counter(to_underlying(function), counter_name.to_raw_leaked(), StyleValueFFI::rust_style_value_retain(counter_style->rust_style_value_data()), join_string.to_raw_leaked());
+}
+
+CounterStyleValue::CounterStyleValue(CounterFunction function, Utf16FlyString counter_name, ValueComparingNonnullRefPtr<StyleValue const> counter_style, Utf16FlyString join_string)
+    : StyleValueWithDefaultOperators(Type::Counter, make_counter_data(function, counter_name, counter_style, join_string))
+{
+}
+
+CounterStyleValue::~CounterStyleValue() = default;
+
+Utf16String CounterStyleValue::resolve(DOM::AbstractElement& element_reference) const
+{
+    // "If no counter named <counter-name> exists on an element where counter() or counters() is used,
+    // one is first instantiated with a starting value of 0."
+    auto& counters_set = element_reference.ensure_counters_set();
+    if (!counters_set.last_counter_with_name(counter_name()).has_value())
+        counters_set.instantiate_a_counter(counter_name(), element_reference, false, 0);
+
+    // counter( <counter-name>, <counter-style>? )
+    // "Represents the value of the innermost counter in the element’s CSS counters set named <counter-name>
+    // using the counter style named <counter-style>."
+    if (function_type() == CounterFunction::Counter) {
+        // NOTE: This should always be present because of the handling of a missing counter above.
+        auto& counter = counters_set.last_counter_with_name(counter_name()).value();
+        auto const& style_scope = element_reference.style_scope();
+        return generate_a_counter_representation(counter_style()->as_counter_style().resolve_counter_style(style_scope), style_scope, counter.value.value_or(0));
+    }
+
+    // counters( <counter-name>, <string>, <counter-style>? )
+    // "Represents the values of all the counters in the element’s CSS counters set named <counter-name>
+    // using the counter style named <counter-style>, sorted in outermost-first to innermost-last order
+    // and joined by the specified <string>."
+    // NOTE: The way counters sets are inherited, this should be the order they appear in the counters set.
+    Utf16StringBuilder stb;
+    for (auto const& counter : counters_set.counters()) {
+        if (counter.name != counter_name())
+            continue;
+
+        auto const& style_scope = element_reference.style_scope();
+        auto counter_string = generate_a_counter_representation(counter_style()->as_counter_style().resolve_counter_style(style_scope), style_scope, counter.value.value_or(0));
+        if (!stb.is_empty())
+            stb.append(join_string().view());
+        stb.append(counter_string);
+    }
+    return stb.to_string();
+}
+
+}

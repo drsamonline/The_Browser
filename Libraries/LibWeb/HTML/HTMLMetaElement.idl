@@ -1,0 +1,15 @@
+// https://html.spec.whatwg.org/multipage/semantics.html#htmlmetaelement
+[Exposed=Window]
+interface HTMLMetaElement : HTMLElement {
+
+    [HTMLConstructor] constructor();
+
+    [CEReactions, Reflect] attribute Utf16DOMString name;
+    [CEReactions, Reflect=http-equiv] attribute Utf16DOMString httpEquiv;
+    [CEReactions, Reflect] attribute Utf16DOMString content;
+    [CEReactions, Reflect] attribute Utf16DOMString media;
+
+    // Obsolete
+    [CEReactions, Reflect] attribute Utf16DOMString scheme;
+
+};

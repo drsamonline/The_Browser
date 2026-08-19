@@ -1,0 +1,13 @@
+// https://html.spec.whatwg.org/multipage/workers.html#workerlocation
+[Exposed=Worker]
+interface WorkerLocation {
+    stringifier readonly attribute Utf16USVString href;
+    readonly attribute Utf16USVString origin;
+    readonly attribute Utf16USVString protocol;
+    readonly attribute Utf16USVString host;
+    readonly attribute Utf16USVString hostname;
+    readonly attribute Utf16USVString port;
+    readonly attribute Utf16USVString pathname;
+    readonly attribute Utf16USVString search;
+    readonly attribute Utf16USVString hash;
+};

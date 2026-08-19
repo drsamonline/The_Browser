@@ -1,0 +1,66 @@
+/*
+ * Copyright (c) 2022, David Tuin <davidot@serenityos.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#include <AK/TypeCasts.h>
+#include <LibJS/Console.h>
+#include <LibJS/Runtime/ConsoleObject.h>
+#include <LibJS/Runtime/VM.h>
+#include <LibJS/Runtime/Value.h>
+#include <LibWeb/HTML/Scripting/ExceptionReporter.h>
+#include <LibWeb/WebIDL/DOMException.h>
+
+namespace Web::HTML {
+
+void report_exception_to_console(JS::Value value, JS::Realm& realm, ErrorInPromise error_in_promise)
+{
+    auto& console = realm.intrinsics().console_object()->console();
+
+    if (value.is_object()) {
+        auto& object = value.as_object();
+        auto& vm = object.vm();
+        auto name = object.get_without_side_effects(vm.names.name);
+        auto message = object.get_without_side_effects(vm.names.message);
+        if (name.is_accessor() || message.is_accessor()) {
+            // The result is not going to be useful, let's just print the value. This affects DOMExceptions, for example.
+            if (auto exception = Bindings::dom_exception_report_details(object); exception.has_value()) {
+                dbgln("\033[31;1mUnhandled JavaScript exception{}:\033[0m {}: {}", error_in_promise == ErrorInPromise::Yes ? " (in promise)" : "", exception->name, exception->message);
+            } else {
+                dbgln("\033[31;1mUnhandled JavaScript exception{}:\033[0m {}", error_in_promise == ErrorInPromise::Yes ? " (in promise)" : "", JS::Value(&object));
+            }
+        } else {
+            dbgln("\033[31;1mUnhandled JavaScript exception{}:\033[0m [{}] {}", error_in_promise == ErrorInPromise::Yes ? " (in promise)" : "", name, message);
+        }
+        if (auto const* error_data = object.error_data()) {
+            Utf16String exception_name;
+            Utf16String exception_message;
+            if (auto exception = Bindings::dom_exception_report_details(object); exception.has_value()) {
+                exception_name = Utf16String::from_utf8(exception->name.bytes());
+                exception_message = Utf16String::from_utf8(exception->message.bytes());
+            } else {
+                exception_name = name.to_utf16_string_without_side_effects();
+                exception_message = message.to_utf16_string_without_side_effects();
+            }
+            dbgln("{}", error_data->stack_string(JS::CompactTraceback::Yes));
+            console.report_exception(exception_name, exception_message, *error_data, error_in_promise == ErrorInPromise::Yes);
+            return;
+        }
+    } else {
+        dbgln("\033[31;1mUnhandled JavaScript exception{}:\033[0m {}", error_in_promise == ErrorInPromise::Yes ? " (in promise)" : "", value);
+    }
+
+    auto utf16_message = value.to_utf16_string_without_side_effects();
+    auto error = JS::Error::create(realm, utf16_message);
+    console.report_exception("Error"_utf16, utf16_message, *error, error_in_promise == ErrorInPromise::Yes);
+}
+
+// https://html.spec.whatwg.org/multipage/webappapis.html#report-the-exception
+void report_exception(JS::Completion const& throw_completion, JS::Realm& realm)
+{
+    VERIFY(throw_completion.type() == JS::Completion::Type::Throw);
+    report_exception_to_console(throw_completion.value(), realm, ErrorInPromise::No);
+}
+
+}

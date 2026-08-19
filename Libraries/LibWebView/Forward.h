@@ -1,0 +1,66 @@
+/*
+ * Copyright (c) 2022, The SerenityOS developers
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#pragma once
+
+#include <AK/Platform.h>
+#include <AK/Traits.h>
+#include <LibWebView/Export.h>
+
+namespace WebView {
+
+class Action;
+class Application;
+class Autocomplete;
+class AutocompleteService;
+class BookmarkStore;
+class CanonicalNavigable;
+class CanonicalTraversable;
+class CompositorClient;
+class CompositorConnection;
+class CompositorHostBase;
+class CookieJar;
+class DownloadStore;
+class ExternalURLHandler;
+class HistoryStore;
+class HSTSStore;
+class Menu;
+class OutOfProcessWebView;
+class ProcessManager;
+class SessionStore;
+class Settings;
+class SiteIsolationManager;
+class StorageJar;
+class TraversableSessionHistory;
+class ViewImplementation;
+class WebContentClient;
+class WebWorkerClient;
+class WebUI;
+
+struct Attribute;
+struct DownloadRecord;
+struct AutocompleteEngine;
+struct BookmarkItem;
+struct BrowserOptions;
+struct ConsoleOutput;
+struct CookieStorageKey;
+struct DictionaryLookup;
+struct DictionaryLookupTextStyle;
+struct DOMNodeProperties;
+struct HistoryEntry;
+struct Mutation;
+struct ProcessHandle;
+struct SearchEngine;
+struct WebContentOptions;
+
+}
+
+namespace AK {
+
+template<>
+struct Traits<WebView::CookieStorageKey>;
+
+}

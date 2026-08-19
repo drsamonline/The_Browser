@@ -1,0 +1,12 @@
+// https://html.spec.whatwg.org/multipage/obsolete.html#htmlparamelement
+[Exposed=Window]
+interface HTMLParamElement : HTMLElement {
+
+    [HTMLConstructor] constructor();
+
+    [CEReactions, Reflect] attribute Utf16DOMString name;
+    [CEReactions, Reflect] attribute Utf16DOMString value;
+    [CEReactions, Reflect] attribute Utf16DOMString type;
+    [CEReactions, Reflect=valuetype] attribute Utf16DOMString valueType;
+
+};

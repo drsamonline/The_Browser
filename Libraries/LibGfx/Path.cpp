@@ -1,0 +1,63 @@
+/*
+ * Copyright (c) 2024, Andreas Kling <andreas@ladybird.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#include <LibGfx/Path.h>
+#include <LibGfx/PathSkia.h>
+#include <LibIPC/Decoder.h>
+#include <LibIPC/Encoder.h>
+#include <core/SkPath.h>
+
+extern "C" {
+void ladybird_gfx_path_destroy(void*);
+bool ladybird_gfx_path_equals(void const*, void const*);
+}
+
+namespace Gfx {
+
+Path Path::from_serialized_bytes(ReadonlyBytes bytes)
+{
+    Gfx::Path path;
+    path.impl().deserialize_from_bytes(bytes);
+    return path;
+}
+
+NonnullOwnPtr<Gfx::PathImpl> PathImpl::create()
+{
+    return PathImplSkia::create();
+}
+
+PathImpl::~PathImpl() = default;
+
+}
+
+namespace IPC {
+
+template<>
+ErrorOr<void> encode(Encoder& encoder, Gfx::Path const& path)
+{
+    return encoder.encode(path.serialize_to_bytes());
+}
+
+template<>
+ErrorOr<Gfx::Path> decode(Decoder& decoder)
+{
+    auto path_data = TRY(decoder.decode<Vector<u8>>());
+    return Gfx::Path::from_serialized_bytes(path_data);
+}
+
+}
+
+extern "C" void ladybird_gfx_path_destroy(void* path)
+{
+    delete static_cast<Gfx::Path*>(path);
+}
+
+extern "C" bool ladybird_gfx_path_equals(void const* a, void const* b)
+{
+    auto const& path_a = *static_cast<Gfx::Path const*>(a);
+    auto const& path_b = *static_cast<Gfx::Path const*>(b);
+    return static_cast<Gfx::PathImplSkia const&>(path_a.impl()).sk_path() == static_cast<Gfx::PathImplSkia const&>(path_b.impl()).sk_path();
+}

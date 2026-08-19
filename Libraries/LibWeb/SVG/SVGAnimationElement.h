@@ -1,0 +1,32 @@
+/*
+ * Copyright (c) 2025, Miguel Sacristán Izcue <miguel_tete17@hotmail.com>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#pragma once
+
+#include <LibJS/Forward.h>
+#include <LibWeb/Export.h>
+#include <LibWeb/SVG/SVGElement.h>
+
+namespace Web::SVG {
+
+class SVGAnimationElement final : public SVGElement {
+    WEB_WRAPPABLE(SVGAnimationElement, SVGElement);
+    GC_DECLARE_ALLOCATOR(SVGAnimationElement);
+
+    void set_onbegin(GC::Ptr<WebIDL::CallbackType>);
+    GC::Ptr<WebIDL::CallbackType> onbegin();
+
+    void set_onend(GC::Ptr<WebIDL::CallbackType>);
+    GC::Ptr<WebIDL::CallbackType> onend();
+
+    void set_onrepeat(GC::Ptr<WebIDL::CallbackType>);
+    GC::Ptr<WebIDL::CallbackType> onrepeat();
+
+private:
+    SVGAnimationElement(DOM::Document&, DOM::QualifiedName);
+};
+
+}

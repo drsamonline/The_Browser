@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    promiseTest(async () => {
+        const blob = new Blob(["This is some data to be read! 🦬"]);
+        const text = await blob.text();
+        if (text === "This is some data to be read! 🦬")
+            println("PASS");
+        else
+            println("FAIL");
+    });
+</script>

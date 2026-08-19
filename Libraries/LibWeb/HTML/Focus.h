@@ -1,0 +1,29 @@
+/*
+ * Copyright (c) 2022, Luke Wilde <lukew@serenityos.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#pragma once
+
+#include <LibWeb/Export.h>
+#include <LibWeb/Forward.h>
+
+namespace Web::HTML {
+
+enum class FocusTrigger : u8 {
+    Click,
+    Key,
+    Script,
+    Other,
+};
+
+enum class ScrollIntoView : u8 {
+    No,
+    Yes,
+};
+
+WEB_API void run_focusing_steps(GC::Ptr<DOM::Node> new_focus_target, GC::Ptr<DOM::Node> fallback_target = nullptr, FocusTrigger focus_trigger = FocusTrigger::Other, ScrollIntoView = ScrollIntoView::Yes);
+WEB_API void run_unfocusing_steps(GC::Ptr<DOM::Node> old_focus_target);
+
+}

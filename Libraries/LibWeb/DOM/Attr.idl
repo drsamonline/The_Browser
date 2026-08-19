@@ -1,0 +1,13 @@
+// https://dom.spec.whatwg.org/#interface-attr
+[Exposed=Window]
+interface Attr : Node {
+    readonly attribute Utf16DOMString? namespaceURI;
+    readonly attribute Utf16DOMString? prefix;
+    readonly attribute Utf16DOMString localName;
+    readonly attribute Utf16DOMString name;
+    [CEReactions] attribute Utf16DOMString value;
+
+    readonly attribute Element? ownerElement;
+
+    readonly attribute boolean specified; // useless; always returns true
+};

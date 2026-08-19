@@ -1,0 +1,201 @@
+/*
+ * Copyright (c) 2024, Matthew Olsson <mattco@serenityos.org>
+ * Copyright (c) 2024, Sam Atkins <sam@ladybird.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#include <LibGC/Heap.h>
+#include <LibWeb/Animations/DocumentTimeline.h>
+#include <LibWeb/CSS/CSSStyleDeclaration.h>
+#include <LibWeb/CSS/CSSTransition.h>
+#include <LibWeb/CSS/PropertyID.h>
+#include <LibWeb/DOM/Document.h>
+#include <LibWeb/DOM/Element.h>
+#include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
+
+namespace Web::CSS {
+
+GC_DEFINE_ALLOCATOR(CSSTransition);
+
+GC::Ref<CSSTransition> CSSTransition::start_a_transition(
+    DOM::AbstractElement abstract_element,
+    PropertyID property_id,
+    size_t transition_generation,
+    double delay,
+    double start_time,
+    double end_time,
+    NonnullRefPtr<StyleValue const> start_value,
+    NonnullRefPtr<StyleValue const> end_value,
+    NonnullRefPtr<StyleValue const> reversing_adjusted_start_value,
+    double reversing_shortening_factor,
+    Publication publication)
+{
+    auto& environment = abstract_element.document().relevant_settings_object();
+    return GC::Heap::the().allocate<CSSTransition>(environment, abstract_element, property_id, transition_generation, delay, start_time, end_time, start_value, end_value, reversing_adjusted_start_value, reversing_shortening_factor, publication);
+}
+
+Utf16FlyString const& CSSTransition::transition_property() const
+{
+    return string_from_property_id(m_transition_property);
+}
+
+Animations::AnimationClass CSSTransition::animation_class() const
+{
+    return Animations::AnimationClass::CSSTransition;
+}
+
+int CSSTransition::class_specific_composite_order(GC::Ref<Animations::Animation> other_animation) const
+{
+    auto other = GC::Ref { as<CSSTransition>(*other_animation) };
+
+    // Within the set of CSS Transitions, two animations A and B are sorted in composite order (first to last) as
+    // follows:
+
+    // 1. If neither A nor B has an owning element, sort based on their relative position in the global animation list.
+    if (!owning_element().has_value() && !other->owning_element().has_value())
+        return global_animation_list_order() - other->global_animation_list_order();
+
+    // 2. Otherwise, if only one of A or B has an owning element, let the animation with an owning element sort first.
+    if (owning_element().has_value() && !other->owning_element().has_value())
+        return -1;
+    if (!owning_element().has_value() && other->owning_element().has_value())
+        return 1;
+
+    // 3. Otherwise, if the owning element of A and B differs, sort A and B by tree order of their corresponding owning
+    //    elements. With regard to pseudo-elements, the sort order is as follows:
+    //    - element
+    //    - ::marker
+    //    - ::before
+    //    - any other pseudo-elements not mentioned specifically in this list, sorted in ascending order by the Unicode
+    //      codepoints that make up each selector
+    //    - ::after
+    //    - element children
+    if (owning_element() != other->owning_element()) {
+        // FIXME: Actually sort by tree order
+        return 0;
+    }
+
+    // 4. Otherwise, if A and B have different transition generation values, sort by their corresponding transition
+    //    generation in ascending order.
+    if (m_transition_generation != other->m_transition_generation)
+        return m_transition_generation - other->m_transition_generation;
+
+    // 5. Otherwise, sort A and B in ascending order by the Unicode codepoints that make up the expanded transition
+    //    property name of each transition (i.e. without attempting case conversion and such that ‘-moz-column-width’
+    //    sorts before ‘column-width’).
+    return transition_property() <=> other->transition_property();
+}
+
+CSSTransition::CSSTransition(
+    HTML::EnvironmentSettingsObject& environment,
+    DOM::AbstractElement abstract_element,
+    PropertyID property_id,
+    size_t transition_generation,
+    double delay,
+    double start_time,
+    double end_time,
+    NonnullRefPtr<StyleValue const> start_value,
+    NonnullRefPtr<StyleValue const> end_value,
+    NonnullRefPtr<StyleValue const> reversing_adjusted_start_value,
+    double reversing_shortening_factor,
+    Publication publication)
+    : Animations::Animation(environment)
+    , m_transition_property(property_id)
+    , m_transition_generation(transition_generation)
+    , m_start_time(start_time + delay)
+    , m_end_time(end_time + delay)
+    , m_start_value(move(start_value))
+    , m_end_value(move(end_value))
+    , m_reversing_adjusted_start_value(move(reversing_adjusted_start_value))
+    , m_reversing_shortening_factor(reversing_shortening_factor)
+    , m_keyframe_effect(Animations::KeyframeEffect::create())
+    , m_is_provisional(publication == Publication::Provisional)
+{
+    // FIXME:
+    // Transitions generated using the markup defined in this specification are not added to the global animation list
+    // when they are created. Instead, these animations are appended to the global animation list at the first moment
+    // when they transition out of the idle play state after being disassociated from their owning element. Transitions
+    // that have been disassociated from their owning element but are still idle do not have a defined composite order.
+
+    // Construct a KeyframesEffect for our animation
+    // NB: The current style computation collects this effect before publishing its result, so scheduling a second
+    //     animated style update here would evaluate the same transition twice.
+    m_keyframe_effect->set_target(abstract_element, Animations::KeyframeEffect::InvalidateEffect::No);
+    m_keyframe_effect->set_specified_start_delay(delay);
+    m_keyframe_effect->set_specified_iteration_duration(end_time - start_time);
+    // AD-HOC: CSS Transitions require the start value to apply during transition-delay. A default KeyframeEffect does
+    //         not fill in the before phase, so use backwards fill to keep the transition value in the cascade until
+    //         the active interval starts.
+    m_keyframe_effect->set_fill_mode(Animations::FillMode::Backwards);
+    // https://drafts.csswg.org/web-animations-2/#updating-animationeffect-timing
+    // Timing properties may also be updated due to a style change. Any change to a CSS animation property that affects
+    // timing requires rerunning the procedure to normalize specified timing.
+    m_keyframe_effect->normalize_specified_timing();
+    m_keyframe_effect->set_timing_function(abstract_element.element().property_transition_attributes(abstract_element.pseudo_element(), property_id)->timing_function);
+
+    auto key_frame_set = adopt_ref(*new Animations::KeyframeEffect::KeyFrameSet);
+    Animations::KeyframeEffect::KeyFrameSet::ResolvedKeyFrame initial_keyframe;
+    initial_keyframe.properties.set(property_id, RustStyleValueHandle::retained(m_start_value->rust_style_value_data()));
+
+    Animations::KeyframeEffect::KeyFrameSet::ResolvedKeyFrame final_keyframe;
+    final_keyframe.properties.set(property_id, RustStyleValueHandle::retained(m_end_value->rust_style_value_data()));
+
+    key_frame_set->keyframes_by_key.insert(0, initial_keyframe);
+    key_frame_set->keyframes_by_key.insert(100 * Animations::KeyframeEffect::AnimationKeyFrameKeyScaleFactor, final_keyframe);
+
+    m_keyframe_effect->set_key_frame_set(key_frame_set);
+    set_timeline(abstract_element.document().timeline());
+    set_owning_element(abstract_element);
+    if (m_is_provisional) {
+        set_provisional_effect(m_keyframe_effect);
+    } else {
+        set_effect(m_keyframe_effect, Animations::Animation::ShouldInvalidate::No);
+        abstract_element.element().set_transition(abstract_element.pseudo_element(), m_transition_property, *this);
+    }
+
+    HTML::TemporaryExecutionContext context(environment);
+    play(Animations::Animation::ShouldInvalidate::No).release_value_but_fixme_should_propagate_errors();
+}
+
+void CSSTransition::commit_provisional_transition()
+{
+    VERIFY(m_is_provisional);
+    auto target = m_keyframe_effect->target();
+    VERIFY(target);
+    auto owner = owning_element();
+    VERIFY(owner.has_value());
+    target->associate_with_animation(*this);
+    target->set_transition(owner->pseudo_element(), m_transition_property, *this);
+    m_is_provisional = false;
+}
+
+void CSSTransition::discard_provisional_transition()
+{
+    VERIFY(m_is_provisional);
+    set_timeline({});
+    discard_provisional_effect();
+    m_is_provisional = false;
+}
+
+void CSSTransition::visit_edges(Cell::Visitor& visitor)
+{
+    Base::visit_edges(visitor);
+    visitor.visit(m_cached_declaration);
+    visitor.visit(m_keyframe_effect);
+}
+
+double CSSTransition::timing_function_output_at_time(double t) const
+{
+    // AD-HOC: If the transition has an empty duration then we get NaN here,
+    // setting progress to 1 because an instant transition may be considered "finished".
+    double progress = 1;
+    if (transition_start_time() < transition_end_time())
+        progress = (t - transition_start_time()) / (transition_end_time() - transition_start_time());
+
+    // FIXME: Is this before_flag value correct?
+    bool before_flag = t < transition_start_time();
+    return m_keyframe_effect->timing_function().evaluate_at(progress, before_flag);
+}
+
+}

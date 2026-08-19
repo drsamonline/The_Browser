@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    asyncTest((done) => {
+        const xhr = new XMLHttpRequest();
+        xhr.responseType = "arraybuffer";
+        xhr.onreadystatechange = async function() {
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                if (xhr.response instanceof ArrayBuffer)
+                    println("PASS");
+                else
+                    println("FAIL");
+                if (xhr.response === xhr.response)
+                    println("PASS");
+                else
+                    println("FAIL");
+                xhr.response.extra = "survives GC";
+                internals.gc();
+                println(xhr.response.extra);
+                done();
+            }
+        };
+        xhr.open("GET", "data:text/plain,Hello%20World!", true);
+        xhr.send();
+    });
+</script>

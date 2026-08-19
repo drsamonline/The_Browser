@@ -1,0 +1,18 @@
+// https://svgwg.org/svg2-draft/linking.html#InterfaceSVGAElement
+[Exposed=Window]
+interface SVGAElement : SVGGraphicsElement {
+
+    [SameObject] readonly attribute SVGAnimatedString target;
+    [Reflect] attribute Utf16DOMString download;
+    [Reflect] attribute Utf16USVString ping;
+    [Reflect] attribute Utf16DOMString rel;
+    [SameObject, PutForwards=value] readonly attribute DOMTokenList relList;
+    [Reflect] attribute Utf16DOMString hreflang;
+    [Reflect] attribute Utf16DOMString type;
+
+    [Reflect=referrerpolicy, Enumerated=ReferrerPolicy] attribute Utf16DOMString referrerPolicy;
+
+};
+
+SVGAElement includes SVGURIReference;
+// FIXME: SVGAElement includes HTMLHyperlinkElementUtils;

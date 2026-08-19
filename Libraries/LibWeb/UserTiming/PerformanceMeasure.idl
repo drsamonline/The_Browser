@@ -1,0 +1,13 @@
+// https://w3c.github.io/user-timing/#performancemeasure
+[Exposed=(Window,Worker)]
+interface PerformanceMeasure : PerformanceEntry {
+    readonly attribute any detail;
+};
+
+// https://w3c.github.io/user-timing/#extensions-performance-interface
+dictionary PerformanceMeasureOptions {
+    any detail;
+    (Utf16DOMString or DOMHighResTimeStamp) start;
+    DOMHighResTimeStamp duration;
+    (Utf16DOMString or DOMHighResTimeStamp) end;
+};
