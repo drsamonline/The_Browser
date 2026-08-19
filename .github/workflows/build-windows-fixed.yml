@@ -18,9 +18,8 @@ jobs:
         fetch-depth: 1 # Shallow clone for speed
 
     - name: Setup Visual Studio Developer Command Prompt
-      uses: ilammy/msvc-dev-cmd@v1
+      uses: ilammy/msvc-dev-cmd@v2
       with:
-        toolset: '14.40' # Force latest VS 2022 toolset available on runner
         arch: 'x64'
 
     - name: Install vcpkg and Dependencies
