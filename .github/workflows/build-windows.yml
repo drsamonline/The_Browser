@@ -1,16 +1,16 @@
-name: Build Aetheris Browser (Windows)
+name: Build Aetheris Browser (Windows Optimized)
 
 on:
   push:
-    branches:
-      - '**' # Trigger on pushes to any branch
+    branches: [ '**' ]
+  workflow_dispatch:
 
 jobs:
   build-windows:
     runs-on: windows-latest
     
     steps:
-      - name: Checkout Repository
+      - name: Checkout Repository (Shallow)
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -19,24 +19,17 @@ jobs:
       - name: Setup Visual Studio Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          toolset: '14.3' # VS 2022
+          toolset: '14.3'
       
-      - name: Install vcpkg
+      - name: Install vcpkg (Fast Bootstrap)
         run: |
-          git clone https://github.com/microsoft/vcpkg.git
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git
           cd vcpkg
-          .\bootstrap-vcpkg.bat
+          .\bootstrap-vcpkg.bat -disableMetrics
           .\vcpkg integrate install
         shell: pwsh
       
-      - name: Install Dependencies via vcpkg
-        run: |
-          vcpkg/vcpkg install --triplet x64-windows
-        shell: pwsh
-        env:
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-      
-      - name: Configure CMake with LTO
+      - name: Configure CMake (Lightweight Build)
         run: |
           cmake -B build `
             -S . `
@@ -45,50 +38,52 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON `
-            -DAETHERIS_ENABLE_LTO=ON
+            -DLADYBIRD_ENABLE_VIDEO=OFF `
+            -DLADYBIRD_ENABLE_WEB_AUDIO=OFF `
+            -DLADYBIRD_ENABLE_PDF=OFF `
+            -DLADYBIRD_ENABLE_SSL=OFF `
+            -DLADYBIRD_ENABLE_WEBSOCKET=OFF `
+            -DLADYBIRD_ENABLE_WEBGL=OFF
         shell: pwsh
       
-      - name: Build Aetheris (Release + LTO)
+      - name: Build Aetheris (MaxSpeed + LTO)
         run: |
           cmake --build build `
             --config Release `
+            --target Ladybird `
             -- /m `
-            /p:CL_MPcount=8 `
+            /p:CL_MPcount=%NUMBER_OF_PROCESSORS% `
             /p:LinkTimeCodeGeneration=true `
             /p:Optimization=MaxSpeed `
-            /p:InlineFunctionExpansion=AnySuitable
+            /p:InlineFunctionExpansion=AnySuitable `
+            /p:FavorSizeOrSpeed=1
         shell: pwsh
       
       - name: Locate Executable
         id: find_exe
         run: |
-          $exePath = Get-ChildItem -Path "build" -Recurse -Filter "aetheris.exe" -File | Select-Object -First 1 -ExpandProperty FullName
+          $exePath = Get-ChildItem -Path "build" -Recurse -Filter "Ladybird.exe" -File | Select-Object -First 1 -ExpandProperty FullName
           if ($exePath) {
             echo "exe_path=$exePath" >> $env:GITHUB_OUTPUT
             Write-Host "Found executable: $exePath"
           } else {
-            Write-Host "Executable not found, searching for Ladybird..."
-            $exePath = Get-ChildItem -Path "build" -Recurse -Filter "Ladybird.exe" -File | Select-Object -First 1 -ExpandProperty FullName
-            if ($exePath) {
-              echo "exe_path=$exePath" >> $env:GITHUB_OUTPUT
-              Write-Host "Found Ladybird executable: $exePath"
-            } else {
-              Write-Host "Error: No executable found!"
-              exit 1
-            }
+            Write-Error "Executable not found!"
+            Get-ChildItem -Path "build" -Recurse -File -Filter "*.exe" | Select-Object FullName
+            exit 1
           }
         shell: pwsh
       
-      - name: Upload Aetheris Executable
+      - name: Upload Aetheris Binary
         uses: actions/upload-artifact@v4
         with:
           name: aetheris-browser-windows
           path: ${{ steps.find_exe.outputs.exe_path }}
-          retention-days: 30
+          retention-days: 14
           compression-level: 9
+          if-no-files-found: error
       
-      - name: Upload Build Logs
-        if: always()
+      - name: Upload Build Logs (If Failed)
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-logs-windows
