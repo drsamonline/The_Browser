@@ -1,0 +1,14 @@
+// https://html.spec.whatwg.org/multipage/semantics.html#htmlstyleelement
+[Exposed=Window]
+interface HTMLStyleElement : HTMLElement {
+    [HTMLConstructor] constructor();
+
+    attribute boolean disabled;
+    [CEReactions, Reflect] attribute Utf16DOMString media;
+    [FIXME, SameObject, PutForwards=value] readonly attribute DOMTokenList blocking;
+
+    // Obsolete
+    [Reflect] attribute Utf16DOMString type;
+};
+
+HTMLStyleElement includes LinkStyle;

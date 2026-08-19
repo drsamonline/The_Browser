@@ -1,0 +1,80 @@
+/*
+ * Copyright (c) 2024, Andreas Kling <andreas@ladybird.org>
+ * Copyright (c) 2024, Jamie Mansfield <jmansfield@cadixdev.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#include <LibGC/Heap.h>
+#include <LibWeb/CSS/Invalidation/LinkInvalidator.h>
+#include <LibWeb/DOM/DOMTokenList.h>
+#include <LibWeb/Layout/Box.h>
+#include <LibWeb/SVG/AttributeNames.h>
+#include <LibWeb/SVG/SVGAElement.h>
+
+namespace Web::SVG {
+
+GC_DEFINE_ALLOCATOR(SVGAElement);
+
+SVGAElement::SVGAElement(DOM::Document& document, DOM::QualifiedName qualified_name)
+    : SVGGraphicsElement(document, move(qualified_name))
+{
+}
+
+SVGAElement::~SVGAElement() = default;
+
+void SVGAElement::visit_edges(Cell::Visitor& visitor)
+{
+    Base::visit_edges(visitor);
+    SVGURIReferenceMixin::visit_edges(visitor);
+    visitor.visit(m_rel_list);
+    visitor.visit(m_target);
+}
+
+void SVGAElement::attribute_changed(Utf16FlyString const& name, Optional<Utf16String> const& old_value, Optional<Utf16String> const& value, Optional<Utf16FlyString> const& namespace_)
+{
+    Base::attribute_changed(name, old_value, value, namespace_);
+
+    if (name == SVG::AttributeNames::href)
+        CSS::Invalidation::invalidate_style_after_hyperlink_state_change(*this);
+    if (name == HTML::AttributeNames::rel) {
+        if (m_rel_list)
+            m_rel_list->associated_attribute_changed(value.has_value() ? value->utf16_view() : u""sv);
+    }
+}
+
+// https://html.spec.whatwg.org/multipage/interaction.html#dom-tabindex
+i32 SVGAElement::default_tab_index_value() const
+{
+    // See the base function for the spec comments.
+    return 0;
+}
+
+// https://svgwg.org/svg2-draft/linking.html#__svg__SVGAElement__target
+GC::Ref<SVGAnimatedString> SVGAElement::target()
+{
+    if (!m_target)
+        m_target = SVGAnimatedString::create(*this, DOM::QualifiedName { HTML::AttributeNames::target, OptionalNone {}, OptionalNone {} });
+    return *m_target;
+}
+
+// https://svgwg.org/svg2-draft/linking.html#__svg__SVGAElement__relList
+GC::Ref<DOM::DOMTokenList> SVGAElement::rel_list()
+{
+    // The relList IDL attribute reflects the ‘rel’ content attribute.
+    if (!m_rel_list)
+        m_rel_list = DOM::DOMTokenList::create(*this, HTML::AttributeNames::rel);
+    return *m_rel_list;
+}
+
+RefPtr<Layout::Node> SVGAElement::create_layout_node(CSS::LayoutStyle style)
+{
+    return make_ref_counted<Layout::Box>(document(), *this, style, Layout::RustFFI::NodeKind::SVGGraphicsBox);
+}
+
+void SVGAElement::activation_behavior(DOM::Event const& event)
+{
+    activate_the_hyperlink(event);
+}
+
+}

@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    test(() => {
+
+        history.replaceState({}, "hello", "history-replace-push-state-race.html");
+        history.replaceState({}, "hello", "history-replace-push-state-race.html");
+
+        // This test checks a regression where two queued replacements disagreed
+        // about which canonical entry was being replaced.
+        //
+        // history.replaceState is one possible trigger for the crash.
+
+        println("test done!");
+    });
+</script>

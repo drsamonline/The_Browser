@@ -1,0 +1,399 @@
+/*
+ * Copyright (c) 2025-present, the Ladybird developers.
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#include <AK/Tuple.h>
+#include <AK/TypeCasts.h>
+#include <LibGC/Heap.h>
+#include <LibGfx/Bitmap.h>
+#include <LibJS/Runtime/VM.h>
+#include <LibWeb/Bindings/CanvasRenderingContext2DSettings.h>
+#include <LibWeb/Bindings/WrapperWorld.h>
+#include <LibWeb/CSS/ComputedValues.h>
+#include <LibWeb/DOM/Document.h>
+#include <LibWeb/FileAPI/Blob.h>
+#include <LibWeb/HTML/BindingsGlue.h>
+#include <LibWeb/HTML/Canvas/SerializeBitmap.h>
+#include <LibWeb/HTML/EventLoop/Task.h>
+#include <LibWeb/HTML/OffscreenCanvas.h>
+#include <LibWeb/HTML/OffscreenCanvasRenderingContext2D.h>
+#include <LibWeb/HTML/Scripting/Environments.h>
+#include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
+#include <LibWeb/HTML/Window.h>
+#include <LibWeb/HTML/WindowOrWorkerGlobalScope.h>
+#include <LibWeb/HTML/WorkerGlobalScope.h>
+#include <LibWeb/Platform/EventLoopPlugin.h>
+#include <LibWeb/Platform/FontPlugin.h>
+#include <LibWeb/WebGL/WebGL2RenderingContext.h>
+#include <LibWeb/WebGL/WebGLRenderingContext.h>
+#include <LibWeb/WebIDL/DOMException.h>
+#include <LibWeb/WebIDL/Promise.h>
+
+namespace Web::HTML {
+
+GC_DEFINE_ALLOCATOR(OffscreenCanvas);
+
+// https://html.spec.whatwg.org/multipage/canvas.html#dom-offscreencanvas
+WebIDL::ExceptionOr<GC::Ref<OffscreenCanvas>> OffscreenCanvas::create(
+    DOM::EventTarget& relevant_global_object,
+    WebIDL::UnsignedLong width,
+    WebIDL::UnsignedLong height)
+{
+    RefPtr<Gfx::Bitmap> bitmap;
+    if (width > 0 && height > 0) {
+        // The new OffscreenCanvas(width, height) constructor steps are:
+        auto bitmap_or_error = Gfx::Bitmap::create(Gfx::BitmapFormat::RGBA8888, Gfx::IntSize { width, height });
+
+        if (bitmap_or_error.is_error()) {
+            return WebIDL::InvalidStateError::create(Utf16String::formatted("Error in allocating bitmap: {}", bitmap_or_error.error()));
+        }
+        bitmap = bitmap_or_error.release_value();
+    }
+
+    // 1. Initialize the bitmap of this to a rectangular array of transparent black pixels of the dimensions specified by width and height.
+    // noop, the pixel value to set is equal to 0x00000000, which the bitmap already contains
+
+    // 2. Initialize the width of this to width.
+    // 3. Initialize the height of this to height.
+    // noop, we use the height and width from the bitmap
+
+    // FIXME: 4. Set this's inherited language to explicitly unknown.
+
+    // FIXME: 5. Set this's inherited direction to "ltr".
+
+    // 7. If global is a Window object:
+    if (auto* window = as_if<Window>(relevant_global_object)) {
+        // 1.Let element be the document element of global's associated Document.
+        auto* element = window->associated_document().document_element();
+        // 2. If element is not null :
+        if (element) {
+            // FIXME: 1. Set the inherited language of this to element's language.
+            // FIXME: 2. Set the inherited direction of this to element's directionality.
+        }
+    }
+
+    return GC::Heap::the().allocate<OffscreenCanvas>(relevant_global_object, bitmap);
+}
+
+// https://html.spec.whatwg.org/multipage/canvas.html#dom-offscreencanvas
+OffscreenCanvas::OffscreenCanvas(GC::Ref<DOM::EventTarget> relevant_global_object, RefPtr<Gfx::Bitmap> bitmap)
+    : EventTarget()
+    , m_bitmap { move(bitmap) }
+    , m_global_object(relevant_global_object)
+{
+}
+
+OffscreenCanvas::~OffscreenCanvas() = default;
+
+JS::Object& OffscreenCanvas::relevant_global_object() const
+{
+    return HTML::relevant_global_object(HTML::relevant_window_or_worker_global_scope(*m_global_object));
+}
+
+WebIDL::ExceptionOr<void> OffscreenCanvas::transfer_steps(JS::Realm&, HTML::TransferDataEncoder&)
+{
+    // FIXME: Implement this
+    dbgln("(STUBBED) OffscreenCanvas::transfer_steps(JS::Realm&, HTML::TransferDataEncoder&)");
+    return {};
+}
+
+WebIDL::ExceptionOr<void> OffscreenCanvas::transfer_receiving_steps(JS::Realm&, HTML::TransferDataDecoder&)
+{
+    // FIXME: Implement this
+    dbgln("(STUBBED) OffscreenCanvas::transfer_receiving_steps(JS::Realm&, HTML::TransferDataDecoder&)");
+    return {};
+}
+
+HTML::TransferType OffscreenCanvas::primary_interface() const
+{
+    // FIXME: Implement this
+    dbgln("(STUBBED) OffscreenCanvas::primary_interface()");
+    return {};
+}
+
+WebIDL::UnsignedLong OffscreenCanvas::width() const
+{
+    if (!m_bitmap)
+        return 0;
+
+    return m_bitmap->size().width();
+}
+
+WebIDL::UnsignedLong OffscreenCanvas::height() const
+{
+    if (!m_bitmap)
+        return 0;
+
+    return m_bitmap->size().height();
+}
+
+void OffscreenCanvas::reset_context_to_default_state()
+{
+    m_context.visit(
+        [](GC::Ref<OffscreenCanvasRenderingContext2D>& context) {
+            context->reset_to_default_state();
+        },
+        [](GC::Ref<WebGL::WebGLRenderingContext>& context) {
+            context->reset_to_default_state();
+        },
+        [](GC::Ref<WebGL::WebGL2RenderingContext>& context) {
+            context->reset_to_default_state();
+        },
+        [](Empty) {
+            // Do nothing.
+        });
+}
+
+WebIDL::ExceptionOr<void> OffscreenCanvas::set_new_bitmap_size(Gfx::IntSize new_size)
+{
+    if (new_size.width() == 0 || new_size.height() == 0)
+        m_bitmap = nullptr;
+    else {
+        // FIXME: Other browsers appear to not throw for unreasonable sizes being set. We could consider deferring allocation of the bitmap until it is used,
+        //        but for now, lets just allocate it here and throw if it fails instead of crashing.
+        auto bitmap_or_error = Gfx::Bitmap::create(Gfx::BitmapFormat::RGBA8888, Gfx::IntSize { new_size.width(), new_size.height() });
+        if (bitmap_or_error.is_error()) {
+            return WebIDL::InvalidStateError::create(Utf16String::formatted("Error in allocating bitmap: {}", bitmap_or_error.error()));
+        }
+        m_bitmap = bitmap_or_error.release_value();
+    }
+
+    m_context.visit(
+        [&](GC::Ref<OffscreenCanvasRenderingContext2D>& context) {
+            context->set_size(new_size);
+        },
+        [&](GC::Ref<WebGL::WebGLRenderingContext>& context) {
+            context->set_size(new_size);
+        },
+        [&](GC::Ref<WebGL::WebGL2RenderingContext>& context) {
+            context->set_size(new_size);
+        },
+        [](Empty) {
+            // Do nothing.
+        });
+    return {};
+}
+
+RefPtr<Gfx::Bitmap> OffscreenCanvas::bitmap() const
+{
+    return m_bitmap;
+}
+
+WebIDL::ExceptionOr<void> OffscreenCanvas::set_width(WebIDL::UnsignedLong value)
+{
+    Gfx::IntSize current_size = bitmap_size_for_canvas();
+    current_size.set_width(value);
+
+    TRY(set_new_bitmap_size(current_size));
+    reset_context_to_default_state();
+    return {};
+}
+WebIDL::ExceptionOr<void> OffscreenCanvas::set_height(WebIDL::UnsignedLong value)
+{
+    Gfx::IntSize current_size = bitmap_size_for_canvas();
+    current_size.set_height(value);
+
+    TRY(set_new_bitmap_size(current_size));
+    reset_context_to_default_state();
+    return {};
+}
+
+Gfx::IntSize OffscreenCanvas::bitmap_size_for_canvas() const
+{
+    if (!m_bitmap)
+        return { 0, 0 };
+    return m_bitmap->size();
+}
+
+// https://html.spec.whatwg.org/multipage/canvas.html#dom-offscreencanvas-transfertoimagebitmap
+WebIDL::ExceptionOr<GC::Ref<ImageBitmap>> OffscreenCanvas::transfer_to_image_bitmap()
+{
+    // The transferToImageBitmap() method, when invoked, must run the following steps :
+
+    // FIXME: 1. If the value of this OffscreenCanvas object's [[Detached]] internal slot is set to true, then throw an "InvalidStateError" DOMException.
+
+    // 2. If this OffscreenCanvas object's context mode is set to none, then throw an "InvalidStateError" DOMException.
+    if (m_context.has<Empty>()) {
+        return WebIDL::InvalidStateError::create("OffscreenCanvas has no context"_utf16);
+    }
+
+    // 3. Let image be a newly created ImageBitmap object that references the same underlying bitmap data as this OffscreenCanvas object's bitmap.
+    auto image = ImageBitmap::create();
+    image->set_bitmap(m_bitmap);
+
+    // 4. Set this OffscreenCanvas object's bitmap to reference a newly created bitmap of the same dimensions and color space as the previous bitmap, and with its pixels initialized to transparent black, or opaque black if the rendering context' s alpha is false.
+    // FIXME: implement the checking of the alpha from the context
+    auto size = bitmap_size_for_canvas();
+    if (size.is_empty()) {
+        m_bitmap = nullptr;
+    } else {
+        m_bitmap = MUST(Gfx::Bitmap::create(Gfx::BitmapFormat::RGBA8888, size));
+    }
+
+    // 5. Return image.
+    return image;
+}
+
+void OffscreenCanvas::set_oncontextlost(GC::Ptr<WebIDL::CallbackType> event_handler)
+{
+    set_event_handler_attribute(HTML::EventNames::contextlost, event_handler);
+}
+
+GC::Ptr<WebIDL::CallbackType> OffscreenCanvas::oncontextlost()
+{
+    return event_handler_attribute(HTML::EventNames::contextlost);
+}
+
+void OffscreenCanvas::set_oncontextrestored(GC::Ptr<WebIDL::CallbackType> event_handler)
+{
+    set_event_handler_attribute(HTML::EventNames::contextrestored, event_handler);
+}
+
+GC::Ptr<WebIDL::CallbackType> OffscreenCanvas::oncontextrestored()
+{
+    return event_handler_attribute(HTML::EventNames::contextrestored);
+}
+
+CSS::ComputationContext OffscreenCanvas::canvas_font_computation_context() const
+{
+    // NB: The default font for a canvas is 10px sans-serif so we use a point size of 8 here.
+    CSS::Length::FontMetrics font_metrics { 10, Platform::FontPlugin::the().default_font(8)->pixel_metrics(), CSS::InitialValues::line_height() };
+
+    return CSS::ComputationContext {
+        .length_resolution_context = {
+            .viewport_rect = { 0, 0, 0, 0 },
+            .font_metrics = font_metrics,
+            .root_font_metrics = font_metrics },
+
+        // NB: We don't require an abstract element because tree counting and random() functions aren't allowed in
+        //     offscreen canvas context values
+        .abstract_element = {},
+
+        // NB: We don't require a color scheme since this is only used for resolving font values, not colors
+        .color_scheme = {}
+    };
+}
+
+void OffscreenCanvas::visit_edges(Cell::Visitor& visitor)
+{
+    Base::visit_edges(visitor);
+    visitor.visit(m_context);
+    visitor.visit(m_global_object);
+}
+
+OffscreenCanvas::HasOrCreatedContext OffscreenCanvas::create_2d_context(CanvasRenderingContext2DSettings context_attributes)
+{
+    if (!m_context.has<Empty>())
+        return m_context.has<GC::Ref<OffscreenCanvasRenderingContext2D>>() ? HasOrCreatedContext::Yes : HasOrCreatedContext::No;
+
+    m_context = OffscreenCanvasRenderingContext2D::create(*this, context_attributes);
+    return HasOrCreatedContext::Yes;
+}
+
+}
+
+namespace Web::Bindings {
+
+WebIDL::ExceptionOr<GC::Ref<HTML::OffscreenCanvas>> construct_offscreen_canvas(JS::Realm& realm, WebIDL::UnsignedLong width, WebIDL::UnsignedLong height)
+{
+    auto* global_scope = HTML::window_or_worker_global_scope_from_global_object(realm.global_object());
+    VERIFY(global_scope);
+    return HTML::OffscreenCanvas::create(global_scope->this_impl(), width, height);
+}
+
+GC::Ref<WebIDL::Promise> convert_to_blob(JS::Realm& realm, HTML::OffscreenCanvas& offscreen_canvas, Optional<ImageEncodeOptions> const& options)
+{
+    // FIXME: 1. If the value of this's [[Detached]] internal slot is true, then return a promise rejected with an "InvalidStateError" DOMException.
+
+    // FIXME: 2. If this's context mode is 2d and the rendering context's output bitmap's origin-clean flag is set to false, then return a promise rejected with a "SecurityError" DOMException.
+
+    auto size = offscreen_canvas.bitmap_size_for_canvas();
+
+    // 3. If this's bitmap has no pixels (i.e., either its horizontal dimension or its vertical dimension is zero), then return a promise rejected with an "IndexSizeError" DOMException.
+    if (size.height() == 0 or size.width() == 0) {
+        auto error = WebIDL::IndexSizeError::create("OffscreenCanvas has invalid dimensions. The bitmap has no pixels"_utf16);
+
+        return WebIDL::create_rejected_promise_for(offscreen_canvas.relevant_global_object(), error);
+    }
+
+    // 4. Let bitmap be a copy of this's bitmap.
+    RefPtr<Gfx::Bitmap> bitmap;
+    if (offscreen_canvas.bitmap())
+        bitmap = MUST(offscreen_canvas.bitmap()->clone());
+
+    // 5. Let result be a new promise object.
+    auto result_promise = WebIDL::create_promise_for(offscreen_canvas.relevant_global_object());
+
+    // 6. Let global be this's relevant global object.
+    auto& global = offscreen_canvas.relevant_global_object();
+
+    auto image_encode_options = options.value_or({});
+
+    // 7. Run these steps in parallel:
+    Platform::EventLoopPlugin::the().deferred_invoke(GC::create_function(GC::Heap::the(), [realm = GC::Ref(realm), &global, result_promise, bitmap, image_encode_options] {
+        // 1. Let file be a serialization of bitmap as a file, with options's type and quality if present.
+        Optional<HTML::SerializeBitmapResult> file_result {};
+
+        if (auto result = HTML::serialize_bitmap(*bitmap, image_encode_options.type, image_encode_options.quality); !result.is_error())
+            file_result = result.release_value();
+
+        // 2. Queue a global task on the canvas blob serialization task source given global to run these steps:
+        HTML::queue_global_task(HTML::Task::Source::CanvasBlobSerializationTask, global, GC::create_function(GC::Heap::the(), [realm, result_promise, file_result = move(file_result)] -> void {
+            HTML::TemporaryExecutionContext context(realm, HTML::TemporaryExecutionContext::CallbacksEnabled::Yes);
+
+            // 1. If file is null, then reject result with an "EncodingError" DOMException.
+            if (!file_result.has_value()) {
+                auto error = WebIDL::EncodingError::create("Failed to convert OffscreenCanvas to Blob"_utf16);
+                WebIDL::reject_promise(result_promise, error);
+            }
+            // 2. Otherwise, resolve result with a new Blob object, created in global's relevant realm, representing file. [FILEAPI]
+            else {
+                auto blob = FileAPI::Blob::create(file_result->buffer, Utf16String::from_utf8(serialized_bitmap_mime_type_to_byte_string(file_result->mime_type)));
+                WebIDL::resolve_promise(result_promise, Bindings::wrap(Bindings::host_defined_wrapper_world(realm), realm, blob));
+            }
+        }));
+    }));
+
+    // 8. Return result.
+    return result_promise;
+}
+
+JS::ThrowCompletionOr<HTML::OffscreenRenderingContext> get_context(JS::Realm&, HTML::OffscreenCanvas& offscreen_canvas, OffscreenRenderingContextId context_id, JS::Value options)
+{
+    // 1. If options is not an object, then set options to null.
+    if (!options.is_object())
+        options = JS::js_null();
+
+    // 2. Set options to the result of converting options to a JavaScript value.
+    // NOTE: No-op.
+
+    // 3. Run the steps in the cell of the following table whose column header
+    // matches this OffscreenCanvas object's context mode and whose row header
+    // matches contextId:
+    // NOTE: See the spec for the full table.
+    if (context_id == OffscreenRenderingContextId::_2d) {
+        auto context_attributes = TRY(convert_to_idl_value_for_canvas_rendering_context2d_settings(offscreen_canvas.vm(), options));
+        if (offscreen_canvas.create_2d_context(context_attributes) == HTML::OffscreenCanvas::HasOrCreatedContext::Yes)
+            return offscreen_canvas.context().get<GC::Ref<HTML::OffscreenCanvasRenderingContext2D>>();
+
+        return Empty {};
+    }
+
+    if (context_id == OffscreenRenderingContextId::Webgl) {
+        dbgln("(STUBBED) OffscreenCanvas::get_context(Webgl)");
+
+        return Empty {};
+    }
+
+    if (context_id == OffscreenRenderingContextId::Webgl2) {
+        dbgln("(STUBBED) OffscreenCanvas::get_context(Webgl2)");
+
+        return Empty {};
+    }
+
+    return Empty {};
+}
+
+}

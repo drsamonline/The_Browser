@@ -1,0 +1,36 @@
+// https://html.spec.whatwg.org/multipage/tables.html#attr-th-scope
+enum ScopeAttribute {
+    "row",
+    "col",
+    "rowgroup",
+    "colgroup"
+};
+
+// https://html.spec.whatwg.org/multipage/tables.html#htmltablecellelement
+[Exposed=Window]
+interface HTMLTableCellElement : HTMLElement {
+
+    [HTMLConstructor] constructor();
+
+    [CEReactions] attribute unsigned long colSpan;
+    [CEReactions] attribute unsigned long rowSpan;
+    [CEReactions, Reflect] attribute Utf16DOMString headers;
+    readonly attribute long cellIndex;
+
+    [CEReactions, Enumerated=ScopeAttribute, Reflect] attribute Utf16DOMString scope; // only conforming for th elements
+    [CEReactions, Reflect] attribute Utf16DOMString abbr;  // only conforming for th elements
+
+    // Obsolete
+    [CEReactions, Reflect] attribute Utf16DOMString align;
+    [CEReactions, Reflect] attribute Utf16DOMString axis;
+    [CEReactions, Reflect] attribute Utf16DOMString height;
+    [CEReactions, Reflect] attribute Utf16DOMString width;
+
+    [CEReactions, Reflect=char] attribute Utf16DOMString ch;
+    [CEReactions, Reflect=charoff] attribute Utf16DOMString chOff;
+    [CEReactions, Reflect=nowrap] attribute boolean noWrap;
+    [CEReactions, Reflect=valign] attribute Utf16DOMString vAlign;
+
+    [CEReactions, LegacyNullToEmptyString, Reflect=bgcolor] attribute Utf16DOMString bgColor;
+
+};

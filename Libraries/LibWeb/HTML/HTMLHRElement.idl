@@ -1,0 +1,14 @@
+// https://html.spec.whatwg.org/multipage/grouping-content.html#htmlhrelement
+[Exposed=Window]
+interface HTMLHRElement : HTMLElement {
+
+    [HTMLConstructor] constructor();
+
+    // Obsolete
+    [CEReactions, Reflect] attribute Utf16DOMString align;
+    [CEReactions, Reflect] attribute Utf16DOMString color;
+    [CEReactions, Reflect=noshade] attribute boolean noShade;
+    [CEReactions, Reflect] attribute Utf16DOMString size;
+    [CEReactions, Reflect] attribute Utf16DOMString width;
+
+};

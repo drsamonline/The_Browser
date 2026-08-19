@@ -1,0 +1,229 @@
+/*
+ * Copyright (c) 2023-2024, Kenneth Myhra <kennethmyhra@serenityos.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#include <AK/TypeCasts.h>
+#include <LibGC/Heap.h>
+#include <LibJS/Runtime/Completion.h>
+#include <LibJS/Runtime/VM.h>
+#include <LibWeb/DOM/Document.h>
+#include <LibWeb/FileAPI/Blob.h>
+#include <LibWeb/FileAPI/File.h>
+#include <LibWeb/HTML/FormAssociatedElement.h>
+#include <LibWeb/HTML/FormControlInfrastructure.h>
+#include <LibWeb/HTML/HTMLFormElement.h>
+#include <LibWeb/WebIDL/DOMException.h>
+#include <LibWeb/XHR/FormData.h>
+
+namespace Web::XHR {
+
+GC_DEFINE_ALLOCATOR(FormData);
+
+static FormDataEntryValue form_data_entry_value_for_bindings(FormDataEntry::Value const& value)
+{
+    return value.visit(
+        [](GC::Ref<FileAPI::File> file) -> FormDataEntryValue { return file; },
+        [](Utf16String const& string) -> FormDataEntryValue { return string; });
+}
+
+WebIDL::ExceptionOr<GC::Ref<FormData>> FormData::construct_impl(GC::Ptr<HTML::HTMLFormElement> form, GC::Ptr<HTML::HTMLElement> submitter)
+{
+    if (!form)
+        return create(GC::ConservativeVector<FormDataEntry> {});
+    return create_from_form(form, submitter);
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata
+WebIDL::ExceptionOr<GC::Ref<FormData>> FormData::create_from_form(GC::Ptr<HTML::HTMLFormElement> form, GC::Ptr<HTML::HTMLElement> submitter)
+{
+    GC::ConservativeVector<FormDataEntry> list;
+    // 1. If form is given, then:
+    if (form) {
+        // 1. If submitter is non-null, then:
+        if (submitter) {
+            // 1. If submitter is not a submit button, then throw a TypeError.
+            auto form_associated_element = as_if<HTML::FormAssociatedElement>(*submitter);
+            if (!form_associated_element) {
+                return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Submitter is not associated with a form."_utf16 };
+            }
+
+            if (!form_associated_element->is_submit_button()) {
+                return WebIDL::SimpleException { WebIDL::SimpleExceptionType::TypeError, "Submitter is not a valid submit button."_utf16 };
+            }
+            // 2. If submitter’s form owner is not form, then throw a "NotFoundError" DOMException.
+            GC::Ptr form_owner = form_associated_element->form();
+            if (form_owner && form_owner != form) {
+                return WebIDL::NotFoundError::create("Submitter does not belong to the provided form."_utf16);
+            }
+        }
+
+        // 2. Let list be the result of constructing the entry list for form and submitter.
+        auto& realm = form->document().relevant_settings_object().realm();
+        auto entry_list = TRY(construct_entry_list(realm, *form, submitter));
+        // 3. If list is null, then throw an "InvalidStateError" DOMException.
+        if (!entry_list.has_value())
+            return WebIDL::InvalidStateError::create("Form element does not contain any entries."_utf16);
+        // 4. Set this’s entry list to list.
+        list = move(entry_list.release_value());
+    }
+
+    return create(move(list));
+}
+
+GC::Ref<FormData> FormData::create(Vector<DOMURL::QueryParam> entry_list)
+{
+    GC::ConservativeVector<FormDataEntry> list;
+    list.ensure_capacity(entry_list.size());
+    for (auto& entry : entry_list)
+        list.unchecked_append({ .name = move(entry.name), .value = move(entry.value) });
+
+    return create(move(list));
+}
+
+GC::Ref<FormData> FormData::create(GC::ConservativeVector<FormDataEntry> entry_list)
+{
+    return GC::Heap::the().allocate<FormData>(move(entry_list));
+}
+
+FormData::FormData(GC::ConservativeVector<FormDataEntry> entry_list)
+    : m_entry_list(entry_list)
+{
+}
+
+FormData::~FormData() = default;
+
+void FormData::visit_edges(GC::Cell::Visitor& visitor)
+{
+    Base::visit_edges(visitor);
+    for (auto const& entry : m_entry_list)
+        visitor.visit(entry.value);
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata-append
+WebIDL::ExceptionOr<void> FormData::append(Utf16String const& name, Utf16String const& value)
+{
+    return append_impl(name, value);
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata-append-blob
+WebIDL::ExceptionOr<void> FormData::append(Utf16String const& name, GC::Ref<FileAPI::Blob> const& blob_value, Optional<Utf16String> const& filename)
+{
+    return append_impl(name, blob_value, filename);
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata-append
+// https://xhr.spec.whatwg.org/#dom-formdata-append-blob
+WebIDL::ExceptionOr<void> FormData::append_impl(Utf16String const& name, Variant<GC::Ref<FileAPI::Blob>, Utf16String> const& value, Optional<Utf16String> const& filename)
+{
+    // 1. Let value be value if given; otherwise blobValue.
+    // 2. Let entry be the result of creating an entry with name, value, and filename if given.
+    auto& realm = JS::VM::the().realm();
+    auto entry = TRY(HTML::create_entry(realm, name.utf16_view(), value, filename));
+
+    // 3. Append entry to this’s entry list.
+    TRY_OR_THROW_OOM(JS::VM::the(), m_entry_list.try_append(move(entry)));
+    return {};
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata-delete
+void FormData::delete_(Utf16String const& name)
+{
+    // The delete(name) method steps are to remove all entries whose name is name from this’s entry list.
+    m_entry_list.remove_all_matching([&name](FormDataEntry const& entry) {
+        return entry.name == name;
+    });
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata-get
+Variant<GC::Ref<FileAPI::File>, Utf16String, Empty> FormData::get(Utf16String const& name)
+{
+    // 1. If there is no entry whose name is name in this’s entry list, then return null.
+    auto entry_iterator = m_entry_list.find_if([&name](FormDataEntry const& entry) {
+        return entry.name == name;
+    });
+    if (entry_iterator.is_end())
+        return Empty {};
+    // 2. Return the value of the first entry whose name is name from this’s entry list.
+    return form_data_entry_value_for_bindings(entry_iterator->value);
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata-getall
+WebIDL::ExceptionOr<Vector<FormDataEntryValue>> FormData::get_all(Utf16String const& name)
+{
+    // 1. If there is no entry whose name is name in this’s entry list, then return the empty list.
+    // 2. Return the values of all entries whose name is name, in order, from this’s entry list.
+    Vector<FormDataEntryValue> values;
+    for (auto const& entry : m_entry_list) {
+        if (entry.name == name)
+            TRY_OR_THROW_OOM(JS::VM::the(), values.try_append(form_data_entry_value_for_bindings(entry.value)));
+    }
+    return values;
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata-has
+bool FormData::has(Utf16String const& name)
+{
+    // The has(name) method steps are to return true if there is an entry whose name is name in this’s entry list; otherwise false.
+    return !m_entry_list.find_if([&name](auto& entry) {
+                            return entry.name == name;
+                        })
+                .is_end();
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata-set
+WebIDL::ExceptionOr<void> FormData::set(Utf16String const& name, Utf16String const& value)
+{
+    return set_impl(name, value);
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata-set-blob
+WebIDL::ExceptionOr<void> FormData::set(Utf16String const& name, GC::Ref<FileAPI::Blob> const& blob_value, Optional<Utf16String> const& filename)
+{
+    return set_impl(name, blob_value, filename);
+}
+
+GC::ConservativeVector<FormDataEntry> FormData::entry_list() const
+{
+    return GC::ConservativeVector<FormDataEntry> { m_entry_list };
+}
+
+// https://xhr.spec.whatwg.org/#dom-formdata-set
+// https://xhr.spec.whatwg.org/#dom-formdata-set-blob
+WebIDL::ExceptionOr<void> FormData::set_impl(Utf16String const& name, Variant<GC::Ref<FileAPI::Blob>, Utf16String> const& value, Optional<Utf16String> const& filename)
+{
+    // 1. Let value be value if given; otherwise blobValue.
+    // 2. Let entry be the result of creating an entry with name, value, and filename if given.
+    auto& realm = JS::VM::the().realm();
+    auto entry = TRY(HTML::create_entry(realm, name.utf16_view(), value, filename));
+
+    auto existing = m_entry_list.find_if([&name](auto& entry) {
+        return entry.name == name;
+    });
+
+    // 3. If there are entries in this’s entry list whose name is name, then replace the first such entry with entry and remove the others.
+    if (!existing.is_end()) {
+        existing->value = entry.value;
+        m_entry_list.remove_all_matching([&name, &existing](auto& entry) {
+            return &entry != &*existing && entry.name == name;
+        });
+    }
+    // 4. Otherwise, append entry to this’s entry list.
+    else {
+        TRY_OR_THROW_OOM(JS::VM::the(), m_entry_list.try_append(move(entry)));
+    }
+
+    return {};
+}
+
+void FormData::for_each(ForEachCallback callback)
+{
+    for (auto i = 0u; i < m_entry_list.size(); ++i) {
+        auto& entry = m_entry_list[i];
+        if (callback(entry.name, entry.value) == IterationDecision::Break)
+            break;
+    }
+}
+
+}

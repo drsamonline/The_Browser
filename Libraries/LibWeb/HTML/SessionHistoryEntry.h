@@ -1,0 +1,238 @@
+/*
+ * Copyright (c) 2022, Andreas Kling <andreas@ladybird.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#pragma once
+
+#include <AK/Optional.h>
+#include <AK/RefCounted.h>
+#include <AK/RefPtr.h>
+#include <AK/Types.h>
+#include <AK/Utf16String.h>
+#include <AK/Vector.h>
+#include <LibURL/URL.h>
+#include <LibWeb/Export.h>
+#include <LibWeb/Fetch/Infrastructure/HTTP/Requests.h>
+#include <LibWeb/Forward.h>
+#include <LibWeb/HTML/CrossProcessId.h>
+#include <LibWeb/HTML/DocumentState.h>
+#include <LibWeb/HTML/SessionHistoryEntryIdentity.h>
+#include <LibWeb/HTML/StructuredSerializeTypes.h>
+#include <LibWeb/PixelUnits.h>
+#include <LibWeb/ReferrerPolicy/ReferrerPolicy.h>
+
+namespace Web::HTML {
+
+// https://html.spec.whatwg.org/multipage/history.html#scroll-restoration-mode
+enum class ScrollRestorationMode {
+    // https://html.spec.whatwg.org/multipage/history.html#dom-scrollrestoration-auto
+    // The user agent is responsible for restoring the scroll position upon navigation.
+    Auto,
+
+    // https://html.spec.whatwg.org/multipage/history.html#dom-scrollrestoration-manual
+    // The page is responsible for restoring the scroll position and the user agent does not attempt to do so automatically.
+    Manual,
+};
+
+struct SessionHistoryNestedHistoryDescriptor;
+
+// IPC-friendly descriptors for the parts of session history entries and document states that can survive
+// WebContent process swaps.
+//
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#session-history-entry
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#document-state
+struct SessionHistoryDocumentStateDescriptor {
+    // AD-HOC: The spec models shared document state by object identity. The UI-process mirror uses a stable
+    //         descriptor ID so entries that share a document state can be reconstructed after IPC.
+    CrossProcessId id;
+    Variant<SerializedPolicyContainer, DocumentState::Client> history_policy_container { DocumentState::Client::Tag };
+    Fetch::Infrastructure::Request::ReferrerType request_referrer { Fetch::Infrastructure::Request::Referrer::Client };
+    ReferrerPolicy::ReferrerPolicy request_referrer_policy { ReferrerPolicy::DEFAULT_REFERRER_POLICY };
+    Optional<URL::Origin> initiator_origin;
+    Optional<URL::Origin> origin;
+    Optional<URL::URL> about_base_url;
+    DocumentResource resource;
+    bool reload_pending { false };
+    bool ever_populated { false };
+    Utf16String navigable_target_name;
+    Vector<SessionHistoryNestedHistoryDescriptor> nested_histories;
+};
+
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-scroll-position
+struct SessionHistoryEntryScrollPositionData {
+    // FIXME: Track all restorable scrollable regions. Currently only the viewport is persisted.
+    Optional<CSSPixelPoint> viewport_scroll_position;
+};
+
+struct SessionHistoryEntryPersistedState {
+    CrossProcessId document_state_id;
+    Utf16String navigation_api_key;
+    SessionHistoryEntryScrollPositionData scroll_position_data;
+};
+
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#session-history-entry
+struct SessionHistoryEntryDescriptor {
+    i32 step { 0 };
+    URL::URL url;
+    SessionHistoryDocumentStateDescriptor document_state;
+    StorageSerializationRecord classic_history_api_state;
+    StorageSerializationRecord navigation_api_state;
+    Utf16String navigation_api_key;
+    Utf16String navigation_api_id;
+    ScrollRestorationMode scroll_restoration_mode { ScrollRestorationMode::Auto };
+    SessionHistoryEntryScrollPositionData scroll_position_data;
+};
+
+struct PendingSessionHistoryEntryDescriptor {
+    URL::URL url;
+    SessionHistoryDocumentStateDescriptor document_state;
+    StorageSerializationRecord classic_history_api_state;
+    StorageSerializationRecord navigation_api_state;
+    Utf16String navigation_api_key;
+    Utf16String navigation_api_id;
+    ScrollRestorationMode scroll_restoration_mode { ScrollRestorationMode::Auto };
+    SessionHistoryEntryScrollPositionData scroll_position_data;
+};
+
+// https://html.spec.whatwg.org/multipage/browsing-the-web.html#nested-history
+struct SessionHistoryNestedHistoryDescriptor {
+    CrossProcessId id;
+    Vector<SessionHistoryEntryDescriptor> entries;
+};
+
+// https://html.spec.whatwg.org/multipage/history.html#session-history-entry
+class WEB_API SessionHistoryEntry final : public RefCounted<SessionHistoryEntry> {
+public:
+    static NonnullRefPtr<SessionHistoryEntry> create();
+
+    SessionHistoryEntry();
+    ~SessionHistoryEntry();
+
+    enum class Pending {
+        Tag,
+    };
+
+    [[nodiscard]] Variant<int, Pending> step() const { return m_step; }
+    void set_step(Variant<int, Pending> step) { m_step = step; }
+    [[nodiscard]] Optional<int> step_value() const
+    {
+        if (auto const* step = m_step.get_pointer<int>())
+            return *step;
+        return {};
+    }
+
+    [[nodiscard]] URL::URL const& url() const { return m_url; }
+    void set_url(URL::URL url) { m_url = move(url); }
+
+    [[nodiscard]] RefPtr<HTML::DocumentState> document_state() const;
+    void set_document_state(RefPtr<HTML::DocumentState>);
+
+    [[nodiscard]] StorageSerializationRecord const& classic_history_api_state() const { return m_classic_history_api_state; }
+    void set_classic_history_api_state(StorageSerializationRecord classic_history_api_state) { m_classic_history_api_state = move(classic_history_api_state); }
+
+    [[nodiscard]] StorageSerializationRecord const& navigation_api_state() const { return m_navigation_api_state; }
+    void set_navigation_api_state(StorageSerializationRecord navigation_api_state) { m_navigation_api_state = move(navigation_api_state); }
+
+    [[nodiscard]] Utf16String const& navigation_api_key() const { return m_navigation_api_key; }
+    void set_navigation_api_key(Utf16String navigation_api_key) { m_navigation_api_key = move(navigation_api_key); }
+
+    [[nodiscard]] Utf16String const& navigation_api_id() const { return m_navigation_api_id; }
+    void set_navigation_api_id(Utf16String navigation_api_id) { m_navigation_api_id = move(navigation_api_id); }
+
+    [[nodiscard]] ScrollRestorationMode scroll_restoration_mode() const { return m_scroll_restoration_mode; }
+    void set_scroll_restoration_mode(ScrollRestorationMode scroll_restoration_mode) { m_scroll_restoration_mode = scroll_restoration_mode; }
+
+    [[nodiscard]] SessionHistoryEntryScrollPositionData const& scroll_position_data() const { return m_scroll_position_data; }
+    void set_scroll_position_data(SessionHistoryEntryScrollPositionData scroll_position_data) { m_scroll_position_data = move(scroll_position_data); }
+
+private:
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-step
+    // step, a non-negative integer or "pending", initially "pending".
+    Variant<int, Pending> m_step { Pending::Tag };
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-url
+    // URL, a URL
+    URL::URL m_url;
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-document-state
+    RefPtr<HTML::DocumentState> m_document_state;
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-classic-history-api-state
+    // classic history API state, which is serialized state, initially StructuredSerializeForStorage(null).
+    StorageSerializationRecord m_classic_history_api_state;
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-navigation-api-state
+    // navigation API state, which is a serialized state, initially StructuredSerializeForStorage(undefined).
+    StorageSerializationRecord m_navigation_api_state;
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-navigation-api-key
+    // navigation API key, which is a string, initially set to the result of generating a random UUID.
+    Utf16String m_navigation_api_key;
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-navigation-api-id
+    // navigation API ID, which is a string, initially set to the result of generating a random UUID.
+    Utf16String m_navigation_api_id;
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-scroll-restoration-mode
+    // scroll restoration mode, a scroll restoration mode, initially "auto"
+    ScrollRestorationMode m_scroll_restoration_mode { ScrollRestorationMode::Auto };
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-scroll-position
+    // scroll position data, which is scroll position data for the document's restorable scrollable regions
+    SessionHistoryEntryScrollPositionData m_scroll_position_data;
+
+    // https://html.spec.whatwg.org/multipage/browsing-the-web.html#she-other
+    // FIXME: persisted user state, which is implementation-defined, initially null
+    // NOTE: This is where we could remember the state of form controls, for example.
+};
+
+WEB_API SessionHistoryEntryDescriptor create_session_history_entry_descriptor(SessionHistoryEntry const&);
+WEB_API PendingSessionHistoryEntryDescriptor create_pending_session_history_entry_descriptor(SessionHistoryEntry const&);
+WEB_API SessionHistoryEntryDescriptor create_session_history_entry_descriptor(PendingSessionHistoryEntryDescriptor, i32 step);
+WEB_API Optional<SessionHistoryEntryPersistedState> create_session_history_entry_persisted_state(SessionHistoryEntry const&);
+WEB_API SessionHistoryEntryIdentity session_history_entry_identity(SessionHistoryEntry const&);
+WEB_API SessionHistoryEntryIdentity session_history_entry_identity(SessionHistoryEntryDescriptor const&);
+
+}
+
+namespace IPC {
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryEntryDescriptor const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::SessionHistoryEntryDescriptor> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::PendingSessionHistoryEntryDescriptor const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::PendingSessionHistoryEntryDescriptor> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryEntryScrollPositionData const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::SessionHistoryEntryScrollPositionData> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryEntryPersistedState const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::SessionHistoryEntryPersistedState> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryDocumentStateDescriptor const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::SessionHistoryDocumentStateDescriptor> decode(Decoder&);
+
+template<>
+WEB_API ErrorOr<void> encode(Encoder&, Web::HTML::SessionHistoryNestedHistoryDescriptor const&);
+
+template<>
+WEB_API ErrorOr<Web::HTML::SessionHistoryNestedHistoryDescriptor> decode(Decoder&);
+
+}

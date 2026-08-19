@@ -1,0 +1,91 @@
+/*
+ * Copyright (c) 2020-2023, Andreas Kling <andreas@ladybird.org>
+ * Copyright (c) 2021-2022, Linus Groh <linusg@serenityos.org>
+ * Copyright (c) 2023, Andrew Kaster <akaster@serenityos.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#include <LibWeb/Compositor/CompositorHost.h>
+#include <LibWeb/HTML/LocalTraversableNavigable.h>
+
+#include <WebContent/ConnectionFromClient.h>
+#include <WebContent/PageClient.h>
+#include <WebContent/PageHost.h>
+#include <WebContent/WebContentCompositorHost.h>
+#include <WebContent/WebDriverConnection.h>
+
+namespace WebContent {
+
+PageHost::PageHost(ConnectionFromClient& client)
+    : m_client(client)
+{
+}
+
+void PageHost::initialize(u64 initial_page_id, Web::HTML::CrossProcessId root_navigable_id, Web::HTML::CrossProcessIdAllocator cross_process_id_allocator, Web::HTML::CrossProcessId initial_document_state_id)
+{
+    VERIFY(m_pages.is_empty());
+    m_cross_process_id_allocator = cross_process_id_allocator;
+    auto& first_page = create_page(initial_page_id, root_navigable_id);
+    Web::HTML::LocalTraversableNavigable::create_a_fresh_top_level_traversable(first_page.page(), URL::about_blank(), Empty {}, initial_document_state_id);
+}
+
+PageClient& PageHost::create_page(u64 page_id, Optional<Web::HTML::CrossProcessId> pending_root_navigable_id)
+{
+    VERIFY(page_id > 0);
+    VERIFY(!m_pages.contains(page_id));
+    m_pages.set(page_id, PageClient::create(*this, page_id, pending_root_navigable_id));
+    return *m_pages.get(page_id).value();
+}
+
+Web::HTML::CrossProcessId PageHost::allocate_cross_process_id()
+{
+    VERIFY(m_cross_process_id_allocator.has_value());
+    return m_cross_process_id_allocator->allocate();
+}
+
+Web::HTML::CrossProcessId PageHost::allocate_navigable_id()
+{
+    return allocate_cross_process_id();
+}
+
+void PageHost::remove_page(Badge<PageClient>, u64 page_id)
+{
+    m_pages.remove(page_id);
+}
+
+void PageHost::close_webdriver_connections_after_sending_pending_messages()
+{
+    for (auto& page : m_pages)
+        page.value->close_webdriver_connection_after_sending_pending_messages();
+}
+
+Optional<PageClient&> PageHost::page(u64 page_id)
+{
+    return m_pages.get(page_id).map([](auto& value) -> PageClient& {
+        return *value;
+    });
+}
+
+PageHost::~PageHost() = default;
+
+void PageHost::ensure_compositor_host()
+{
+    if (m_compositor_host)
+        return;
+    m_compositor_host = create_web_content_compositor_host(m_client);
+}
+
+void PageHost::compositor_process_reconnected()
+{
+    for (auto& [_, page] : m_pages)
+        page->compositor_process_reconnected();
+}
+
+void PageHost::compositor_process_lost()
+{
+    for (auto& [_, page] : m_pages)
+        page->compositor_process_lost();
+}
+
+}

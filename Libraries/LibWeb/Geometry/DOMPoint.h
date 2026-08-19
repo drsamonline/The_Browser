@@ -1,0 +1,48 @@
+/*
+ * Copyright (c) 2021, Andreas Kling <andreas@ladybird.org>
+ * Copyright (c) 2022, Sam Atkins <atkinssj@serenityos.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#pragma once
+
+#include <LibWeb/Export.h>
+#include <LibWeb/Geometry/DOMPointReadOnly.h>
+
+namespace Web::Bindings {
+
+struct DOMPointInit;
+
+}
+
+namespace Web::Geometry {
+
+// https://drafts.fxtf.org/geometry/#DOMPoint
+class WEB_API DOMPoint final : public DOMPointReadOnly {
+    WEB_WRAPPABLE(DOMPoint, DOMPointReadOnly);
+    GC_DECLARE_ALLOCATOR(DOMPoint);
+
+public:
+    static GC::Ref<DOMPoint> create(double x, double y, double z, double w);
+    static GC::Ref<DOMPoint> create();
+    static GC::Ref<DOMPoint> dom_point_from_point(Bindings::DOMPointInit const&);
+
+    virtual ~DOMPoint() override;
+
+    double x() const { return m_x; }
+    double y() const { return m_y; }
+    double z() const { return m_z; }
+    double w() const { return m_w; }
+
+    void set_x(double x) { m_x = x; }
+    void set_y(double y) { m_y = y; }
+    void set_z(double z) { m_z = z; }
+    void set_w(double w) { m_w = w; }
+
+private:
+    DOMPoint(double x, double y, double z, double w);
+    DOMPoint();
+};
+
+}

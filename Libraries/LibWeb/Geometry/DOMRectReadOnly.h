@@ -1,0 +1,81 @@
+/*
+ * Copyright (c) 2021, Andreas Kling <andreas@ladybird.org>
+ * Copyright (c) 2024, Kenneth Myhra <kennethmyhra@serenityos.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#pragma once
+
+#include <LibGfx/Rect.h>
+#include <LibWeb/Bindings/Serializable.h>
+#include <LibWeb/Bindings/Wrappable.h>
+#include <LibWeb/Forward.h>
+#include <LibWeb/WebIDL/ExceptionOr.h>
+
+namespace Web::Bindings {
+
+struct DOMRectInit;
+
+}
+
+namespace Web::Geometry {
+
+// https://drafts.fxtf.org/geometry/#domrectreadonly
+class WEB_API DOMRectReadOnly
+    : public Bindings::GCAllocatedWrappable
+    , public Bindings::Serializable {
+    WEB_WRAPPABLE(DOMRectReadOnly, Bindings::GCAllocatedWrappable);
+    GC_DECLARE_ALLOCATOR(DOMRectReadOnly);
+
+public:
+    [[nodiscard]] static GC::Ref<DOMRectReadOnly> create(double x, double y, double width, double height);
+    static GC::Ref<DOMRectReadOnly> create();
+    [[nodiscard]] static GC::Ref<DOMRectReadOnly> dom_rect_read_only_from_rect(Bindings::DOMRectInit const&);
+
+    virtual ~DOMRectReadOnly() override;
+
+    double x() const { return m_rect.x(); }
+    double y() const { return m_rect.y(); }
+    double width() const { return m_rect.width(); }
+    double height() const { return m_rect.height(); }
+
+    double top() const
+    {
+        if (isnan(y()) || isnan(height()))
+            return NAN;
+        return min(y(), y() + height());
+    }
+
+    double right() const
+    {
+        if (isnan(x()) || isnan(width()))
+            return NAN;
+        return max(x(), x() + width());
+    }
+
+    double bottom() const
+    {
+        if (isnan(y()) || isnan(height()))
+            return NAN;
+        return max(y(), y() + height());
+    }
+
+    double left() const
+    {
+        if (isnan(x()) || isnan(width()))
+            return NAN;
+        return min(x(), x() + width());
+    }
+
+    virtual WebIDL::ExceptionOr<void> serialization_steps(HTML::StructuredSerializeWriter&, bool for_storage, HTML::SerializationMemory&) override;
+    virtual WebIDL::ExceptionOr<void> deserialization_steps(JS::Realm&, HTML::StructuredSerializeReader&, HTML::DeserializationMemory&) override;
+
+protected:
+    DOMRectReadOnly(double x, double y, double width, double height);
+    DOMRectReadOnly();
+
+    Gfx::DoubleRect m_rect;
+};
+
+}

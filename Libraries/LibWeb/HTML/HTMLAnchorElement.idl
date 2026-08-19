@@ -1,0 +1,26 @@
+// https://html.spec.whatwg.org/multipage/text-level-semantics.html#htmlanchorelement
+[Exposed=Window]
+interface HTMLAnchorElement : HTMLElement {
+
+    [HTMLConstructor] constructor();
+
+    [CEReactions, Reflect] attribute Utf16DOMString download;
+    [CEReactions, Reflect] attribute Utf16USVString ping;
+    [CEReactions, Reflect] attribute Utf16DOMString rel;
+    [SameObject, PutForwards=value] readonly attribute DOMTokenList relList;
+
+    [CEReactions] attribute Utf16DOMString text;
+
+    [CEReactions, Reflect=referrerpolicy, Enumerated=ReferrerPolicy] attribute Utf16DOMString referrerPolicy;
+
+    // Obsolete
+    [CEReactions, Reflect] attribute Utf16DOMString coords;
+    [CEReactions, Reflect] attribute Utf16DOMString charset;
+    [CEReactions, Reflect] attribute Utf16DOMString name;
+    [CEReactions, Reflect] attribute Utf16DOMString rev;
+    [CEReactions, Reflect] attribute Utf16DOMString shape;
+
+};
+
+HTMLAnchorElement includes HyperlinkElementUtils;
+HTMLAnchorElement includes HTMLHyperlinkElementUtils;

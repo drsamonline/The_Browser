@@ -1,0 +1,29 @@
+// https://websockets.spec.whatwg.org/#websocket
+[Exposed=(Window,Worker)]
+interface WebSocket : EventTarget {
+
+    constructor(Utf16USVString url, optional (Utf16DOMString or sequence<Utf16DOMString>) protocols);
+
+    readonly attribute Utf16USVString url;
+
+    // ready state
+    const unsigned short CONNECTING = 0;
+    const unsigned short OPEN = 1;
+    const unsigned short CLOSING = 2;
+    const unsigned short CLOSED = 3;
+    readonly attribute unsigned short readyState;
+    [FIXME] readonly attribute unsigned long long bufferedAmount;
+
+    // networking
+    attribute EventHandler onopen;
+    attribute EventHandler onerror;
+    attribute EventHandler onclose;
+    readonly attribute Utf16DOMString extensions;
+    readonly attribute Utf16DOMString protocol;
+    undefined close(optional [Clamp] unsigned short code, optional Utf16USVString reason);
+
+    // messaging
+    attribute EventHandler onmessage;
+    attribute Utf16DOMString binaryType;
+    undefined send((BufferSource or Blob or Utf16USVString) data);
+};

@@ -1,0 +1,38 @@
+// https://html.spec.whatwg.org/multipage/tables.html#htmltableelement
+[Exposed=Window]
+interface HTMLTableElement : HTMLElement {
+
+    [HTMLConstructor] constructor();
+
+    [CEReactions] attribute HTMLTableCaptionElement? caption;
+    HTMLTableCaptionElement createCaption();
+    [CEReactions] undefined deleteCaption();
+
+    [CEReactions] attribute HTMLTableSectionElement? tHead;
+    HTMLTableSectionElement createTHead();
+    [CEReactions] undefined deleteTHead();
+
+    [CEReactions] attribute HTMLTableSectionElement? tFoot;
+    HTMLTableSectionElement createTFoot();
+    [CEReactions] undefined deleteTFoot();
+
+    [SameObject] readonly attribute HTMLCollection tBodies;
+    HTMLTableSectionElement createTBody();
+
+    [SameObject] readonly attribute HTMLCollection rows;
+    HTMLTableRowElement insertRow(optional long index = -1);
+    [CEReactions] undefined deleteRow(long index);
+
+    // Obsolete
+    [CEReactions, Reflect] attribute Utf16DOMString align;
+    [CEReactions, Reflect] attribute Utf16DOMString border;
+    [CEReactions, Reflect] attribute Utf16DOMString frame;
+    [CEReactions, Reflect] attribute Utf16DOMString rules;
+    [CEReactions, Reflect] attribute Utf16DOMString summary;
+    [CEReactions, Reflect] attribute Utf16DOMString width;
+
+    [CEReactions, LegacyNullToEmptyString, Reflect=bgcolor] attribute Utf16DOMString bgColor;
+    [CEReactions, LegacyNullToEmptyString, Reflect=cellpadding] attribute Utf16DOMString cellPadding;
+    [CEReactions, LegacyNullToEmptyString, Reflect=cellspacing] attribute Utf16DOMString cellSpacing;
+
+};

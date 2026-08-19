@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<script src="../include.js"></script>
+<script>
+    asyncTest(done => {        
+        const objectElement = document.createElement("object");
+        println(`object.contentWindow initial value should be null: ${objectElement.contentWindow === null}`);
+        objectElement.type = "text/html";
+        objectElement.name = "PASS"
+        objectElement.data = "../../data/blank.html";
+        objectElement.onload = () => {
+            println(`contentWindow.name should be the same as object.name ${objectElement.contentWindow.name}`);
+            document.body.removeChild(objectElement);
+            done();     
+        };
+
+        document.body.appendChild(objectElement);
+    });
+</script>

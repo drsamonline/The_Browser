@@ -1,0 +1,21 @@
+Before mix-blend-mode change:
+AccumulatedVisualContext Tree:
+  [0] transform=[1,0,0,1,0,0] origin=(0,0) (ViewportPaintable(Viewport<#document>))
+    [1] scroll (PaintableWithLines(BlockContainer<PRE>#out))
+
+DisplayList:
+SaveLayer@0
+  FillRect@1 rect=[8,8 100x100] color=rgb(0, 128, 0)
+Restore@0
+
+After mix-blend-mode change:
+AccumulatedVisualContext Tree:
+  [0] transform=[1,0,0,1,0,0] origin=(0,0) (ViewportPaintable(Viewport<#document>))
+    [1] scroll (PaintableWithLines(BlockContainer<PRE>#out))
+      [2] effects=[blend_mode=2] (PaintableWithLines(BlockContainer<DIV>#box))
+
+DisplayList:
+SaveLayer@0
+  FillRect@2 rect=[8,8 100x100] color=rgb(0, 128, 0)
+Restore@0
+

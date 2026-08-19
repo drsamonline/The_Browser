@@ -1,0 +1,42 @@
+/*
+ * Copyright (c) 2024, Andreas Kling <andreas@ladybird.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#pragma once
+
+#include <AK/NonnullRefPtr.h>
+#include <LibGfx/CompositingAndBlendingOperator.h>
+#include <LibGfx/PaintStyle.h>
+#include <LibGfx/Painter.h>
+#include <LibGfx/PaintingSurface.h>
+#include <LibGfx/Path.h>
+#include <LibGfx/WindingRule.h>
+
+namespace Gfx {
+
+class PainterSkia final : public Painter {
+public:
+    explicit PainterSkia(NonnullRefPtr<Gfx::PaintingSurface>);
+    virtual ~PainterSkia() override;
+
+    virtual void clear_rect(Gfx::FloatRect const&, Color) override;
+    virtual void fill_rect(Gfx::FloatRect const&, Color) override;
+    virtual void draw_bitmap(Gfx::FloatRect const& dst_rect, Gfx::DecodedImageFrame const& source, Gfx::IntRect const& src_rect, Gfx::ScalingMode, Optional<Gfx::Filter>, float global_alpha, Gfx::CompositingAndBlendingOperator compositing_and_blending_operator) override;
+    void stroke_path(Gfx::Path const&, Gfx::Color, float thickness, float blur_radius, Gfx::CompositingAndBlendingOperator compositing_and_blending_operator, Gfx::Path::CapStyle, Gfx::Path::JoinStyle, float miter_limit, Vector<float> const& dash_array, float dash_offset);
+    void stroke_path(Gfx::Path const&, Gfx::PaintStyle const&, Optional<Gfx::Filter>, float thickness, float global_alpha, Gfx::CompositingAndBlendingOperator compositing_and_blending_operator, Gfx::Path::CapStyle const&, Gfx::Path::JoinStyle const&, float miter_limit, Vector<float> const&, float dash_offset);
+    void fill_path(Gfx::Path const&, Gfx::Color, Gfx::WindingRule, float blur_radius, Gfx::CompositingAndBlendingOperator compositing_and_blending_operator);
+    void fill_path(Gfx::Path const&, Gfx::PaintStyle const&, Optional<Gfx::Filter>, float global_alpha, Gfx::CompositingAndBlendingOperator compositing_and_blending_operator, Gfx::WindingRule);
+    void set_transform(Gfx::AffineTransform const&);
+    void save();
+    void restore();
+    void clip(Gfx::Path const&, Gfx::WindingRule);
+    void reset();
+
+private:
+    NonnullRefPtr<PaintingSurface> m_painting_surface;
+    u32 m_initial_save_count { 0 };
+};
+
+}

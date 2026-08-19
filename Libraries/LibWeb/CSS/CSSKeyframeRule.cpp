@@ -1,0 +1,52 @@
+/*
+ * Copyright (c) 2023, Ali Mohammad Pur <mpfard@serenityos.org>
+ * Copyright (c) 2025, Sam Atkins <sam@ladybird.org>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#include "CSSKeyframeRule.h"
+#include <LibGC/Heap.h>
+#include <LibWeb/CSS/CSSRuleList.h>
+#include <LibWeb/Dump.h>
+
+namespace Web::CSS {
+
+GC_DEFINE_ALLOCATOR(CSSKeyframeRule);
+
+GC::Ref<CSSKeyframeRule> CSSKeyframeRule::create(Vector<Percentage>&& keys, CSSStyleProperties& declarations)
+{
+    return GC::Heap::the().allocate<CSSKeyframeRule>(move(keys), declarations);
+}
+
+CSSKeyframeRule::CSSKeyframeRule(Vector<Percentage>&& keys, CSSStyleProperties& declarations)
+    : CSSRule(Type::Keyframe)
+    , m_keys(move(keys))
+    , m_declarations(declarations)
+{
+    m_declarations->set_parent_rule(*this);
+}
+
+void CSSKeyframeRule::visit_edges(GC::Cell::Visitor& visitor)
+{
+    Base::visit_edges(visitor);
+    visitor.visit(m_declarations);
+}
+
+Utf16String CSSKeyframeRule::serialized() const
+{
+    Utf16StringBuilder builder;
+    builder.appendff("{} {{ {} }}", key_text(), style()->serialized());
+    return builder.to_string();
+}
+
+void CSSKeyframeRule::dump(StringBuilder& builder, int indent_levels) const
+{
+    Base::dump(builder, indent_levels);
+
+    dump_indent(builder, indent_levels + 1);
+    builder.appendff("Keys: {}\n"sv, key_text());
+    dump_style_properties(builder, style(), indent_levels + 1);
+}
+
+}

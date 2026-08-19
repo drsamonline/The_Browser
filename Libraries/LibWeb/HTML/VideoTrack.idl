@@ -1,0 +1,9 @@
+// https://html.spec.whatwg.org/multipage/media.html#videotrack
+[Exposed=Window]
+interface VideoTrack {
+    readonly attribute Utf16DOMString id;
+    readonly attribute Utf16DOMString kind;
+    readonly attribute Utf16DOMString label;
+    readonly attribute Utf16DOMString language;
+    attribute boolean selected;
+};

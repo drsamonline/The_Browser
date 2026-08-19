@@ -1,0 +1,5 @@
+context instanceof WebGLRenderingContext: true
+context is null: false
+typeof WebGL2RenderingContext.prototype.texImage2D: function
+context2 instanceof WebGL2RenderingContext: true
+context2 is null: false

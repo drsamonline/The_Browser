@@ -1,0 +1,17 @@
+// https://html.spec.whatwg.org/multipage/tables.html#htmltablesectionelement
+[Exposed=Window]
+interface HTMLTableSectionElement : HTMLElement {
+
+    [HTMLConstructor] constructor();
+
+    [SameObject] readonly attribute HTMLCollection rows;
+    HTMLTableRowElement insertRow(optional long index = -1);
+    [CEReactions] undefined deleteRow(long index);
+
+    // Obsolete
+    [CEReactions, Reflect] attribute Utf16DOMString align;
+    [CEReactions, Reflect=char] attribute Utf16DOMString ch;
+    [CEReactions, Reflect=charoff] attribute Utf16DOMString chOff;
+    [CEReactions, Reflect=valign] attribute Utf16DOMString vAlign;
+
+};

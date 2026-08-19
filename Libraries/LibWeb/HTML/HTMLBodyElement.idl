@@ -1,0 +1,17 @@
+// https://html.spec.whatwg.org/multipage/sections.html#htmlbodyelement
+[Exposed=Window]
+interface HTMLBodyElement : HTMLElement {
+
+    [HTMLConstructor] constructor();
+
+    // Obsolete
+    [CEReactions, LegacyNullToEmptyString, Reflect] attribute Utf16DOMString text;
+    [CEReactions, LegacyNullToEmptyString, Reflect] attribute Utf16DOMString link;
+    [CEReactions, LegacyNullToEmptyString, Reflect=vlink] attribute Utf16DOMString vLink;
+    [CEReactions, LegacyNullToEmptyString, Reflect=alink] attribute Utf16DOMString aLink;
+    [CEReactions, LegacyNullToEmptyString, Reflect=bgcolor] attribute Utf16DOMString bgColor;
+    [CEReactions, Reflect] attribute Utf16DOMString background;
+
+};
+
+HTMLBodyElement includes WindowEventHandlers;

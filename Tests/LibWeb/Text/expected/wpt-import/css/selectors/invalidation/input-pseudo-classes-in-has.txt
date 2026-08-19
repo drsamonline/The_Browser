@@ -1,0 +1,16 @@
+Harness status: OK
+
+Found 10 tests
+
+9 Pass
+1 Fail
+Pass	:checked & :indeterminate invalidation on <input>
+Pass	:indeterminate invalidation on <progress>
+Pass	:disabled invalidation
+Pass	:read-only invalidation
+Pass	:valid invalidation
+Pass	:default invalidation with input[type=radio]
+Pass	:required invalidation
+Fail	:out-of-range invalidation
+Pass	:placeholder-shown invalidation
+Pass	:default invalidation with input[type=checkbox] and assignment to .checked

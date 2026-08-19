@@ -1,0 +1,50 @@
+/*
+ * Copyright (c) 2024, Alex Ungurianu <alex@ungurianu.com>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#pragma once
+
+#include <AK/Optional.h>
+#include <AK/RefPtr.h>
+#include <AK/Utf16FlyString.h>
+#include <AK/Utf16String.h>
+#include <LibWeb/CSS/CSSRule.h>
+#include <LibWeb/Forward.h>
+
+namespace Web::CSS {
+
+// https://drafts.css-houdini.org/css-properties-values-api/#the-css-property-rule-interface
+class CSSPropertyRule final : public CSSRule {
+    WEB_WRAPPABLE(CSSPropertyRule, CSSRule);
+    GC_DECLARE_ALLOCATOR(CSSPropertyRule);
+
+public:
+    static GC::Ref<CSSPropertyRule> create(Utf16FlyString name, Utf16FlyString syntax, NonnullRefPtr<Parser::SyntaxNode> parsed_syntax, bool inherits, RefPtr<StyleValue const> initial_value);
+
+    virtual ~CSSPropertyRule();
+
+    Utf16FlyString const& name() const { return m_name; }
+    Utf16FlyString const& syntax() const { return m_syntax; }
+    bool inherits() const { return m_inherits; }
+    Optional<Utf16String> initial_value() const;
+    CustomPropertyRegistration to_registration() const;
+
+private:
+    CSSPropertyRule(Utf16FlyString name, Utf16FlyString syntax, NonnullRefPtr<Parser::SyntaxNode> parsed_syntax, bool inherits, RefPtr<StyleValue const> initial_value);
+
+    virtual Utf16String serialized() const override;
+    virtual void dump(StringBuilder&, int indent_levels) const override;
+
+    Utf16FlyString m_name;
+    Utf16FlyString m_syntax;
+    NonnullRefPtr<Parser::SyntaxNode> m_parsed_syntax;
+    bool m_inherits;
+    RefPtr<StyleValue const> m_initial_value;
+};
+
+template<>
+inline bool CSSRule::fast_is<CSSPropertyRule>() const { return type() == CSSRule::Type::Property; }
+
+}
