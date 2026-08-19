@@ -19,7 +19,8 @@ jobs:
       - name: Setup Visual Studio Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          toolset: '14.3'
+          # Auto-detect installed VS version (fixes "Toolset 14.3 not found" error)
+          toolset: default
       
       - name: Install vcpkg (Fast Bootstrap)
         run: |
