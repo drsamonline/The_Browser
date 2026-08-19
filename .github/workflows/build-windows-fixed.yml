@@ -1,0 +1,66 @@
+name: Build Aetheris (Windows Fixed)
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1 # Shallow clone for speed
+
+    - name: Setup Visual Studio Developer Command Prompt
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        toolset: '14.40' # Force latest VS 2022 toolset available on runner
+        arch: 'x64'
+
+    - name: Install vcpkg and Dependencies
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git
+        cd vcpkg
+        .\bootstrap-vcpkg.bat -disableMetrics
+        .\vcpkg.exe install lz4:x64-windows nlohmann-json:x64-windows --recurse
+        
+    - name: Configure CMake (Optimized)
+      run: |
+        cmake -B build `
+          -S . `
+          -G "Visual Studio 17 2022" `
+          -A x64 `
+          -DCMAKE_TOOLCHAIN_FILE="vcpkg/scripts/buildsystems/vcpkg.cmake" `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=TRUE `
+          -DAETHERIS_ENABLE_LTO=ON `
+          -DAETHERIS_DISABLE_HEAVY_FEATURES=ON
+
+    - name: Build Aetheris
+      run: |
+        cmake --build build --config Release --parallel %NUMBER_OF_PROCESSORS% /p:FavorSizeOrSpeed=1
+
+    - name: Locate Executable
+      id: find_exe
+      run: |
+        $exe = Get-ChildItem -Path build -Recurse -Filter "*.exe" | Select-Object -First 1
+        if ($exe) {
+          echo "EXE_PATH=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          echo "Found executable: $($exe.FullName)"
+        } else {
+          echo "No executable found!"
+          exit 1
+        }
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: aetheris-browser-windows
+        path: ${{ steps.find_exe.outputs.EXE_PATH }}
+        retention-days: 14
