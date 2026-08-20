@@ -1,4 +1,4 @@
-name: Build Aetheris Fixed
+name: Build Aetheris
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
   build-windows:
     name: Build Aetheris (Windows Hyper-Optimized)
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -18,7 +18,7 @@ jobs:
           submodules: recursive
 
       - name: Setup MSVC Developer Command Prompt
-        uses: ilammy/msvc-dev-cmd@v2
+        uses: ilammy/msvc-dev-cmd@v1.9
 
       - name: Install vcpkg and Dependencies
         run: |
@@ -36,12 +36,12 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=TRUE `
-            -DLADYbird_ENABLE_WEBGPU=OFF `
+            -DLADYBIRD_ENABLE_WEBGPU=OFF `
             -DLADYBIRD_ENABLE_WASM=OFF `
             -DLADYBIRD_ENABLE_MEDIA_FOUNDATION=OFF `
             -DLADYBIRD_ENABLE_PDF=OFF `
             -DCMAKE_CXX_FLAGS="/O2 /GL /GR- /EHs-c- /Qpar" `
-            -DCMAKE_EXE_LINKER_FLAGS="/OPT:REF /OPT:ICF /LTCG /ORDER:@src/main.obj"
+            -DCMAKE_EXE_LINKER_FLAGS="/OPT:REF /OPT:ICF /LTCG"
         shell: pwsh
 
       - name: Build Aetheris
