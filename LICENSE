@@ -1,21 +1,44 @@
-MIT License
+Aetheris Browser License
+========================
 
-Copyright (c) 2026 Dr Sohil Momin
+Copyright (c) 2024 Dr. Sam Online. All Rights Reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+LICENSE TERMS
+-------------
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. PERSONAL USE ONLY
+   This software ("Aetheris") is provided free of charge for personal, 
+   non-commercial use only. You may install, use, and modify this software 
+   strictly for your own private browsing, learning, and experimentation.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+2. COMMERCIAL RESTRICTIONS
+   Commercial use of this software is STRICTLY PROHIBITED without explicit 
+   written permission from the author (Dr. Sam Online). 
+   
+   Prohibited commercial activities include but are not limited to:
+   - Selling copies of this software or derivatives.
+   - Integrating this software into a commercial product or service.
+   - Using this software to provide paid services (e.g., hosting, SaaS).
+   - Advertising or monetizing applications built with this code.
+
+3. ATTRIBUTION
+   If you modify or distribute this software (for permitted personal use), 
+   you must retain this license file and clearly attribute the original 
+   authorship to "Dr. Sam Online" and the "Aetheris Project" in all copies.
+
+4. NO WARRANTY
+   This software is provided "AS IS", without warranty of any kind, express 
+   or implied, including but not limited to the warranties of merchantability, 
+   fitness for a particular purpose, and noninfringement. In no event shall 
+   the authors or copyright holders be liable for any claim, damages, or other 
+   liability, whether in an action of contract, tort or otherwise, arising from, 
+   out of or in connection with the software or the use or other dealings in 
+   the software.
+
+5. CONTACT
+   For commercial licensing inquiries, please contact:
+   Dr. Sam Online
+   Repository: https://github.com/drsamonline/The_Browser
+
+---
+By using this software, you agree to these terms.

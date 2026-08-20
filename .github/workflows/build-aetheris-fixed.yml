@@ -1,0 +1,69 @@
+name: Build Aetheris Fixed
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Aetheris (Windows)
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
+    - name: Setup MSVC Developer Environment
+      uses: ilammy/msvc-dev-cmd@v2
+
+    - name: Install vcpkg dependencies
+      run: |
+        git clone --depth 1 https://github.com/microsoft/vcpkg.git
+        cd vcpkg
+        .\bootstrap-vcpkg.bat -disableMetrics
+        .\vcpkg.exe install lz4:x64-windows
+        
+    - name: Configure CMake (Hyper-Optimized)
+      run: |
+        cmake -B build `
+          -G "Visual Studio 17 2022" `
+          -A x64 `
+          -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON `
+          -DLADYbird_ENABLE_VIDEO=OFF `
+          -DLADYBIRD_ENABLE_WEB_AUDIO=OFF `
+          -DLADYBIRD_ENABLE_PDF=OFF `
+          -DLADYBIRD_ENABLE_WEBGL=OFF `
+          -DLADYBIRD_ENABLE_WEBSOCKET=OFF `
+          -DLADYBIRD_ENABLE_WEBGPU=OFF `
+          -DLADYBIRD_ENABLE_WASM=OFF `
+          -S .
+          
+    - name: Build Aetheris (Release, LTO, No Bloat)
+      run: |
+        cmake --build build --config Release -- /m /p:Optimization=MaxSpeed /p:FavorSizeOrSpeed=1
+
+    - name: Find Executable
+      id: find_exe
+      run: |
+        $exePath = Get-ChildItem -Path build -Recurse -Filter "*.exe" | Where-Object { $_.Name -match "ladybird|browser|aetheris" } | Select-Object -First 1 -ExpandProperty FullName
+        if ($exePath) {
+          echo "exe_path=$exePath" >> $env:GITHUB_OUTPUT
+          echo "Found executable: $exePath"
+        } else {
+          echo "No executable found!"
+          exit 1
+        }
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: aetheris-browser-win-x64
+        path: ${{ steps.find_exe.outputs.exe_path }}
+        retention-days: 30
