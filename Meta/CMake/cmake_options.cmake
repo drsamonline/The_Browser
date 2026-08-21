@@ -17,6 +17,7 @@ endif()
 
 option(AETHERIS_BUILD_WEBDRIVER "Build the WebDriver automation executable" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_BUILD_LIBDIFF "Build the LibDiff utility library" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_PROCESS_MANAGER_UI "Enable the internal Task Manager WebUI" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 
 option(INCLUDE_WASM_SPEC_TESTS "Download and include the WebAssembly spec testsuite" OFF)
 option(ENABLE_CRANELIFT_JIT "Enable Cranelift-based AOT compilation for WebAssembly" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})

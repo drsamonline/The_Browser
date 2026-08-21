@@ -58,12 +58,15 @@ set(SOURCES
     WebUI/BookmarksUI.cpp
     WebUI/DownloadsUI.cpp
     WebUI/HistoryUI.cpp
-    WebUI/ProcessesUI.cpp
     WebUI/SettingsUI.cpp
     WebUI/VersionUI.cpp
     WebWorkerClient.cpp
     WorkerProcessManager.cpp
 )
+
+if (AETHERIS_ENABLE_PROCESS_MANAGER_UI)
+    list(APPEND SOURCES WebUI/ProcessesUI.cpp)
+endif()
 
 if (APPLE)
     list(APPEND SOURCES
