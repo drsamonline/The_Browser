@@ -13,8 +13,12 @@
 #include <LibWeb/Page/ScreenWakeLockHandle.h>
 #include <LibWebView/FileDownloader.h>
 #include <LibWebView/Settings.h>
-#include <UI/Qt/BookmarksBar.h>
-#include <UI/Qt/FindInPageWidget.h>
+#if AETHERIS_ENABLE_BOOKMARKS_BAR
+#    include <UI/Qt/BookmarksBar.h>
+#endif
+#if AETHERIS_ENABLE_FIND_IN_PAGE
+#    include <UI/Qt/FindInPageWidget.h>
+#endif
 #include <UI/Qt/LocationEdit.h>
 #include <UI/Qt/WebContentView.h>
 
@@ -78,7 +82,9 @@ public:
     void find_previous();
     void find_next();
 
+#if AETHERIS_ENABLE_BOOKMARKS_BAR
     BookmarksBar& bookmarks_bar() { return *m_bookmarks_bar; }
+#endif
 
     void request_close();
 
@@ -150,7 +156,9 @@ private:
     WindowControlButton* m_minimize_window_button { nullptr };
     WindowControlButton* m_maximize_window_button { nullptr };
     WindowControlButton* m_close_window_button { nullptr };
+#if AETHERIS_ENABLE_BOOKMARKS_BAR
     BookmarksBar* m_bookmarks_bar { nullptr };
+#endif
     QPushButton* m_private_badge { nullptr };
     QToolButton* m_hamburger_button { nullptr };
     QToolButton* m_downloads_button { nullptr };
@@ -158,7 +166,9 @@ private:
     QPointer<PrivateSessionPopover> m_private_session_popover;
     LocationEdit* m_location_edit { nullptr };
     WebContentView* m_view { nullptr };
+#if AETHERIS_ENABLE_FIND_IN_PAGE
     FindInPageWidget* m_find_in_page { nullptr };
+#endif
     Optional<WakeLock::DisplaySleepInhibitor> m_screen_display_sleep_inhibitor;
     BrowserWindow* m_window { nullptr };
     QString m_title;

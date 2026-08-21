@@ -32,7 +32,9 @@ namespace Ladybird {
 class Tab;
 class WebContentView;
 class BrowserWindow;
+#if AETHERIS_ENABLE_DEVTOOLS_BANNER
 class DevToolsBanner;
+#endif
 
 class ExitFullscreenButton : public QPushButton {
     Q_OBJECT
@@ -167,8 +169,10 @@ public:
     double refresh_rate() const { return m_refresh_rate; }
     Optional<u64> display_id() const { return m_display_id; }
 
+#if AETHERIS_ENABLE_DEVTOOLS_BANNER
     void on_devtools_enabled();
     void on_devtools_disabled();
+#endif
 
     void set_window_rect(Optional<Web::DevicePixels> x, Optional<Web::DevicePixels> y, Optional<Web::DevicePixels> width, Optional<Web::DevicePixels> height);
 
@@ -253,7 +257,9 @@ private:
 
     TabWidget* m_tabs_container { nullptr };
     Tab* m_current_tab { nullptr };
+#if AETHERIS_ENABLE_DEVTOOLS_BANNER
     DevToolsBanner* m_devtools_banner { nullptr };
+#endif
 
     QMenu* m_hamburger_menu { nullptr };
     QMenu* m_bookmarks_menu { nullptr };

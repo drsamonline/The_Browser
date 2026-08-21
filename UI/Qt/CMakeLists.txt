@@ -41,6 +41,13 @@ target_sources(ladybird PRIVATE
     ladybird.qrc
 )
 
+target_compile_definitions(ladybird PRIVATE
+    AETHERIS_ENABLE_BOOKMARKS_BAR=$<BOOL:${AETHERIS_ENABLE_BOOKMARKS_BAR}>
+    AETHERIS_ENABLE_FIND_IN_PAGE=$<BOOL:${AETHERIS_ENABLE_FIND_IN_PAGE}>
+    AETHERIS_ENABLE_DEVTOOLS=$<BOOL:${AETHERIS_ENABLE_DEVTOOLS}>
+    AETHERIS_ENABLE_DEVTOOLS_BANNER=$<BOOL:${AETHERIS_ENABLE_DEVTOOLS_BANNER}>
+)
+
 if (AETHERIS_ENABLE_BOOKMARKS_BAR)
     target_sources(ladybird PRIVATE BookmarksBar.cpp)
 endif()
@@ -49,7 +56,7 @@ if (AETHERIS_ENABLE_FIND_IN_PAGE)
     target_sources(ladybird PRIVATE FindInPageWidget.cpp)
 endif()
 
-if (AETHERIS_ENABLE_DEVTOOLS)
+if (AETHERIS_ENABLE_DEVTOOLS_BANNER)
     target_sources(ladybird PRIVATE DevToolsBanner.cpp)
 endif()
 target_link_libraries(ladybird PRIVATE Qt::Core Qt::Gui Qt::Widgets)

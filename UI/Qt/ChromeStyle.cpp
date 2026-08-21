@@ -749,6 +749,7 @@ QString devtools_banner_style_sheet(QPalette const& palette)
     auto text = style_sheet_color(chrome_text(palette));
 
     return qformatted(R"(
+#if AETHERIS_ENABLE_DEVTOOLS_BANNER
 QWidget#LadybirdDevToolsBanner {{
     background: {0};
     border-top: 1px solid {1};
@@ -769,6 +770,7 @@ QWidget#LadybirdDevToolsBanner QPushButton:pressed {{
     background: {4};
     border-color: {2};
 }}
+#endif
 )",
         background, border, control_border, hover, pressed, text);
 }

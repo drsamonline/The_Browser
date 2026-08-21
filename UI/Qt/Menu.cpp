@@ -247,6 +247,7 @@ static void initialize_native_control(WebView::Action& action, QAction& qaction,
         qaction.setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
 #endif
         break;
+#if AETHERIS_ENABLE_DEVTOOLS
     case WebView::ActionID::ToggleDevTools:
         qaction.setShortcuts({
             QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I),
@@ -254,6 +255,7 @@ static void initialize_native_control(WebView::Action& action, QAction& qaction,
             QKeySequence(Qt::Key_F12),
         });
         break;
+#endif
     case WebView::ActionID::ViewSource:
         qaction.setShortcut(QKeySequence(Qt::CTRL | Qt::Key_U));
         break;

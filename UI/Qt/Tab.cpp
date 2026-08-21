@@ -580,8 +580,10 @@ Tab::Tab(BrowserWindow* window, RefPtr<WebView::WebContentClient> parent_client,
     };
 
     m_view = new WebContentView(this, parent_client, page_index, AK::move(view_initial_state));
+#if AETHERIS_ENABLE_FIND_IN_PAGE
     m_find_in_page = new FindInPageWidget(this, m_view);
     m_find_in_page->setVisible(false);
+#endif
 
     m_toolbar_container = new QWidget(this);
     m_toolbar_container->setObjectName("LadybirdToolbarContainer");
@@ -601,7 +603,9 @@ Tab::Tab(BrowserWindow* window, RefPtr<WebView::WebContentClient> parent_client,
     toolbar_layout->setContentsMargins(TOOLBAR_HORIZONTAL_MARGIN, TOOLBAR_VERTICAL_MARGIN, TOOLBAR_HORIZONTAL_MARGIN, TOOLBAR_VERTICAL_MARGIN);
 
     m_location_edit = new LocationEdit(this, m_window->is_private());
+#if AETHERIS_ENABLE_BOOKMARKS_BAR
     m_bookmarks_bar = new BookmarksBar(this);
+#endif
     m_loading_animation_timer = new QTimer(this);
     m_loading_animation_timer->setInterval(80);
 
@@ -623,9 +627,13 @@ Tab::Tab(BrowserWindow* window, RefPtr<WebView::WebContentClient> parent_client,
     addAction(focus_location_editor_action);
 
     toolbar_container_layout->addWidget(m_toolbar);
+#if AETHERIS_ENABLE_BOOKMARKS_BAR
     toolbar_container_layout->addWidget(m_bookmarks_bar);
+#endif
     tab_layout->addWidget(m_view);
+#if AETHERIS_ENABLE_FIND_IN_PAGE
     tab_layout->addWidget(m_find_in_page);
+#endif
 
     m_navigate_back_action = create_application_action(*this, view().navigate_back_action());
     m_navigate_forward_action = create_application_action(*this, view().navigate_forward_action());
@@ -994,9 +1002,11 @@ Tab::Tab(BrowserWindow* window, RefPtr<WebView::WebContentClient> parent_client,
         view().file_picker_closed(std::move(selected_files));
     };
 
+#if AETHERIS_ENABLE_FIND_IN_PAGE
     view().on_find_in_page = [this](auto current_match_index, auto const& total_match_count) {
         m_find_in_page->update_result_label(current_match_index, total_match_count);
     };
+#endif
 
     QObject::connect(focus_location_editor_action, &QAction::triggered, this, &Tab::focus_location_editor);
 
@@ -1346,8 +1356,10 @@ void Tab::update_hover_label()
     m_hover_label->resize(m_hover_label->sizeHint());
 
     auto hover_label_height = height() - m_hover_label->height();
+#if AETHERIS_ENABLE_FIND_IN_PAGE
     if (m_find_in_page->isVisible())
         hover_label_height -= m_find_in_page->height();
+#endif
 
     auto left_position = mapToGlobal(QPoint { 0, hover_label_height });
 
@@ -1591,6 +1603,7 @@ void Tab::position_private_session_popover()
     m_private_session_popover->move(popup_position);
 }
 
+#if AETHERIS_ENABLE_FIND_IN_PAGE
 void Tab::show_find_in_page()
 {
     m_find_in_page->setVisible(true);
@@ -1606,6 +1619,7 @@ void Tab::find_next()
 {
     m_find_in_page->find_next();
 }
+#endif
 
 void Tab::request_close()
 {

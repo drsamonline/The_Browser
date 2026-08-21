@@ -21,7 +21,9 @@
 #include <UI/Qt/BrowserWindow.h>
 #include <UI/Qt/ChromeLayout.h>
 #include <UI/Qt/ChromeStyle.h>
-#include <UI/Qt/DevToolsBanner.h>
+#if AETHERIS_ENABLE_DEVTOOLS_BANNER
+#    include <UI/Qt/DevToolsBanner.h>
+#endif
 #include <UI/Qt/Icon.h>
 #if defined(AK_OS_MACOS)
 #    include <UI/Qt/MacWindow.h>
@@ -318,8 +320,10 @@ BrowserWindow::BrowserWindow(Vector<URL::URL> const& initial_urls, IsPopupWindow
     edit_menu->addAction(create_application_action(*this, application.select_all_action(), IncludeActionIcon::No));
     edit_menu->addSeparator();
 
+#if AETHERIS_ENABLE_FIND_IN_PAGE
     m_find_in_page_action = new QAction("&Find in Page...", this);
     m_find_in_page_action->setShortcuts(QKeySequence::keyBindings(QKeySequence::StandardKey::Find));
+#endif
 
     auto find_previous_shortcuts = QKeySequence::keyBindings(QKeySequence::StandardKey::FindPrevious);
     for (auto const& shortcut : find_previous_shortcuts)
@@ -335,8 +339,10 @@ BrowserWindow::BrowserWindow(Vector<URL::URL> const& initial_urls, IsPopupWindow
                 m_current_tab->find_next();
         });
 
+#if AETHERIS_ENABLE_FIND_IN_PAGE
     edit_menu->addAction(m_find_in_page_action);
     QObject::connect(m_find_in_page_action, &QAction::triggered, this, &BrowserWindow::show_find_in_page);
+#endif
 
     edit_menu->addSeparator();
     edit_menu->addAction(create_application_action(*edit_menu, application.open_settings_page_action(), IncludeActionIcon::No));
@@ -497,6 +503,7 @@ BrowserWindow::BrowserWindow(Vector<URL::URL> const& initial_urls, IsPopupWindow
     main_layout->setSpacing(0);
     main_layout->addWidget(m_tabs_container, 1);
 
+#if AETHERIS_ENABLE_DEVTOOLS_BANNER
     m_devtools_banner = new DevToolsBanner(main_widget);
     connect(m_devtools_banner, &DevToolsBanner::launch_client_requested, this, [] {
         if (auto result = WebView::Application::the().launch_devtools_client(); result.is_error())
@@ -507,12 +514,15 @@ BrowserWindow::BrowserWindow(Vector<URL::URL> const& initial_urls, IsPopupWindow
     });
     m_devtools_banner->hide();
     main_layout->addWidget(m_devtools_banner);
+#endif
 
     setCentralWidget(main_widget);
     setContextMenuPolicy(Qt::PreventContextMenu);
 
+#if AETHERIS_ENABLE_DEVTOOLS_BANNER
     if (browser_options.devtools_port.has_value())
         on_devtools_enabled();
+#endif
 }
 
 BrowserWindow::~BrowserWindow()
@@ -534,20 +544,25 @@ void BrowserWindow::rebuild_bookmarks_menu()
     if (m_bookmarks_menu != Application::the().qt_bookmarks_menu())
         repopulate_application_menu(*m_bookmarks_menu, *this, Application::the().bookmarks_menu());
 
+#if AETHERIS_ENABLE_BOOKMARKS_BAR
     for_each_tab([](Tab& tab) {
         tab.bookmarks_bar().rebuild();
     });
+#endif
 }
 
 void BrowserWindow::show_bookmarks_bar_changed()
 {
+#if AETHERIS_ENABLE_BOOKMARKS_BAR
     auto show_bookmarks_bar = WebView::Application::settings().show_bookmarks_bar();
 
     for_each_tab([&](Tab& tab) {
         tab.bookmarks_bar().setVisible(show_bookmarks_bar);
     });
+#endif
 }
 
+#if AETHERIS_ENABLE_DEVTOOLS_BANNER
 void BrowserWindow::on_devtools_enabled()
 {
     m_devtools_banner->set_port(WebView::Application::browser_options().devtools_port.value_or(0));
@@ -558,6 +573,7 @@ void BrowserWindow::on_devtools_disabled()
 {
     m_devtools_banner->hide();
 }
+#endif
 
 Tab& BrowserWindow::new_tab_from_url(URL::URL const& url, Web::HTML::ActivateTab activate_tab, TabLocation location)
 {
@@ -1248,6 +1264,7 @@ void BrowserWindow::open_previous_tab()
     m_tabs_container->set_current_index(next_index);
 }
 
+#if AETHERIS_ENABLE_FIND_IN_PAGE
 void BrowserWindow::show_find_in_page()
 {
     if (!m_current_tab)
@@ -1255,6 +1272,7 @@ void BrowserWindow::show_find_in_page()
 
     m_current_tab->show_find_in_page();
 }
+#endif
 
 void BrowserWindow::set_window_rect(Optional<Web::DevicePixels> x, Optional<Web::DevicePixels> y, Optional<Web::DevicePixels> width, Optional<Web::DevicePixels> height)
 {
@@ -1271,7 +1289,9 @@ void BrowserWindow::set_window_rect(Optional<Web::DevicePixels> x, Optional<Web:
 void BrowserWindow::enter_fullscreen()
 {
     m_tabs_container->set_tab_bar_visible(false);
+#if AETHERIS_ENABLE_BOOKMARKS_BAR
     current_tab()->bookmarks_bar().setVisible(false);
+#endif
 
     m_restore_to_maximized = isMaximized();
     showFullScreen();
@@ -1280,7 +1300,9 @@ void BrowserWindow::enter_fullscreen()
 void BrowserWindow::exit_fullscreen()
 {
     m_tabs_container->set_tab_bar_visible(true);
+#if AETHERIS_ENABLE_BOOKMARKS_BAR
     current_tab()->bookmarks_bar().setVisible(WebView::Application::settings().show_bookmarks_bar());
+#endif
 
     if (m_restore_to_maximized)
         showMaximized();
