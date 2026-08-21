@@ -28,6 +28,9 @@ option(BUILD_TESTING "Build the testing tree" ${AETHERIS_OPTIONAL_COMPONENTS_DEF
 option(AETHERIS_ENABLE_COMPILETIME_FORMAT_CHECK "Enable compile-time format validation" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_INSTALL_HEADERS "Generate header installation rules" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 
+option(AETHERIS_ENABLE_CLANG_PLUGIN_GRAPH "Attach Clang plugin dependency targets to the production build graph" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_LINT_TARGETS "Create developer lint and style targets" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+
 option(INCLUDE_WASM_SPEC_TESTS "Download and include the WebAssembly spec testsuite" OFF)
 option(ENABLE_CRANELIFT_JIT "Enable Cranelift-based AOT compilation for WebAssembly" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 

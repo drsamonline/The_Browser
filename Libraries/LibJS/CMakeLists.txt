@@ -295,7 +295,9 @@ else()
     target_compile_options(LibJS PRIVATE -fno-omit-frame-pointer)
 endif()
 
-target_link_libraries(LibJS PUBLIC JSClangPlugin)
+if (AETHERIS_ENABLE_CLANG_PLUGIN_GRAPH AND ENABLE_CLANG_PLUGINS)
+    target_link_libraries(LibJS PUBLIC JSClangPlugin)
+endif()
 
 import_rust_crate(MANIFEST_PATH Rust/Cargo.toml CRATE_NAME libjs_rust FFI_HEADER RustFFI.h)
 target_link_libraries(LibJS PRIVATE libjs_rust)

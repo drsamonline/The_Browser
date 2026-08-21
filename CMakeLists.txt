@@ -112,9 +112,11 @@ include(lagom_install)
 include(rust_crate)
 include(targets)
 
-# Plugins need to be installed in order to be used by non-lagom builds
-add_lagom_library_install_rules(GenericClangPlugin)
-add_lagom_library_install_rules(JSClangPlugin)
+# Plugins need to be installed only when the Clang plugin graph is enabled.
+if (AETHERIS_ENABLE_CLANG_PLUGIN_GRAPH AND ENABLE_CLANG_PLUGINS)
+    add_lagom_library_install_rules(GenericClangPlugin)
+    add_lagom_library_install_rules(JSClangPlugin)
+endif()
 
 add_subdirectory(AK)
 add_subdirectory(Libraries)
@@ -140,12 +142,14 @@ if (ENABLE_GUI_TARGETS)
     add_subdirectory(UI)
 endif()
 
-add_custom_target(lint-shell-scripts
-    COMMAND "${ladybird_SOURCE_DIR}/Meta/Linters/lint_shell_scripts.sh"
-    USES_TERMINAL
-)
+if (AETHERIS_ENABLE_LINT_TARGETS)
+    add_custom_target(lint-shell-scripts
+        COMMAND "${ladybird_SOURCE_DIR}/Meta/Linters/lint_shell_scripts.sh"
+        USES_TERMINAL
+    )
 
-add_custom_target(check-style
-    COMMAND ${Python3_EXECUTABLE} "${ladybird_SOURCE_DIR}/Meta/Linters/check_style.py"
-    USES_TERMINAL
-)
+    add_custom_target(check-style
+        COMMAND ${Python3_EXECUTABLE} "${ladybird_SOURCE_DIR}/Meta/Linters/check_style.py"
+        USES_TERMINAL
+    )
+endif()
