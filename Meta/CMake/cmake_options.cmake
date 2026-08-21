@@ -1,6 +1,6 @@
 option(BUILD_SHARED_LIBS "Build shared libraries instead of static libraries" ON)
 
-option(ENABLE_COMPILETIME_FORMAT_CHECK "Enable compiletime format string checks" ON)
+option(ENABLE_COMPILETIME_FORMAT_CHECK "Enable compiletime format string checks" ${AETHERIS_ENABLE_COMPILETIME_FORMAT_CHECK})
 option(ENABLE_UNDEFINED_SANITIZER "Enable undefined behavior sanitizer testing in gcc/clang" OFF)
 option(UNDEFINED_BEHAVIOR_IS_FATAL "Make undefined behavior sanitizer errors non-recoverable" OFF)
 
@@ -25,6 +25,8 @@ option(AETHERIS_ENABLE_FIND_IN_PAGE "Enable the find-in-page widget" ${AETHERIS_
 option(AETHERIS_BUILD_UTILITIES "Build developer and diagnostic utilities" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_INSTALL_RULES "Generate install/package rules" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(BUILD_TESTING "Build the testing tree" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_COMPILETIME_FORMAT_CHECK "Enable compile-time format validation" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_INSTALL_HEADERS "Generate header installation rules" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 
 option(INCLUDE_WASM_SPEC_TESTS "Download and include the WebAssembly spec testsuite" OFF)
 option(ENABLE_CRANELIFT_JIT "Enable Cranelift-based AOT compilation for WebAssembly" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
@@ -42,7 +44,7 @@ else()
 endif()
 
 option(ENABLE_GUI_TARGETS "Enable building GUI targets" ON)
-option(ENABLE_INSTALL_HEADERS "Enable installing headers" ON)
+option(ENABLE_INSTALL_HEADERS "Enable installing headers" ${AETHERIS_ENABLE_INSTALL_HEADERS})
 option(ENABLE_INSTALL_FREEDESKTOP_FILES "Enable installing .desktop and .service files" ${freedesktop_files_default})
 option(LADYBIRD_ENABLE_CPPTRACE "Enable use of cpptrace as the default library for stacktraces. If not available falls back to backtrace.h" ON)
 option(LADYBIRD_GENERATE_DSYM "Generate dSYM bundles for binaries and libraries (macOS only)" OFF)
