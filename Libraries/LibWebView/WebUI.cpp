@@ -8,34 +8,38 @@
 #include <LibIPC/TransportHandle.h>
 #include <LibWebView/WebContentClient.h>
 #include <LibWebView/WebUI.h>
-#if AETHERIS_ENABLE_BOOKMARKS_UI
+#if AETHERIS_ENABLE_BOOKMARKS_WEBUI
 #include <LibWebView/WebUI/BookmarksUI.h>
 #endif
-#if AETHERIS_ENABLE_DOWNLOADS_UI
+#if AETHERIS_ENABLE_DOWNLOADS_WEBUI
 #include <LibWebView/WebUI/DownloadsUI.h>
 #endif
-#if AETHERIS_ENABLE_HISTORY_UI
+#if AETHERIS_ENABLE_HISTORY_WEBUI
 #include <LibWebView/WebUI/HistoryUI.h>
 #endif
 #include <LibWebView/WebUI/SettingsUI.h>
+#if AETHERIS_ENABLE_VERSION_WEBUI
 #include <LibWebView/WebUI/VersionUI.h>
+#endif
 
 namespace WebView {
 
 static constexpr auto s_pages = to_array<WebUI::Page>({
     { "about"sv, "About URLs"sv, WebUI::PageType::Static },
-#if AETHERIS_ENABLE_BOOKMARKS_UI
+#if AETHERIS_ENABLE_BOOKMARKS_WEBUI
     { "bookmarks"sv, "Bookmarks"sv, WebUI::PageType::Dynamic },
 #endif
-#if AETHERIS_ENABLE_DOWNLOADS_UI
+#if AETHERIS_ENABLE_DOWNLOADS_WEBUI
     { "downloads"sv, "Downloads"sv, WebUI::PageType::Dynamic },
 #endif
-#if AETHERIS_ENABLE_HISTORY_UI
+#if AETHERIS_ENABLE_HISTORY_WEBUI
     { "history"sv, "History"sv, WebUI::PageType::Dynamic },
 #endif
     { "newtab"sv, "New Tab"sv, WebUI::PageType::Static },
     { "settings"sv, "Settings"sv, WebUI::PageType::Dynamic },
+#if AETHERIS_ENABLE_VERSION_WEBUI
     { "version"sv, "Version"sv, WebUI::PageType::Dynamic },
+#endif
 });
 
 ReadonlySpan<WebUI::Page> WebUI::pages()
@@ -74,22 +78,24 @@ ErrorOr<RefPtr<WebUI>> WebUI::create(WebContentClient& client, u64 page_id, Stri
 
     RefPtr<WebUI> web_ui;
 
-#if AETHERIS_ENABLE_BOOKMARKS_UI
+#if AETHERIS_ENABLE_BOOKMARKS_WEBUI
     if (page->host == "bookmarks"sv)
         web_ui = TRY(create_web_ui<BookmarksUI>(client, page_id, move(host)));
 #endif
-#if AETHERIS_ENABLE_DOWNLOADS_UI
-    if (!web_ui && page->host == "downloads"sv)
+#if AETHERIS_ENABLE_DOWNLOADS_WEBUI
+    else if (page->host == "downloads"sv)
         web_ui = TRY(create_web_ui<DownloadsUI>(client, page_id, move(host)));
 #endif
-#if AETHERIS_ENABLE_HISTORY_UI
-    if (!web_ui && page->host == "history"sv)
+#if AETHERIS_ENABLE_HISTORY_WEBUI
+    else if (page->host == "history"sv)
         web_ui = TRY(create_web_ui<HistoryUI>(client, page_id, move(host)));
 #endif
-    if (!web_ui && page->host == "settings"sv)
+    else if (page->host == "settings"sv)
         web_ui = TRY(create_web_ui<SettingsUI>(client, page_id, move(host)));
-    else if (!web_ui && page->host == "version"sv)
+#if AETHERIS_ENABLE_VERSION_WEBUI
+    else if (page->host == "version"sv)
         web_ui = TRY(create_web_ui<VersionUI>(client, page_id, move(host)));
+#endif
 
     VERIFY(web_ui);
     web_ui->register_interfaces();

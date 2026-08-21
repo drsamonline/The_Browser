@@ -18,9 +18,6 @@ endif()
 option(AETHERIS_BUILD_WEBDRIVER "Build the WebDriver automation executable" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_BUILD_LIBDIFF "Build the LibDiff utility library" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_PROCESS_MANAGER_UI "Enable the internal Task Manager WebUI" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
-option(AETHERIS_ENABLE_BOOKMARKS_UI "Enable the internal Bookmarks WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
-option(AETHERIS_ENABLE_DOWNLOADS_UI "Enable the internal Downloads WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
-option(AETHERIS_ENABLE_HISTORY_UI "Enable the internal History WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_DEVTOOLS "Enable browser developer tools integration" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_GEOLOCATION "Enable Qt geolocation provider integration" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_BOOKMARKS_BAR "Enable the browser bookmarks bar UI" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
@@ -33,6 +30,12 @@ option(AETHERIS_ENABLE_INSTALL_HEADERS "Generate header installation rules" ${AE
 
 option(AETHERIS_ENABLE_CLANG_PLUGIN_GRAPH "Attach Clang plugin dependency targets to the production build graph" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_LINT_TARGETS "Create developer lint and style targets" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+
+
+option(AETHERIS_ENABLE_BOOKMARKS_WEBUI "Enable the internal bookmarks WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_DOWNLOADS_WEBUI "Enable the internal downloads WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_HISTORY_WEBUI "Enable the internal history WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_VERSION_WEBUI "Enable the internal version WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 
 option(INCLUDE_WASM_SPEC_TESTS "Download and include the WebAssembly spec testsuite" OFF)
 option(ENABLE_CRANELIFT_JIT "Enable Cranelift-based AOT compilation for WebAssembly" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
