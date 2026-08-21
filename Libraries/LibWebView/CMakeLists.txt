@@ -55,9 +55,6 @@ set(SOURCES
     ViewImplementation.cpp
     WebContentClient.cpp
     WebUI.cpp
-    WebUI/BookmarksUI.cpp
-    WebUI/DownloadsUI.cpp
-    WebUI/HistoryUI.cpp
     WebUI/SettingsUI.cpp
     WebUI/VersionUI.cpp
     WebWorkerClient.cpp
@@ -66,6 +63,18 @@ set(SOURCES
 
 if (AETHERIS_ENABLE_PROCESS_MANAGER_UI)
     list(APPEND SOURCES WebUI/ProcessesUI.cpp)
+endif()
+
+if (AETHERIS_ENABLE_BOOKMARKS_UI)
+    list(APPEND SOURCES WebUI/BookmarksUI.cpp)
+endif()
+
+if (AETHERIS_ENABLE_DOWNLOADS_UI)
+    list(APPEND SOURCES WebUI/DownloadsUI.cpp)
+endif()
+
+if (AETHERIS_ENABLE_HISTORY_UI)
+    list(APPEND SOURCES WebUI/HistoryUI.cpp)
 endif()
 
 if (APPLE)

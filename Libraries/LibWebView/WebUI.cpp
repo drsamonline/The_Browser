@@ -8,9 +8,15 @@
 #include <LibIPC/TransportHandle.h>
 #include <LibWebView/WebContentClient.h>
 #include <LibWebView/WebUI.h>
+#if AETHERIS_ENABLE_BOOKMARKS_UI
 #include <LibWebView/WebUI/BookmarksUI.h>
+#endif
+#if AETHERIS_ENABLE_DOWNLOADS_UI
 #include <LibWebView/WebUI/DownloadsUI.h>
+#endif
+#if AETHERIS_ENABLE_HISTORY_UI
 #include <LibWebView/WebUI/HistoryUI.h>
+#endif
 #include <LibWebView/WebUI/SettingsUI.h>
 #include <LibWebView/WebUI/VersionUI.h>
 
@@ -18,9 +24,15 @@ namespace WebView {
 
 static constexpr auto s_pages = to_array<WebUI::Page>({
     { "about"sv, "About URLs"sv, WebUI::PageType::Static },
+#if AETHERIS_ENABLE_BOOKMARKS_UI
     { "bookmarks"sv, "Bookmarks"sv, WebUI::PageType::Dynamic },
+#endif
+#if AETHERIS_ENABLE_DOWNLOADS_UI
     { "downloads"sv, "Downloads"sv, WebUI::PageType::Dynamic },
+#endif
+#if AETHERIS_ENABLE_HISTORY_UI
     { "history"sv, "History"sv, WebUI::PageType::Dynamic },
+#endif
     { "newtab"sv, "New Tab"sv, WebUI::PageType::Static },
     { "settings"sv, "Settings"sv, WebUI::PageType::Dynamic },
     { "version"sv, "Version"sv, WebUI::PageType::Dynamic },
@@ -62,15 +74,21 @@ ErrorOr<RefPtr<WebUI>> WebUI::create(WebContentClient& client, u64 page_id, Stri
 
     RefPtr<WebUI> web_ui;
 
+#if AETHERIS_ENABLE_BOOKMARKS_UI
     if (page->host == "bookmarks"sv)
         web_ui = TRY(create_web_ui<BookmarksUI>(client, page_id, move(host)));
-    else if (page->host == "downloads"sv)
+#endif
+#if AETHERIS_ENABLE_DOWNLOADS_UI
+    if (!web_ui && page->host == "downloads"sv)
         web_ui = TRY(create_web_ui<DownloadsUI>(client, page_id, move(host)));
-    else if (page->host == "history"sv)
+#endif
+#if AETHERIS_ENABLE_HISTORY_UI
+    if (!web_ui && page->host == "history"sv)
         web_ui = TRY(create_web_ui<HistoryUI>(client, page_id, move(host)));
-    else if (page->host == "settings"sv)
+#endif
+    if (!web_ui && page->host == "settings"sv)
         web_ui = TRY(create_web_ui<SettingsUI>(client, page_id, move(host)));
-    else if (page->host == "version"sv)
+    else if (!web_ui && page->host == "version"sv)
         web_ui = TRY(create_web_ui<VersionUI>(client, page_id, move(host)));
 
     VERIFY(web_ui);
