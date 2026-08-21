@@ -10,16 +10,18 @@ set(Lagom_INSTALL_CMAKEDIR "${CMAKE_INSTALL_DATADIR}/${package}"
     CACHE PATH "CMake package config location relative to the install prefix")
 mark_as_advanced(Lagom_INSTALL_CMAKEDIR)
 
-install(
-    FILES "${LADYBIRD_SOURCE_DIR}/Meta/CMake/lagom-install-config.cmake"
-    DESTINATION "${Lagom_INSTALL_CMAKEDIR}"
-    RENAME "${package}Config.cmake"
-    COMPONENT Lagom_Development
-)
+if (AETHERIS_ENABLE_PACKAGE_EXPORTS)
+    install(
+        FILES "${LADYBIRD_SOURCE_DIR}/Meta/CMake/lagom-install-config.cmake"
+        DESTINATION "${Lagom_INSTALL_CMAKEDIR}"
+        RENAME "${package}Config.cmake"
+        COMPONENT Lagom_Development
+    )
 
-install(
-    EXPORT LagomTargets
-    NAMESPACE Lagom::
-    DESTINATION "${Lagom_INSTALL_CMAKEDIR}"
-    COMPONENT Lagom_Development
-)
+    install(
+        EXPORT LagomTargets
+        NAMESPACE Lagom::
+        DESTINATION "${Lagom_INSTALL_CMAKEDIR}"
+        COMPONENT Lagom_Development
+    )
+endif()

@@ -81,22 +81,26 @@ function(set_helper_process_properties)
     endif()
 endfunction()
 
-add_custom_target(run
-    COMMAND "${CMAKE_COMMAND}" -E env "LADYBIRD_SOURCE_DIR=${LADYBIRD_SOURCE_DIR}" "$<TARGET_FILE:ladybird>" $ENV{LAGOM_ARGS}
-    USES_TERMINAL
-    VERBATIM
-)
+if (AETHERIS_ENABLE_RUN_TARGET)
+    add_custom_target(run
+        COMMAND "${CMAKE_COMMAND}" -E env "LADYBIRD_SOURCE_DIR=${LADYBIRD_SOURCE_DIR}" "$<TARGET_FILE:ladybird>" $ENV{LAGOM_ARGS}
+        USES_TERMINAL
+        VERBATIM
+    )
+endif()
 
-if (APPLE)
-    add_custom_target(debug-ladybird
-        COMMAND "${CMAKE_COMMAND}" -E env "LADYBIRD_SOURCE_DIR=${LADYBIRD_SOURCE_DIR}" lldb "$<TARGET_BUNDLE_DIR:ladybird>"
-        USES_TERMINAL
-    )
-else()
-    add_custom_target(debug-ladybird
-        COMMAND "${CMAKE_COMMAND}" -E env "LADYBIRD_SOURCE_DIR=${LADYBIRD_SOURCE_DIR}" gdb "$<TARGET_FILE:ladybird>"
-        USES_TERMINAL
-    )
+if (AETHERIS_ENABLE_DEBUG_TARGET)
+    if (APPLE)
+        add_custom_target(debug-ladybird
+            COMMAND "${CMAKE_COMMAND}" -E env "LADYBIRD_SOURCE_DIR=${LADYBIRD_SOURCE_DIR}" lldb "$<TARGET_BUNDLE_DIR:ladybird>"
+            USES_TERMINAL
+        )
+    else()
+        add_custom_target(debug-ladybird
+            COMMAND "${CMAKE_COMMAND}" -E env "LADYBIRD_SOURCE_DIR=${LADYBIRD_SOURCE_DIR}" gdb "$<TARGET_FILE:ladybird>"
+            USES_TERMINAL
+        )
+    endif()
 endif()
 
 add_dependencies(ladybird ${ladybird_helper_processes})

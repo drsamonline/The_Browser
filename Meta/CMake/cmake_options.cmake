@@ -32,6 +32,13 @@ option(AETHERIS_ENABLE_CLANG_PLUGIN_GRAPH "Attach Clang plugin dependency target
 option(AETHERIS_ENABLE_LINT_TARGETS "Create developer lint and style targets" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 
 
+option(AETHERIS_ENABLE_COMPILE_COMMANDS "Generate compile_commands.json for IDE tooling" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_CCACHE "Enable compiler-cache setup for development builds" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_RUN_TARGET "Create the developer run target" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_DEBUG_TARGET "Create the developer debug-ladybird target" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_PACKAGE_EXPORTS "Generate CMake package export/install metadata" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+
+
 option(AETHERIS_ENABLE_BOOKMARKS_WEBUI "Enable the internal bookmarks WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_DOWNLOADS_WEBUI "Enable the internal downloads WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_HISTORY_WEBUI "Enable the internal history WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
@@ -77,7 +84,7 @@ option(ENABLE_MEMORY_SANITIZER "Enable memory sanitizer testing in gcc/clang" OF
 option(ENABLE_FUZZERS "Build fuzzing targets" OFF)
 option(ENABLE_FUZZERS_LIBFUZZER "Build fuzzers using Clang's libFuzzer" OFF)
 option(ENABLE_FUZZERS_OSSFUZZ "Build OSS-Fuzz compatible fuzzers" OFF)
-option(ENABLE_LAGOM_CCACHE "Enable ccache for Lagom builds" ON)
+option(ENABLE_LAGOM_CCACHE "Enable ccache for Lagom builds" ${AETHERIS_ENABLE_CCACHE})
 set(LAGOM_USE_LINKER "" CACHE STRING "The linker to use (e.g. lld, mold) instead of the system default")
 set(LAGOM_LINK_POOL_SIZE "" CACHE STRING "The maximum number of parallel jobs to use for linking")
 option(ENABLE_LTO_FOR_RELEASE "Enable link-time optimization for release builds" ${RELEASE_LTO_DEFAULT})

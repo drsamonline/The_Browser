@@ -34,7 +34,9 @@ if (ANDROID OR IOS)
     set(BUILD_SHARED_LIBS OFF)
 endif()
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if (AETHERIS_ENABLE_COMPILE_COMMANDS)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+endif()
 
 # Ensure that when single-value arguments are passed to `cmake_parse_arguments()`
 # with no or empty string arguments, they are still defined.

@@ -2,6 +2,11 @@ include_guard()
 
 include(GNUInstallDirs) # make sure to include before we mess w/RPATH
 
+# Package/export metadata is unnecessary for the minimal standalone browser profile.
+if (NOT AETHERIS_ENABLE_PACKAGE_EXPORTS)
+    set(CMAKE_INSTALL_MESSAGE NEVER)
+endif()
+
 # Handle multi-config generators (e.g. MSVC, Xcode, Ninja Multi-Config)
 get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 set(IN_BUILD_PREFIX "")
