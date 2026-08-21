@@ -37,11 +37,16 @@ option(AETHERIS_ENABLE_DOWNLOADS_WEBUI "Enable the internal downloads WebUI page
 option(AETHERIS_ENABLE_HISTORY_WEBUI "Enable the internal history WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_VERSION_WEBUI "Enable the internal version WebUI page" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 
+
+option(AETHERIS_ENABLE_NETWORK_DOWNLOADS "Allow configure-time downloads of missing build dependencies" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_FREEDESKTOP_INSTALL "Generate FreeDesktop integration install rules" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_CPPTRACE "Enable cpptrace stacktrace support" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+
 option(INCLUDE_WASM_SPEC_TESTS "Download and include the WebAssembly spec testsuite" OFF)
 option(ENABLE_CRANELIFT_JIT "Enable Cranelift-based AOT compilation for WebAssembly" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 
 set(LADYBIRD_CACHE_DIR "${PROJECT_BINARY_DIR}/../caches" CACHE PATH "Location of shared cache of downloaded files")
-option(ENABLE_NETWORK_DOWNLOADS "Allow downloads of required files. If OFF, required files must already be present in LADYBIRD_CACHE_DIR" ON)
+option(ENABLE_NETWORK_DOWNLOADS "Allow downloads of required files. If OFF, required files must already be present in LADYBIRD_CACHE_DIR" ${AETHERIS_ENABLE_NETWORK_DOWNLOADS})
 
 option(ENABLE_CLANG_PLUGINS "Enable building with the Clang plugins" OFF)
 option(ENABLE_CLANG_PLUGINS_INVALID_FUNCTION_MEMBERS "Enable detecting invalid function types as members of GC-allocated objects" OFF)
@@ -54,8 +59,8 @@ endif()
 
 option(ENABLE_GUI_TARGETS "Enable building GUI targets" ON)
 option(ENABLE_INSTALL_HEADERS "Enable installing headers" ${AETHERIS_ENABLE_INSTALL_HEADERS})
-option(ENABLE_INSTALL_FREEDESKTOP_FILES "Enable installing .desktop and .service files" ${freedesktop_files_default})
-option(LADYBIRD_ENABLE_CPPTRACE "Enable use of cpptrace as the default library for stacktraces. If not available falls back to backtrace.h" ON)
+option(ENABLE_INSTALL_FREEDESKTOP_FILES "Enable installing .desktop and .service files" ${AETHERIS_ENABLE_FREEDESKTOP_INSTALL})
+option(LADYBIRD_ENABLE_CPPTRACE "Enable use of cpptrace as the default library for stacktraces. If not available falls back to backtrace.h" ${AETHERIS_ENABLE_CPPTRACE})
 option(LADYBIRD_GENERATE_DSYM "Generate dSYM bundles for binaries and libraries (macOS only)" OFF)
 option(ENABLE_CI_BASELINE_CPU "Use a baseline CPU target for improved ccache sharing" OFF)
 
