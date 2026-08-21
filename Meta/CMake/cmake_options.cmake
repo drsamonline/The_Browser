@@ -6,8 +6,20 @@ option(UNDEFINED_BEHAVIOR_IS_FATAL "Make undefined behavior sanitizer errors non
 
 option(ENABLE_ALL_THE_DEBUG_MACROS "Enable all debug macros to validate they still compile" OFF)
 
+# Aetheris build profile. Production defaults are minimal; full optional components
+# can still be enabled explicitly for development or compatibility testing.
+option(AETHERIS_MINIMAL_BUILD "Enable the optimized Aetheris production build profile" ON)
+if (AETHERIS_MINIMAL_BUILD)
+    set(AETHERIS_OPTIONAL_COMPONENTS_DEFAULT OFF)
+else()
+    set(AETHERIS_OPTIONAL_COMPONENTS_DEFAULT ON)
+endif()
+
+option(AETHERIS_BUILD_WEBDRIVER "Build the WebDriver automation executable" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_BUILD_LIBDIFF "Build the LibDiff utility library" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+
 option(INCLUDE_WASM_SPEC_TESTS "Download and include the WebAssembly spec testsuite" OFF)
-option(ENABLE_CRANELIFT_JIT "Enable Cranelift-based AOT compilation for WebAssembly" ON)
+option(ENABLE_CRANELIFT_JIT "Enable Cranelift-based AOT compilation for WebAssembly" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 
 set(LADYBIRD_CACHE_DIR "${PROJECT_BINARY_DIR}/../caches" CACHE PATH "Location of shared cache of downloaded files")
 option(ENABLE_NETWORK_DOWNLOADS "Allow downloads of required files. If OFF, required files must already be present in LADYBIRD_CACHE_DIR" ON)
