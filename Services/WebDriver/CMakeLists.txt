@@ -1,3 +1,7 @@
+if (NOT (AETHERIS_ENABLE_AUTOMATION AND AETHERIS_BUILD_WEBDRIVER))
+    return()
+endif()
+
 set(SOURCES
     Client.cpp
     Session.cpp

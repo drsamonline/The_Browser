@@ -105,12 +105,12 @@ endif()
 
 add_dependencies(ladybird ${ladybird_helper_processes})
 # FIXME: Increase support for building targets on Windows
-if (AETHERIS_BUILD_WEBDRIVER AND NOT WIN32)
+if (AETHERIS_ENABLE_AUTOMATION AND AETHERIS_BUILD_WEBDRIVER AND NOT WIN32)
     add_dependencies(WebDriver ladybird)
 endif()
 
 set_helper_process_properties(${ladybird_helper_processes})
-if (AETHERIS_BUILD_WEBDRIVER AND APPLE)
+if (AETHERIS_ENABLE_AUTOMATION AND AETHERIS_BUILD_WEBDRIVER AND APPLE)
     set_helper_process_properties(WebDriver)
 endif()
 

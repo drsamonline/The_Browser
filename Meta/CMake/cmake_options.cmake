@@ -16,6 +16,8 @@ else()
 endif()
 
 option(AETHERIS_BUILD_WEBDRIVER "Build the WebDriver automation executable" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_AUTOMATION "Enable browser automation integration and WebDriver IPC" ${AETHERIS_BUILD_WEBDRIVER})
+option(AETHERIS_ENABLE_TESTING "Enable project test targets and CTest integration" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_BUILD_LIBDIFF "Build the LibDiff utility library" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_PROCESS_MANAGER_UI "Enable the internal Task Manager WebUI" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_DEVTOOLS "Enable browser developer tools integration" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
@@ -25,7 +27,7 @@ option(AETHERIS_ENABLE_FIND_IN_PAGE "Enable the find-in-page widget" ${AETHERIS_
 option(AETHERIS_ENABLE_DEVTOOLS_BANNER "Enable the Qt DevTools status banner" ${AETHERIS_ENABLE_DEVTOOLS})
 option(AETHERIS_BUILD_UTILITIES "Build developer and diagnostic utilities" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_INSTALL_RULES "Generate install/package rules" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
-option(BUILD_TESTING "Build the testing tree" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(BUILD_TESTING "Build the testing tree" ${AETHERIS_ENABLE_TESTING})
 option(AETHERIS_ENABLE_COMPILETIME_FORMAT_CHECK "Enable compile-time format validation" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_INSTALL_HEADERS "Generate header installation rules" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 

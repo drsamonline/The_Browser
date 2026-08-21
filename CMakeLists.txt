@@ -133,7 +133,7 @@ if (NOT (ENABLE_FUZZERS OR ENABLE_COMPILER_EXPLORER_BUILD OR ANDROID OR IOS))
         add_subdirectory(Utilities)
     endif()
 
-    if (BUILD_TESTING)
+    if (AETHERIS_ENABLE_TESTING AND BUILD_TESTING)
         include(CTest)
         add_subdirectory(Tests)
     endif()

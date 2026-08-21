@@ -1,3 +1,7 @@
+if (NOT (AETHERIS_ENABLE_TESTING AND BUILD_TESTING))
+    return()
+endif()
+
 add_subdirectory(AK)
 add_subdirectory(LibCompress)
 add_subdirectory(LibCore)
