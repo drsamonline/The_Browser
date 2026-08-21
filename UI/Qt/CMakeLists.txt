@@ -4,7 +4,7 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 6.9 REQUIRED COMPONENTS Core Widgets)
 
-if (NOT APPLE)
+if (NOT APPLE AND AETHERIS_ENABLE_GEOLOCATION)
     find_package(Qt6 6.9 REQUIRED COMPONENTS Positioning)
 endif()
 
@@ -24,13 +24,10 @@ qt_add_executable(ladybird main.cpp)
 target_sources(ladybird PRIVATE
     Application.cpp
     Autocomplete.cpp
-    BookmarksBar.cpp
     BrowserWindow.cpp
     ChromeStyle.cpp
-    DevToolsBanner.cpp
     EventLoopImplementationQt.cpp
     EventLoopImplementationQtEventTarget.cpp
-    FindInPageWidget.cpp
     Icon.cpp
     LocationEdit.cpp
     Menu.cpp
@@ -43,9 +40,21 @@ target_sources(ladybird PRIVATE
     WindowControlButton.cpp
     ladybird.qrc
 )
+
+if (AETHERIS_ENABLE_BOOKMARKS_BAR)
+    target_sources(ladybird PRIVATE BookmarksBar.cpp)
+endif()
+
+if (AETHERIS_ENABLE_FIND_IN_PAGE)
+    target_sources(ladybird PRIVATE FindInPageWidget.cpp)
+endif()
+
+if (AETHERIS_ENABLE_DEVTOOLS)
+    target_sources(ladybird PRIVATE DevToolsBanner.cpp)
+endif()
 target_link_libraries(ladybird PRIVATE Qt::Core Qt::Gui Qt::Widgets)
 
-if (TARGET Qt6::Positioning)
+if (TARGET Qt6::Positioning AND AETHERIS_ENABLE_GEOLOCATION)
     target_sources(ladybird PRIVATE GeolocationProviderQt.cpp GeolocationProviderQt.h)
     target_link_libraries(ladybird PRIVATE Qt::Positioning)
     target_compile_definitions(ladybird PRIVATE LADYBIRD_QT_HAVE_POSITIONING=1)
