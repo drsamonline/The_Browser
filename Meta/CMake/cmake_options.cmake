@@ -22,6 +22,9 @@ option(AETHERIS_ENABLE_DEVTOOLS "Enable browser developer tools integration" ${A
 option(AETHERIS_ENABLE_GEOLOCATION "Enable Qt geolocation provider integration" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_BOOKMARKS_BAR "Enable the browser bookmarks bar UI" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_FIND_IN_PAGE "Enable the find-in-page widget" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_BUILD_UTILITIES "Build developer and diagnostic utilities" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(AETHERIS_ENABLE_INSTALL_RULES "Generate install/package rules" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
+option(BUILD_TESTING "Build the testing tree" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 
 option(INCLUDE_WASM_SPEC_TESTS "Download and include the WebAssembly spec testsuite" OFF)
 option(ENABLE_CRANELIFT_JIT "Enable Cranelift-based AOT compilation for WebAssembly" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})

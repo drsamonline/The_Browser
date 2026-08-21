@@ -125,7 +125,9 @@ endif()
 
 # No utilities or tests in these configs
 if (NOT (ENABLE_FUZZERS OR ENABLE_COMPILER_EXPLORER_BUILD OR ANDROID OR IOS))
-    add_subdirectory(Utilities)
+    if (AETHERIS_BUILD_UTILITIES)
+        add_subdirectory(Utilities)
+    endif()
 
     include(CTest)
     if (BUILD_TESTING)

@@ -101,15 +101,15 @@ endif()
 
 add_dependencies(ladybird ${ladybird_helper_processes})
 # FIXME: Increase support for building targets on Windows
-if (NOT WIN32)
+if (AETHERIS_BUILD_WEBDRIVER AND NOT WIN32)
     add_dependencies(WebDriver ladybird)
 endif()
 
 set_helper_process_properties(${ladybird_helper_processes})
-if (APPLE)
+if (AETHERIS_BUILD_WEBDRIVER AND APPLE)
     set_helper_process_properties(WebDriver)
 endif()
 
-if(NOT CMAKE_SKIP_INSTALL_RULES)
+if (AETHERIS_ENABLE_INSTALL_RULES AND NOT CMAKE_SKIP_INSTALL_RULES)
     include(cmake/InstallRules.cmake)
 endif()
