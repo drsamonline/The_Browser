@@ -1,124 +1,257 @@
 #include "html_tokenizer.hpp"
-#include <iostream>
 
 namespace aetheris::rendering {
 
 HtmlTokenizer::HtmlTokenizer(std::string_view input)
-    : m_input(input) {}
+    : m_input(input)
+{
+}
 
-HtmlToken HtmlTokenizer::next_token() {
+char HtmlTokenizer::peek(size_t offset) const
+{
+    auto position = m_position + offset;
+    return position < m_input.size() ? m_input[position] : '\0';
+}
+
+bool HtmlTokenizer::starts_with(std::string_view text) const
+{
+    return m_input.substr(m_position, text.size()) == text;
+}
+
+void HtmlTokenizer::consume()
+{
+    if (eof())
+        return;
+
+    if (m_input[m_position] == '\n') {
+        ++m_line;
+        m_column = 1;
+    } else {
+        ++m_column;
+    }
+    ++m_position;
+}
+
+void HtmlTokenizer::advance_text(std::string_view text)
+{
+    for (size_t i = 0; i < text.size() && !eof(); ++i)
+        consume();
+}
+
+void HtmlTokenizer::skip_whitespace()
+{
+    while (!eof() && is_whitespace(peek()))
+        consume();
+}
+
+HtmlToken HtmlTokenizer::make_token(HtmlTokenType type, std::string data, size_t line, size_t column) const
+{
+    HtmlToken token;
+    token.type = type;
+    token.data = std::move(data);
+    token.line = line;
+    token.column = column;
+    return token;
+}
+
+HtmlToken HtmlTokenizer::parse_text()
+{
+    auto token_line = m_line;
+    auto token_column = m_column;
+    std::string text;
+
+    while (!eof() && peek() != '<') {
+        text += peek();
+        consume();
+    }
+
+    return make_token(HtmlTokenType::Text, std::move(text), token_line, token_column);
+}
+
+HtmlToken HtmlTokenizer::parse_comment(size_t token_line, size_t token_column)
+{
+    advance_text("<!--");
+    std::string data;
+
+    while (!eof() && !starts_with("-->")) {
+        data += peek();
+        consume();
+    }
+
+    if (starts_with("-->"))
+        advance_text("-->");
+
+    return make_token(HtmlTokenType::Comment, std::move(data), token_line, token_column);
+}
+
+HtmlToken HtmlTokenizer::parse_doctype(size_t token_line, size_t token_column)
+{
+    advance_text("<!");
+    while (!eof() && is_alpha(peek()))
+        consume();
+
+    skip_whitespace();
+    std::string name;
+    while (!eof() && peek() != '>')
+    {
+        name += peek();
+        consume();
+    }
+
+    while (!name.empty() && is_whitespace(name.back()))
+        name.pop_back();
+
+    if (!eof() && peek() == '>')
+        consume();
+
+    return make_token(HtmlTokenType::Doctype, to_lower_copy(name), token_line, token_column);
+}
+
+HtmlToken HtmlTokenizer::parse_tag(bool is_end_tag, size_t token_line, size_t token_column)
+{
+    consume(); // '<'
+    if (is_end_tag && peek() == '/')
+        consume();
+
+    skip_whitespace();
+
+    std::string name;
+    while (!eof() && is_alpha(peek())) {
+        name += to_lower(peek());
+        consume();
+    }
+
+    HtmlToken token = make_token(is_end_tag ? HtmlTokenType::EndTag : HtmlTokenType::StartTag,
+        std::move(name), token_line, token_column);
+
+    if (is_end_tag) {
+        while (!eof() && peek() != '>')
+            consume();
+        if (!eof())
+            consume();
+        return token;
+    }
+
     while (!eof()) {
-        switch (m_state) {
-            case TokenizerState::Data: handle_data_state(); break;
-            case TokenizerState::TagOpen: handle_tag_open_state(); break;
-            case TokenizerState::EndTagOpen: handle_end_tag_open_state(); break;
-            case TokenizerState::TagName: handle_tag_name_state(); break;
-            case TokenizerState::BeforeAttributeName: handle_before_attribute_name_state(); break;
-            case TokenizerState::AttributeName: handle_attribute_name_state(); break;
-            // ... add more states as needed
-            default: consume(); break;
+        skip_whitespace();
+
+        if (peek() == '>') {
+            consume();
+            return token;
         }
-        if (!m_emitted_tokens.empty() && m_emitted_index < m_emitted_tokens.size()) {
-            return m_emitted_tokens[m_emitted_index++];
+
+        if (peek() == '/' && peek(1) == '>') {
+            token.type = HtmlTokenType::SelfClosingTag;
+            token.is_self_closing = true;
+            consume();
+            consume();
+            return token;
         }
-    }
-    return {HtmlTokenType::EOFToken};
-}
 
-void HtmlTokenizer::consume() {
-    if (m_position < m_input.size()) {
-        char c = m_input[m_position];
-        if (c == '\n') {
-            m_line++;
-            m_column = 1;
-        } else {
-            m_column++;
+        std::string attribute_name;
+        while (!eof() && is_attribute_name_char(peek())) {
+            attribute_name += to_lower(peek());
+            consume();
         }
-        m_position++;
+
+        if (attribute_name.empty()) {
+            // Malformed markup: consume one character to guarantee progress.
+            consume();
+            continue;
+        }
+
+        skip_whitespace();
+        std::string attribute_value;
+
+        if (peek() == '=') {
+            consume();
+            skip_whitespace();
+
+            if (peek() == '"' || peek() == '\'') {
+                char quote = peek();
+                consume();
+                while (!eof() && peek() != quote) {
+                    attribute_value += peek();
+                    consume();
+                }
+                if (!eof())
+                    consume();
+            } else {
+                while (!eof() && !is_whitespace(peek()) && peek() != '>' && !(peek() == '/' && peek(1) == '>')) {
+                    attribute_value += peek();
+                    consume();
+                }
+            }
+        }
+
+        token.attributes.insert_or_assign(std::move(attribute_name), std::move(attribute_value));
     }
+
+    return token;
 }
 
-void HtmlTokenizer::handle_data_state() {
-    char c = m_input[m_position];
-    if (c == '<') {
-        m_state = TokenizerState::TagOpen;
-        consume();
-    } else {
-        emit_character_token(c);
-        consume();
+HtmlToken HtmlTokenizer::next_token()
+{
+    if (m_emitted_eof)
+        return make_token(HtmlTokenType::EOFToken, {}, m_line, m_column);
+
+    if (eof()) {
+        m_emitted_eof = true;
+        return make_token(HtmlTokenType::EOFToken, {}, m_line, m_column);
     }
+
+    if (peek() != '<')
+        return parse_text();
+
+    auto token_line = m_line;
+    auto token_column = m_column;
+
+    if (starts_with("<!--"))
+        return parse_comment(token_line, token_column);
+
+    if (starts_with("<!DOCTYPE") || starts_with("<!doctype"))
+        return parse_doctype(token_line, token_column);
+
+    if (peek(1) == '/')
+        return parse_tag(true, token_line, token_column);
+
+    if (is_alpha(peek(1)))
+        return parse_tag(false, token_line, token_column);
+
+    // Not a recognized markup construct: '<' is ordinary text.
+    consume();
+    return make_token(HtmlTokenType::Text, "<", token_line, token_column);
 }
 
-void HtmlTokenizer::handle_tag_open_state() {
-    char c = m_input[m_position];
-    if (c == '/') {
-        m_state = TokenizerState::EndTagOpen;
-        consume();
-    } else if (is_alpha(c)) {
-        m_state = TokenizerState::TagName;
-        m_temp_buffer.clear();
-        m_temp_buffer += to_lower(c);
-        consume();
-    } else {
-        m_state = TokenizerState::Data;
-        emit_character_token('<');
-    }
+bool HtmlTokenizer::is_whitespace(char c)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f';
 }
 
-void HtmlTokenizer::handle_end_tag_open_state() {
-    char c = m_input[m_position];
-    if (is_alpha(c)) {
-        m_state = TokenizerState::TagName;
-        m_temp_buffer.clear();
-        m_temp_buffer += to_lower(c);
-        consume();
-    } else {
-        m_state = TokenizerState::Data;
-        emit_character_token('<');
-        emit_character_token('/');
-    }
-}
-
-void HtmlTokenizer::handle_tag_name_state() {
-    char c = m_input[m_position];
-    if (is_whitespace(c)) {
-        m_state = TokenizerState::BeforeAttributeName;
-        consume();
-    } else if (c == '/') {
-        m_state = TokenizerState::SelfClosingStartTag;
-        consume();
-    } else if (c == '>') {
-        m_state = TokenizerState::Data;
-    HtmlToken token;
-        token.type = HtmlTokenType::StartTag;
-    token.data = m_temp_buffer;
-    m_emitted_tokens.push_back(token);
-        consume();
-    } else {
-        m_temp_buffer += to_lower(c);
-        consume();
-}
-}
-
-void HtmlTokenizer::emit_character_token(char c) {
-    HtmlToken token;
-    token.type = HtmlTokenType::Text;
-    m_temp_buffer = c;
-    token.data = m_temp_buffer;
-    m_emitted_tokens.push_back(token);
-}
-
-bool HtmlTokenizer::is_alpha(char c) const {
+bool HtmlTokenizer::is_alpha(char c)
+{
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
-bool HtmlTokenizer::is_whitespace(char c) const {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+bool HtmlTokenizer::is_attribute_name_char(char c)
+{
+    return c != '\0' && !is_whitespace(c) && c != '=' && c != '/' && c != '>';
 }
 
-char HtmlTokenizer::to_lower(char c) const {
-    if (c >= 'A' && c <= 'Z') return c + 32;
+char HtmlTokenizer::to_lower(char c)
+{
+    if (c >= 'A' && c <= 'Z')
+        return static_cast<char>(c - 'A' + 'a');
     return c;
+}
+
+std::string HtmlTokenizer::to_lower_copy(std::string_view text)
+{
+    std::string result;
+    result.reserve(text.size());
+    for (char c : text)
+        result += to_lower(c);
+    return result;
 }
 
 } // namespace aetheris::rendering

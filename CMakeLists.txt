@@ -122,6 +122,7 @@ endif()
 
 add_subdirectory(AK)
 add_subdirectory(Libraries)
+add_subdirectory(src)
 
 if (ENABLE_FUZZERS)
     add_subdirectory(Meta/Fuzzers)
