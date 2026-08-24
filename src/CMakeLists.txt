@@ -1,5 +1,8 @@
 add_library(AetherisRendering STATIC
+    rendering/dom.cpp
+    rendering/document.cpp
     rendering/html_tokenizer.cpp
+    rendering/html_tree_builder.cpp
 )
 
 target_include_directories(AetherisRendering
