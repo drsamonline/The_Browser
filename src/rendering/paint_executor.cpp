@@ -43,6 +43,9 @@ void PaintExecutor::execute(RenderTree const& tree, SoftwareSurface& surface) co
         case PaintCommand::Type::DrawText:
             surface.fill_text_cell(command.rect, color, clip);
             break;
+        case PaintCommand::Type::DrawTextDecoration:
+            surface.draw_text_decoration(command.rect, command.text_decoration, color, clip);
+            break;
         case PaintCommand::Type::DrawImage:
             if (command.image) {
                 if (command.background_repeat != "no-repeat" || command.background_size != "auto" || command.background_position != "0 0")

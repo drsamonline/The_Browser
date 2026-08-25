@@ -53,7 +53,16 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
             command.opacity = opacity;
             if (auto color = node.style.get("color"))
                 command.color = *color;
-            commands.push_back(std::move(command));
+            commands.push_back(command);
+            if (auto decoration = node.style.get("text-decoration"); decoration && *decoration != "none") {
+                PaintCommand decoration_command;
+                decoration_command.type = PaintCommand::Type::DrawTextDecoration;
+                decoration_command.rect = fragment.rect;
+                decoration_command.text_decoration = *decoration;
+                decoration_command.opacity = opacity;
+                decoration_command.color = command.color;
+                commands.push_back(std::move(decoration_command));
+            }
         }
     } else if (node.dom_node && node.dom_node->type == DomNodeType::Element) {
         if (auto shadow = node.style.get("box-shadow")) { PaintCommand command; command.type=PaintCommand::Type::DrawShadow; command.rect=node.rect; command.opacity=opacity; std::istringstream stream(*shadow); std::string x,y,blur,color; stream>>x>>y>>blur>>color; command.shadow_offset_x=number(&x,0); command.shadow_offset_y=number(&y,0); command.shadow_blur=number(&blur,0); command.color=color.empty()?"black":color; commands.push_back(std::move(command)); }

@@ -15,6 +15,7 @@ struct PaintCommand {
         StrokeRect,
         StrokeRoundedRect,
         DrawText,
+        DrawTextDecoration,
         DrawImage,
         DrawShadow,
         DrawOutline,
@@ -29,6 +30,7 @@ struct PaintCommand {
     std::string color;
     std::string border_style { "solid" };
     float baseline { 0 };
+    std::string text_decoration { "none" };
     float radius { 0 };
     std::shared_ptr<Image const> image;
     float shadow_offset_x { 0 };

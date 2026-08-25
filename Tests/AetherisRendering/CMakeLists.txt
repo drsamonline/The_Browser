@@ -103,3 +103,19 @@ add_test(NAME AetherisAdvancedFlexLayout COMMAND TestAetherisAdvancedFlexLayout)
 add_executable(TestAetherisAdvancedSizing TestAdvancedSizing.cpp)
 target_link_libraries(TestAetherisAdvancedSizing PRIVATE AetherisRendering)
 add_test(NAME AetherisAdvancedSizing COMMAND TestAetherisAdvancedSizing)
+
+add_executable(TestTypography TestTypography.cpp)
+target_link_libraries(TestTypography PRIVATE AetherisRendering)
+add_test(NAME AetherisTypography COMMAND TestTypography)
+
+add_executable(TestWhitespace TestWhitespace.cpp)
+target_link_libraries(TestWhitespace PRIVATE AetherisRendering)
+add_test(NAME AetherisWhitespace COMMAND TestWhitespace)
+
+add_executable(TestTextAlignment TestTextAlignment.cpp)
+target_link_libraries(TestTextAlignment PRIVATE AetherisRendering)
+add_test(NAME AetherisTextAlignment COMMAND TestTextAlignment)
+
+add_executable(TestTextDecoration TestTextDecoration.cpp)
+target_link_libraries(TestTextDecoration PRIVATE AetherisRendering)
+add_test(NAME AetherisTextDecoration COMMAND TestTextDecoration)

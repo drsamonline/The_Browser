@@ -160,6 +160,16 @@ void SoftwareSurface::fill_text_cell(LayoutRect const& rect, Color color, std::o
     fill_rect(glyph, color, clip);
 }
 
+void SoftwareSurface::draw_text_decoration(LayoutRect const& rect, std::string const& decoration, Color color, std::optional<RoundedRect> clip)
+{
+    if (decoration == "none" || decoration.empty()) return;
+    float y = rect.y + rect.height - 1.0f;
+    if (decoration == "overline") y = rect.y;
+    else if (decoration == "line-through") y = rect.y + rect.height * 0.5f;
+    fill_rect({rect.x, y, rect.width, 1.0f}, color, clip);
+}
+
+
 void SoftwareSurface::draw_image(LayoutRect const& rect, Image const& image, std::optional<RoundedRect> clip)
 {
     if (!image.valid() || rect.width <= 0 || rect.height <= 0) return;
