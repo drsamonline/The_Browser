@@ -35,6 +35,7 @@ enum class LayoutDisplay {
     Block,
     Inline,
     InlineBlock,
+    Flex,
     None,
 };
 
@@ -76,6 +77,7 @@ private:
     static void layout_node(LayoutNode& node, float x, float y, float available_width);
     static void layout_inline_children(LayoutNode& node, float x, float y, float available_width, float& cursor_y);
     static void layout_absolute_children(LayoutNode& node, float available_width);
+    static void layout_flex_children(LayoutNode& node, float available_width, float& cursor_y);
     static float parse_length(std::string const* value, float fallback, float percentage_base = 0);
     static float resolve_dimension(StyleProperties const&, char const* property, float available_width, float fallback);
     static BoxEdges resolve_edges(StyleProperties const& style, char const* prefix, float percentage_base);

@@ -41,6 +41,8 @@ LayoutDisplay LayoutTreeBuilder::display_for(DomNode const& node, StylePropertie
             return LayoutDisplay::Inline;
         if (*value == "inline-block")
             return LayoutDisplay::InlineBlock;
+        if (*value == "flex" || *value == "inline-flex")
+            return LayoutDisplay::Flex;
     }
     if (node.type == DomNodeType::Text)
         return LayoutDisplay::Inline;
@@ -113,7 +115,9 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
                 has_inline = true;
         }
 
-        if (has_inline)
+        if (node.display == LayoutDisplay::Flex)
+            layout_flex_children(node, content_width, cursor_y);
+        else if (has_inline)
             layout_inline_children(node, node.box.content.x, cursor_y, content_width, cursor_y);
         else {
             for (auto& child : node.children) {
@@ -195,6 +199,72 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
     }
 
     cursor_y = std::max(max_bottom, cursor_y + line_height);
+}
+
+void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width, float& cursor_y)
+{
+    std::vector<LayoutNode*> items;
+    for (auto& child : node.children) {
+        if (child->display != LayoutDisplay::None && !is_positioned(*child))
+            items.push_back(child.get());
+    }
+    if (items.empty())
+        return;
+
+    auto direction = node.style.get("flex-direction");
+    bool column = direction && (*direction == "column" || *direction == "column-reverse");
+    bool reverse = direction && (*direction == "row-reverse" || *direction == "column-reverse");
+    if (reverse)
+        std::reverse(items.begin(), items.end());
+
+    float gap = parse_length(node.style.get("gap"), 0, available_width);
+    if (column) {
+        float cursor = node.box.content.y;
+        float max_width = 0;
+        for (auto* child : items) {
+            layout_node(*child, node.box.content.x, cursor, available_width);
+            cursor = child->rect.y + child->rect.height + gap;
+            max_width = std::max(max_width, child->rect.width);
+        }
+        cursor_y = items.empty() ? cursor_y : cursor - gap;
+        node.box.content.width = std::max(node.box.content.width, max_width);
+        return;
+    }
+
+    float total_fixed = gap * std::max(0, static_cast<int>(items.size()) - 1);
+    float total_grow = 0;
+    for (auto* child : items) {
+        float grow = parse_length(child->style.get("flex-grow"), 0, available_width);
+        total_grow += std::max(0.0f, grow);
+        auto width = resolve_dimension(child->style, "width", available_width, -1);
+        if (width >= 0) total_fixed += width;
+    }
+    float free_space = std::max(0.0f, available_width - total_fixed);
+    float cursor_x = node.box.content.x;
+    float max_height = 0;
+    auto justify = node.style.get("justify-content");
+    float extra_gap = 0;
+    if (justify && *justify == "center") cursor_x += free_space / 2;
+    else if (justify && *justify == "flex-end") cursor_x += free_space;
+    else if (justify && *justify == "space-between" && items.size() > 1) extra_gap = free_space / (items.size() - 1);
+    else if (justify && *justify == "space-around") { extra_gap = free_space / items.size(); cursor_x += extra_gap / 2; }
+
+    for (auto* child : items) {
+        float width = resolve_dimension(child->style, "width", available_width, -1);
+        float grow = std::max(0.0f, parse_length(child->style.get("flex-grow"), 0, available_width));
+        if (width < 0) width = total_grow > 0 ? free_space * grow / total_grow : 0;
+        layout_node(*child, cursor_x, node.box.content.y, width);
+        auto align = node.style.get("align-items");
+        if (align && *align == "center") {
+            child->rect.y += std::max(0.0f, max_height - child->rect.height) / 2;
+        }
+        cursor_x = child->rect.x + child->rect.width + gap + extra_gap;
+        max_height = std::max(max_height, child->rect.height);
+    }
+    if (auto align = node.style.get("align-items"); align && *align == "flex-end") {
+        for (auto* child : items) child->rect.y += max_height - child->rect.height;
+    }
+    cursor_y = node.box.content.y + max_height;
 }
 
 void LayoutEngine::layout_absolute_children(LayoutNode& node, float available_width)

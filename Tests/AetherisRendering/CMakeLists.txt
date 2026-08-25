@@ -87,3 +87,7 @@ add_test(NAME AetherisStackingOverflow COMMAND TestAetherisStackingOverflow)
 add_executable(TestAetherisBackgroundTiling TestBackgroundTiling.cpp)
 target_link_libraries(TestAetherisBackgroundTiling PRIVATE AetherisRendering)
 add_test(NAME AetherisBackgroundTiling COMMAND TestAetherisBackgroundTiling)
+
+add_executable(TestAetherisFlexLayout TestFlexLayout.cpp)
+target_link_libraries(TestAetherisFlexLayout PRIVATE AetherisRendering)
+add_test(NAME AetherisFlexLayout COMMAND TestAetherisFlexLayout)
