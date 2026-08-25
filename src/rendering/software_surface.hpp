@@ -1,6 +1,7 @@
 #pragma once
 
 #include "color.hpp"
+#include "geometry.hpp"
 #include "layout.hpp"
 
 #include <cstdint>
@@ -17,9 +18,11 @@ public:
     int height() const { return m_height; }
 
     void clear(Color);
-    void fill_rect(LayoutRect const&, Color, std::optional<LayoutRect> clip = {});
-    void stroke_rect(LayoutRect const&, BoxEdges const&, Color, std::optional<LayoutRect> clip = {});
-    void fill_text_cell(LayoutRect const&, Color, std::optional<LayoutRect> clip = {});
+    void fill_rect(LayoutRect const&, Color, std::optional<RoundedRect> clip = {});
+    void fill_rounded_rect(LayoutRect const&, float radius, Color, std::optional<RoundedRect> clip = {});
+    void stroke_rect(LayoutRect const&, BoxEdges const&, Color, std::optional<RoundedRect> clip = {}, std::string_view style = "solid");
+    void stroke_rounded_rect(LayoutRect const&, float radius, BoxEdges const&, Color, std::optional<RoundedRect> clip = {}, std::string_view style = "solid");
+    void fill_text_cell(LayoutRect const&, Color, std::optional<RoundedRect> clip = {});
 
     Color pixel(int x, int y) const;
     std::vector<uint32_t> const& pixels() const { return m_pixels; }
@@ -27,7 +30,8 @@ public:
 private:
     bool contains(int x, int y) const;
     void blend_pixel(int x, int y, Color);
-    static std::optional<LayoutRect> clipped(LayoutRect const&, std::optional<LayoutRect> const&);
+    bool accepts(int x, int y, std::optional<RoundedRect> const&) const;
+    static std::optional<LayoutRect> clipped(LayoutRect const&, std::optional<RoundedRect> const&);
 
     int m_width { 0 };
     int m_height { 0 };

@@ -1,5 +1,6 @@
 add_library(AetherisRendering STATIC
     rendering/clip.cpp
+    rendering/geometry.cpp
     rendering/color.cpp
     rendering/image_output.cpp
     rendering/css_parser.cpp

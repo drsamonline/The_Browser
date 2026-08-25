@@ -1,6 +1,6 @@
 #pragma once
 
-#include "layout.hpp"
+#include "geometry.hpp"
 
 #include <optional>
 #include <vector>
@@ -9,13 +9,12 @@ namespace aetheris::rendering {
 
 class ClipStack {
 public:
-    void push(LayoutRect);
+    void push(LayoutRect, float radius = 0);
     void pop();
-    std::optional<LayoutRect> current() const;
-    std::optional<LayoutRect> intersect(LayoutRect const&) const;
+    std::optional<RoundedRect> current() const;
 
 private:
-    std::vector<LayoutRect> m_stack;
+    std::vector<RoundedRect> m_stack;
 };
 
 } // namespace aetheris::rendering

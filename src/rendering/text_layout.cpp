@@ -62,25 +62,30 @@ float TextLayout::line_height(StyleProperties const& style)
     return parsed;
 }
 
-float TextLayout::measure_text(std::string_view text, float size)
+float TextLayout::measure_text(std::string_view text, float size, StyleProperties const& style)
 {
-    // Temporary deterministic metrics. Real font shaping/raster metrics are a later backend stage.
     float width = 0;
+    auto letter_spacing = parse_px(style.get("letter-spacing"), 0);
+    auto word_spacing = parse_px(style.get("word-spacing"), 0);
+
     for (unsigned char c : text) {
         if (c == ' ')
-            width += size * 0.33f;
+            width += size * 0.33f + word_spacing;
         else if (std::ispunct(c))
             width += size * 0.45f;
         else
             width += size * 0.60f;
+        width += letter_spacing;
     }
-    return width;
+    return std::max(0.0f, width);
 }
 
 std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, float y, float available_width, StyleProperties const& style)
 {
     std::vector<TextFragment> fragments;
-    auto preserve = style.get("white-space") && *style.get("white-space") == "pre";
+    auto white_space = style.get("white-space");
+    auto preserve = white_space && (*white_space == "pre" || *white_space == "pre-wrap");
+    auto no_wrap = white_space && *white_space == "nowrap";
     auto text = collapse_whitespace(source, preserve);
     if (text.empty() || available_width <= 0)
         return fragments;
@@ -93,21 +98,21 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
     std::istringstream words(text);
     std::string word;
     while (words >> word) {
-        auto word_width = measure_text(word, size);
-        auto space_width = cursor_x > x ? measure_text(" ", size) : 0;
+        auto word_width = measure_text(word, size, style);
+        auto space_width = cursor_x > x ? measure_text(" ", size, style) : 0;
 
-        if (cursor_x > x && cursor_x + space_width + word_width > x + available_width) {
+        if (!no_wrap && cursor_x > x && cursor_x + space_width + word_width > x + available_width) {
             cursor_x = x;
             cursor_y += height;
             space_width = 0;
         }
 
-        if (word_width > available_width && cursor_x == x) {
+        if (!no_wrap && word_width > available_width && cursor_x == x) {
             std::string chunk;
             for (char c : word) {
                 auto candidate = chunk + c;
-                if (!chunk.empty() && measure_text(candidate, size) > available_width) {
-                    auto width = measure_text(chunk, size);
+                if (!chunk.empty() && measure_text(candidate, size, style) > available_width) {
+                    auto width = measure_text(chunk, size, style);
                     fragments.push_back({ chunk, { cursor_x, cursor_y, width, height }, cursor_y + size });
                     cursor_y += height;
                     chunk.clear();
@@ -115,7 +120,7 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
                 chunk += c;
             }
             if (!chunk.empty()) {
-                auto width = measure_text(chunk, size);
+                auto width = measure_text(chunk, size, style);
                 fragments.push_back({ chunk, { cursor_x, cursor_y, width, height }, cursor_y + size });
                 cursor_x += width;
             }

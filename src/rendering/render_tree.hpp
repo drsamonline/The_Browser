@@ -10,7 +10,9 @@ namespace aetheris::rendering {
 struct PaintCommand {
     enum class Type {
         FillRect,
+        FillRoundedRect,
         StrokeRect,
+        StrokeRoundedRect,
         DrawText,
     };
 
@@ -19,7 +21,10 @@ struct PaintCommand {
     BoxEdges edges;
     std::string text;
     std::string color;
+    std::string border_style { "solid" };
     float baseline { 0 };
+    float radius { 0 };
+    float opacity { 1 };
     bool push_clip { false };
     bool pop_clip { false };
 };
@@ -31,7 +36,7 @@ public:
     std::vector<PaintCommand> const& commands() const { return m_commands; }
 
 private:
-    static void emit(LayoutNode const& node, std::vector<PaintCommand>& commands);
+    static void emit(LayoutNode const& node, std::vector<PaintCommand>& commands, float inherited_opacity);
 
     std::vector<PaintCommand> m_commands;
 };

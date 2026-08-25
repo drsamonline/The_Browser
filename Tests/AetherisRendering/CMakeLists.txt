@@ -54,3 +54,16 @@ add_executable(TestAetherisPaintEffects
 )
 target_link_libraries(TestAetherisPaintEffects PRIVATE AetherisRendering)
 add_test(NAME AetherisPaintEffects COMMAND TestAetherisPaintEffects)
+
+
+add_executable(TestAetherisAdvancedLayout
+    TestAdvancedLayout.cpp
+)
+target_link_libraries(TestAetherisAdvancedLayout PRIVATE AetherisRendering)
+add_test(NAME AetherisAdvancedLayout COMMAND TestAetherisAdvancedLayout)
+
+add_executable(TestAetherisAdvancedPainting
+    TestAdvancedPainting.cpp
+)
+target_link_libraries(TestAetherisAdvancedPainting PRIVATE AetherisRendering)
+add_test(NAME AetherisAdvancedPainting COMMAND TestAetherisAdvancedPainting)
