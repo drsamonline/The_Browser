@@ -52,6 +52,7 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
             commands.push_back(std::move(command));
         }
     } else if (node.dom_node && node.dom_node->type == DomNodeType::Element) {
+        if (node.dom_node->name == "img" && node.image) { PaintCommand command; command.type = PaintCommand::Type::DrawImage; command.rect = node.box.content; command.image = node.image; command.opacity = opacity; commands.push_back(std::move(command)); }
         if (auto background = node.style.get("background-color")) {
             PaintCommand command;
             command.type = radius > 0 ? PaintCommand::Type::FillRoundedRect : PaintCommand::Type::FillRect;

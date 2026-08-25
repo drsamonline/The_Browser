@@ -3,6 +3,7 @@
 #include "color.hpp"
 #include "geometry.hpp"
 #include "layout.hpp"
+#include "image.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -23,6 +24,7 @@ public:
     void stroke_rect(LayoutRect const&, BoxEdges const&, Color, std::optional<RoundedRect> clip = {}, std::string_view style = "solid");
     void stroke_rounded_rect(LayoutRect const&, float radius, BoxEdges const&, Color, std::optional<RoundedRect> clip = {}, std::string_view style = "solid");
     void fill_text_cell(LayoutRect const&, Color, std::optional<RoundedRect> clip = {});
+    void draw_image(LayoutRect const&, Image const&, std::optional<RoundedRect> clip = {});
 
     Color pixel(int x, int y) const;
     std::vector<uint32_t> const& pixels() const { return m_pixels; }

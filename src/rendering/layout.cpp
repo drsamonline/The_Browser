@@ -91,7 +91,16 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
     node.box.content.y = y + node.box.margin.top + node.box.border.top + node.box.padding.top;
     node.box.content.width = content_width;
 
-    if (node.dom_node && node.dom_node->type == DomNodeType::Text) {
+    if (node.dom_node && node.dom_node->type == DomNodeType::Element && node.dom_node->name == "img") {
+        float intrinsic_width = 0;
+        float intrinsic_height = 0;
+        if (auto value = node.dom_node->attribute("width")) intrinsic_width = parse_length(value, 0, available_width);
+        if (auto value = node.dom_node->attribute("height")) intrinsic_height = parse_length(value, 0, available_width);
+        if (specified_width < 0 && intrinsic_width > 0) { content_width = intrinsic_width; node.box.content.width = content_width; }
+        float ratio = intrinsic_width > 0 && intrinsic_height > 0 ? intrinsic_height / intrinsic_width : 0.75f;
+        float specified_height = parse_length(node.style.get("height"), -1, content_width);
+        node.box.content.height = specified_height >= 0 ? specified_height : (intrinsic_height > 0 ? intrinsic_height : content_width * ratio);
+    } else if (node.dom_node && node.dom_node->type == DomNodeType::Text) {
         node.text_fragments = TextLayout::layout(node.dom_node->data, node.box.content.x, node.box.content.y, content_width, node.style);
         float line_height = TextLayout::line_height(node.style);
         node.box.content.height = node.text_fragments.empty() ? 0

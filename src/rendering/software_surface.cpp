@@ -160,4 +160,12 @@ void SoftwareSurface::fill_text_cell(LayoutRect const& rect, Color color, std::o
     fill_rect(glyph, color, clip);
 }
 
+void SoftwareSurface::draw_image(LayoutRect const& rect, Image const& image, std::optional<RoundedRect> clip)
+{
+    if (!image.valid() || rect.width <= 0 || rect.height <= 0) return;
+    auto left = std::max(0, static_cast<int>(std::floor(rect.x))); auto top = std::max(0, static_cast<int>(std::floor(rect.y)));
+    auto right = std::min(m_width, static_cast<int>(std::ceil(rect.x + rect.width))); auto bottom = std::min(m_height, static_cast<int>(std::ceil(rect.y + rect.height)));
+    for (int y=top;y<bottom;++y) for(int x=left;x<right;++x) { if(!accepts(x,y,clip)) continue; int sx=std::clamp(int((x-rect.x)*image.width/rect.width),0,image.width-1); int sy=std::clamp(int((y-rect.y)*image.height/rect.height),0,image.height-1); blend_pixel(x,y,image.pixel(sx,sy)); }
+}
+
 } // namespace aetheris::rendering

@@ -2,6 +2,7 @@
 
 #include "dom.hpp"
 #include "style.hpp"
+#include "image.hpp"
 
 #include <memory>
 #include <string>
@@ -50,6 +51,7 @@ struct LayoutNode {
     LayoutRect rect;
     BoxModel box;
     std::vector<TextFragment> text_fragments;
+    std::shared_ptr<Image const> image;
     std::vector<std::unique_ptr<LayoutNode>> children;
     LayoutNode* parent { nullptr };
 

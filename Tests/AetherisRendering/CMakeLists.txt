@@ -67,3 +67,11 @@ add_executable(TestAetherisAdvancedPainting
 )
 target_link_libraries(TestAetherisAdvancedPainting PRIVATE AetherisRendering)
 add_test(NAME AetherisAdvancedPainting COMMAND TestAetherisAdvancedPainting)
+
+add_executable(TestAetherisResourcesImages TestResourcesImages.cpp)
+target_link_libraries(TestAetherisResourcesImages PRIVATE AetherisRendering)
+add_test(NAME AetherisResourcesImages COMMAND TestAetherisResourcesImages)
+
+add_executable(TestAetherisTypographyResources TestTypographyResources.cpp)
+target_link_libraries(TestAetherisTypographyResources PRIVATE AetherisRendering)
+add_test(NAME AetherisTypographyResources COMMAND TestAetherisTypographyResources)

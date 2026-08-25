@@ -3,6 +3,9 @@ add_library(AetherisRendering STATIC
     rendering/geometry.cpp
     rendering/color.cpp
     rendering/image_output.cpp
+    rendering/resource.cpp
+    rendering/image.cpp
+    rendering/font.cpp
     rendering/css_parser.cpp
     rendering/css_tokenizer.cpp
     rendering/dom.cpp

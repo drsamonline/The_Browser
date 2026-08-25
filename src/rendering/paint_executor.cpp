@@ -43,6 +43,9 @@ void PaintExecutor::execute(RenderTree const& tree, SoftwareSurface& surface) co
         case PaintCommand::Type::DrawText:
             surface.fill_text_cell(command.rect, color, clip);
             break;
+        case PaintCommand::Type::DrawImage:
+            if (command.image) surface.draw_image(command.rect, *command.image, clip);
+            break;
         }
     }
 }

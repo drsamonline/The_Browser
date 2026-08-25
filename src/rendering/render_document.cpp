@@ -12,7 +12,7 @@ RenderDocument::RenderDocument(Document document, std::unique_ptr<LayoutNode> la
 {
 }
 
-RenderDocument RenderDocument::create(std::string_view html, std::string_view css, float viewport_width)
+RenderDocument RenderDocument::create(std::string_view html, std::string_view css, float viewport_width, ResourceCache* resources)
 {
     auto document = Document::parse_html(html);
     auto sheet = CssParser {}.parse(css);
@@ -21,7 +21,17 @@ RenderDocument RenderDocument::create(std::string_view html, std::string_view cs
     LayoutEngine {}.layout(*layout_root, viewport_width);
 
     auto render_tree = RenderTree::from_layout(*layout_root);
-    return RenderDocument(std::move(document), std::move(layout_root), std::move(render_tree));
+    RenderDocument result(std::move(document), std::move(layout_root), std::move(render_tree));
+    if (resources) result.m_resources = *resources;
+    result.resolve_images(*result.m_layout_root);
+    result.m_render_tree = RenderTree::from_layout(*result.m_layout_root);
+    return result;
+}
+
+void RenderDocument::resolve_images(LayoutNode& node)
+{
+    if (node.dom_node && node.dom_node->type == DomNodeType::Element && node.dom_node->name == "img") { if (auto src=node.dom_node->attribute("src")) node.image=m_images.load(*src,m_resources); }
+    for (auto& child : node.children) resolve_images(*child);
 }
 
 SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color clear_color) const

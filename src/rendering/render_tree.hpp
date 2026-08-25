@@ -1,6 +1,7 @@
 #pragma once
 
 #include "layout.hpp"
+#include "image.hpp"
 
 #include <string>
 #include <vector>
@@ -14,6 +15,7 @@ struct PaintCommand {
         StrokeRect,
         StrokeRoundedRect,
         DrawText,
+        DrawImage,
     };
 
     Type type { Type::FillRect };
@@ -24,6 +26,7 @@ struct PaintCommand {
     std::string border_style { "solid" };
     float baseline { 0 };
     float radius { 0 };
+    std::shared_ptr<Image const> image;
     float opacity { 1 };
     bool push_clip { false };
     bool pop_clip { false };

@@ -1,4 +1,5 @@
 #include "text_layout.hpp"
+#include "font.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -43,7 +44,7 @@ std::string TextLayout::collapse_whitespace(std::string_view text, bool preserve
 
 float TextLayout::font_size(StyleProperties const& style)
 {
-    return parse_px(style.get("font-size"), 16.0f);
+    return Font::from_style(style).metrics().size;
 }
 
 float TextLayout::line_height(StyleProperties const& style)
@@ -65,16 +66,17 @@ float TextLayout::line_height(StyleProperties const& style)
 float TextLayout::measure_text(std::string_view text, float size, StyleProperties const& style)
 {
     float width = 0;
+    auto font = Font::from_style(style);
     auto letter_spacing = parse_px(style.get("letter-spacing"), 0);
     auto word_spacing = parse_px(style.get("word-spacing"), 0);
 
     for (unsigned char c : text) {
         if (c == ' ')
-            width += size * 0.33f + word_spacing;
+            width += font.metrics().advance(' ') + word_spacing;
         else if (std::ispunct(c))
-            width += size * 0.45f;
+            width += font.metrics().advance(c);
         else
-            width += size * 0.60f;
+            width += font.metrics().advance(c);
         width += letter_spacing;
     }
     return std::max(0.0f, width);

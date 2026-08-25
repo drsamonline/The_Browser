@@ -3,6 +3,8 @@
 #include "document.hpp"
 #include "paint_executor.hpp"
 #include "render_tree.hpp"
+#include "resource.hpp"
+#include "image.hpp"
 
 #include <memory>
 #include <string_view>
@@ -11,7 +13,8 @@ namespace aetheris::rendering {
 
 class RenderDocument {
 public:
-    static RenderDocument create(std::string_view html, std::string_view css, float viewport_width);
+    static RenderDocument create(std::string_view html, std::string_view css, float viewport_width, ResourceCache* resources = nullptr);
+    ResourceCache& resources() { return m_resources; }
 
     Document const& document() const { return m_document; }
     LayoutNode const& layout_root() const { return *m_layout_root; }
@@ -25,6 +28,9 @@ private:
     RenderTree m_render_tree;
 
     RenderDocument(Document document, std::unique_ptr<LayoutNode> layout_root, RenderTree render_tree);
+    void resolve_images(LayoutNode&);
+    ResourceCache m_resources;
+    ImageCache m_images;
 };
 
 } // namespace aetheris::rendering
