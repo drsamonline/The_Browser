@@ -123,3 +123,7 @@ add_test(NAME AetherisTextDecoration COMMAND TestTextDecoration)
 add_executable(TestAetherisDocumentResources TestDocumentResources.cpp)
 target_link_libraries(TestAetherisDocumentResources PRIVATE AetherisRendering)
 add_test(NAME AetherisDocumentResources COMMAND TestAetherisDocumentResources)
+
+add_executable(TestAetherisNavigation TestNavigation.cpp)
+target_link_libraries(TestAetherisNavigation PRIVATE AetherisRendering)
+add_test(NAME AetherisNavigation COMMAND TestAetherisNavigation)
