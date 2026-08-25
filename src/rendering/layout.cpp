@@ -43,6 +43,8 @@ LayoutDisplay LayoutTreeBuilder::display_for(DomNode const& node, StylePropertie
             return LayoutDisplay::InlineBlock;
         if (*value == "flex" || *value == "inline-flex")
             return LayoutDisplay::Flex;
+        if (*value == "grid" || *value == "inline-grid")
+            return LayoutDisplay::Grid;
     }
     if (node.type == DomNodeType::Text)
         return LayoutDisplay::Inline;
@@ -117,6 +119,8 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
 
         if (node.display == LayoutDisplay::Flex)
             layout_flex_children(node, content_width, cursor_y);
+        else if (node.display == LayoutDisplay::Grid)
+            layout_grid_children(node, content_width, cursor_y);
         else if (has_inline)
             layout_inline_children(node, node.box.content.x, cursor_y, content_width, cursor_y);
         else {
@@ -134,6 +138,12 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
         float max_height = parse_length(node.style.get("max-height"), -1, content_width);
 
         node.box.content.height = specified_height >= 0 ? specified_height : content_height;
+        if (auto ratio = node.style.get("aspect-ratio")) {
+            auto slash = ratio->find('/');
+            float rw = std::strtof(ratio->c_str(), nullptr);
+            float rh = slash == std::string::npos ? 1.0f : std::strtof(ratio->c_str() + slash + 1, nullptr);
+            if (rw > 0 && rh > 0 && specified_height < 0) node.box.content.height = content_width * rh / rw;
+        }
         node.box.content.height = std::max(node.box.content.height, min_height);
         if (max_height >= 0)
             node.box.content.height = std::min(node.box.content.height, max_height);
@@ -265,6 +275,51 @@ void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width,
         for (auto* child : items) child->rect.y += max_height - child->rect.height;
     }
     cursor_y = node.box.content.y + max_height;
+}
+
+void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width, float& cursor_y)
+{
+    std::vector<LayoutNode*> items;
+    for (auto& child : node.children)
+        if (child->display != LayoutDisplay::None && !is_positioned(*child)) items.push_back(child.get());
+    if (items.empty()) return;
+
+    auto parse_tracks = [&](std::string const* value) {
+        std::vector<float> tracks;
+        if (!value) return tracks;
+        std::string token; float fixed = 0; int fr_count = 0;
+        for (size_t i = 0; i <= value->size(); ++i) {
+            char c = i < value->size() ? (*value)[i] : ' ';
+            if (c == ' ' || c == '\t' || i == value->size()) {
+                if (!token.empty()) {
+                    if (token.size() >= 2 && token.substr(token.size()-2) == "fr") { tracks.push_back(-std::max(0.0f, std::strtof(token.c_str(), nullptr))); ++fr_count; }
+                    else { float v = parse_length(&token, 0, available_width); tracks.push_back(v); fixed += v; }
+                    token.clear();
+                }
+            } else token += c;
+        }
+        float gap = parse_length(node.style.get("column-gap"), parse_length(node.style.get("gap"), 0, available_width), available_width);
+        float remaining = std::max(0.0f, available_width - fixed - gap * std::max(0, (int)tracks.size()-1));
+        float fr_total = 0; for (float v : tracks) if (v < 0) fr_total += -v;
+        for (float& v : tracks) if (v < 0) v = fr_total > 0 ? remaining * (-v) / fr_total : 0;
+        return tracks;
+    };
+
+    auto columns = parse_tracks(node.style.get("grid-template-columns"));
+    if (columns.empty()) columns.push_back(available_width);
+    float gap_x = parse_length(node.style.get("column-gap"), parse_length(node.style.get("gap"), 0, available_width), available_width);
+    float gap_y = parse_length(node.style.get("row-gap"), parse_length(node.style.get("gap"), 0, available_width), available_width);
+    size_t cols = columns.size(); std::vector<float> row_heights;
+    for (size_t index = 0; index < items.size(); ++index) {
+        size_t col = index % cols, row = index / cols;
+        while (row_heights.size() <= row) row_heights.push_back(0);
+        float x = node.box.content.x; for (size_t c=0;c<col;++c) x += columns[c] + gap_x;
+        float y = node.box.content.y; for (size_t r=0;r<row;++r) y += row_heights[r] + gap_y;
+        layout_node(*items[index], x, y, columns[col]);
+        row_heights[row] = std::max(row_heights[row], items[index]->rect.height);
+    }
+    float total = 0; for (float h : row_heights) total += h; total += gap_y * std::max(0, (int)row_heights.size()-1);
+    cursor_y = node.box.content.y + total;
 }
 
 void LayoutEngine::layout_absolute_children(LayoutNode& node, float available_width)

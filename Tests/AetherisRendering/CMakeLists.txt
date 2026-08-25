@@ -91,3 +91,15 @@ add_test(NAME AetherisBackgroundTiling COMMAND TestAetherisBackgroundTiling)
 add_executable(TestAetherisFlexLayout TestFlexLayout.cpp)
 target_link_libraries(TestAetherisFlexLayout PRIVATE AetherisRendering)
 add_test(NAME AetherisFlexLayout COMMAND TestAetherisFlexLayout)
+
+add_executable(TestAetherisGridLayout TestGridLayout.cpp)
+target_link_libraries(TestAetherisGridLayout PRIVATE AetherisRendering)
+add_test(NAME AetherisGridLayout COMMAND TestAetherisGridLayout)
+
+add_executable(TestAetherisAdvancedFlexLayout TestAdvancedFlexLayout.cpp)
+target_link_libraries(TestAetherisAdvancedFlexLayout PRIVATE AetherisRendering)
+add_test(NAME AetherisAdvancedFlexLayout COMMAND TestAetherisAdvancedFlexLayout)
+
+add_executable(TestAetherisAdvancedSizing TestAdvancedSizing.cpp)
+target_link_libraries(TestAetherisAdvancedSizing PRIVATE AetherisRendering)
+add_test(NAME AetherisAdvancedSizing COMMAND TestAetherisAdvancedSizing)
