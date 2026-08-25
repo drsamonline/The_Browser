@@ -19,3 +19,14 @@ add_test(
     NAME AetherisDomBuilder
     COMMAND TestAetherisDomBuilder
 )
+
+add_executable(TestAetherisCss
+    TestCss.cpp
+)
+
+target_link_libraries(TestAetherisCss PRIVATE AetherisRendering)
+
+add_test(
+    NAME AetherisCss
+    COMMAND TestAetherisCss
+)
