@@ -5,6 +5,9 @@ add_library(AetherisRendering STATIC
     rendering/document.cpp
     rendering/html_tokenizer.cpp
     rendering/html_tree_builder.cpp
+    rendering/layout.cpp
+    rendering/render_document.cpp
+    rendering/render_tree.cpp
     rendering/style.cpp
 )
 

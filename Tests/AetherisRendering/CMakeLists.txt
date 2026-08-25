@@ -20,13 +20,13 @@ add_test(
     COMMAND TestAetherisDomBuilder
 )
 
-add_executable(TestAetherisCss
-    TestCss.cpp
+add_executable(TestAetherisLayout
+    TestLayout.cpp
 )
 
-target_link_libraries(TestAetherisCss PRIVATE AetherisRendering)
+target_link_libraries(TestAetherisLayout PRIVATE AetherisRendering)
 
 add_test(
-    NAME AetherisCss
-    COMMAND TestAetherisCss
+    NAME AetherisLayout
+    COMMAND TestAetherisLayout
 )
