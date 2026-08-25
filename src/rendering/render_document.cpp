@@ -43,6 +43,22 @@ std::optional<RenderDocument> RenderDocument::create_from_resources(std::string_
     return result;
 }
 
+std::optional<RenderDocument> RenderDocument::create_from_resources(std::string_view document_url, std::vector<std::string> const& stylesheet_urls, float viewport_width, ResourceCache& resources)
+{
+    auto document = resources.get(std::string(document_url));
+    if (!document || document->type != ResourceType::Document) return std::nullopt;
+    std::string css;
+    for (auto const& stylesheet_url : stylesheet_urls) {
+        auto stylesheet = resources.get(stylesheet_url);
+        if (!stylesheet || stylesheet->type != ResourceType::Stylesheet) return std::nullopt;
+        if (!css.empty()) css.push_back('\n');
+        css += resources.get_text(stylesheet_url);
+    }
+    auto result = create(resources.get_text(document->url), css, viewport_width, &resources);
+    result.m_source_url = std::string(document_url);
+    return result;
+}
+
 void RenderDocument::resolve_images(LayoutNode& node)
 {
     if (node.dom_node && node.dom_node->type == DomNodeType::Element && node.dom_node->name == "img") { if (auto src=node.dom_node->attribute("src")) node.image=m_images.load(*src,m_resources); }

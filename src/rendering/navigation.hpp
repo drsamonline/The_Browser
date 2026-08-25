@@ -1,6 +1,7 @@
 #pragma once
 
 #include "render_document.hpp"
+#include "page_lifecycle.hpp"
 #include "resource.hpp"
 #include "resource_loader.hpp"
 #include "url.hpp"
@@ -40,11 +41,15 @@ public:
 
     RenderDocument const* current_document() const;
     Url const& current_url() const { return m_current_url; }
+    PageLifecycleState const& lifecycle() const { return m_lifecycle; }
+    NavigationResult reload(ResourceLoader&);
     bool has_document() const { return m_current_document.has_value(); }
 
 private:
     std::optional<RenderDocument> m_current_document;
     Url m_current_url;
+    PageLifecycleState m_lifecycle;
+    std::optional<NavigationRequest> m_last_request;
 };
 
 } // namespace aetheris::rendering

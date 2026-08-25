@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace aetheris::rendering {
 
@@ -17,6 +18,7 @@ class RenderDocument {
 public:
     static RenderDocument create(std::string_view html, std::string_view css, float viewport_width, ResourceCache* resources = nullptr);
     static std::optional<RenderDocument> create_from_resources(std::string_view document_url, std::string_view stylesheet_url, float viewport_width, ResourceCache& resources);
+    static std::optional<RenderDocument> create_from_resources(std::string_view document_url, std::vector<std::string> const& stylesheet_urls, float viewport_width, ResourceCache& resources);
 
     ResourceCache& resources() { return m_resources; }
     ResourceCache const& resources() const { return m_resources; }

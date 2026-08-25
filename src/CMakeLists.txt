@@ -9,6 +9,7 @@ add_library(AetherisRendering STATIC
     rendering/file_resource_backend.cpp
     rendering/url.cpp
     rendering/navigation.cpp
+    rendering/page_lifecycle.cpp
     rendering/image.cpp
     rendering/font.cpp
     rendering/css_parser.cpp
