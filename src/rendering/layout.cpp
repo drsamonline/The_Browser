@@ -1,5 +1,6 @@
 #include "layout.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 
 namespace aetheris::rendering {
@@ -13,22 +14,19 @@ LayoutNode& LayoutNode::append_child(std::unique_ptr<LayoutNode> child)
 
 std::unique_ptr<LayoutNode> LayoutTreeBuilder::build(DomNode const& document, CssStyleSheet const& sheet) const
 {
-    return build_node(document, sheet, nullptr);
+    return build_node(document, sheet, nullptr, nullptr);
 }
 
-std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, CssStyleSheet const& sheet, LayoutNode* parent) const
+std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, CssStyleSheet const& sheet, LayoutNode* parent, StyleProperties const* parent_style) const
 {
     auto layout_node = std::make_unique<LayoutNode>();
     layout_node->dom_node = &node;
     layout_node->parent = parent;
-    layout_node->style = StyleResolver {}.resolve(node, sheet);
+    layout_node->style = StyleResolver {}.resolve(node, sheet, parent_style);
     layout_node->display = display_for(node, layout_node->style);
 
-    for (auto const& child : node.children) {
-        if (auto child_layout = build_node(*child, sheet, layout_node.get()))
-            layout_node->append_child(std::move(child_layout));
-    }
-
+    for (auto const& child : node.children)
+        layout_node->append_child(build_node(*child, sheet, layout_node.get(), &layout_node->style));
     return layout_node;
 }
 
@@ -39,12 +37,9 @@ LayoutDisplay LayoutTreeBuilder::display_for(DomNode const& node, StylePropertie
             return LayoutDisplay::None;
         if (*value == "inline")
             return LayoutDisplay::Inline;
-        return LayoutDisplay::Block;
     }
-
     if (node.type == DomNodeType::Text)
         return LayoutDisplay::Inline;
-
     return LayoutDisplay::Block;
 }
 
@@ -57,50 +52,67 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
 {
     if (node.display == LayoutDisplay::None) {
         node.rect = {};
+        node.box = {};
         return;
     }
 
-    auto margin_top = resolve_vertical_spacing(node.style, "margin-top");
-    auto margin_bottom = resolve_vertical_spacing(node.style, "margin-bottom");
-    auto padding_top = resolve_vertical_spacing(node.style, "padding-top");
-    auto padding_bottom = resolve_vertical_spacing(node.style, "padding-bottom");
+    node.box.margin = resolve_edges(node.style, "margin");
+    node.box.padding = resolve_edges(node.style, "padding");
+    node.box.border = resolve_edges(node.style, "border");
 
-    auto width = parse_length(node.style.get("width"), available_width);
-    node.rect.x = x;
-    node.rect.y = y + margin_top;
-    node.rect.width = width;
+    float horizontal_noncontent = node.box.margin.left + node.box.margin.right
+        + node.box.padding.left + node.box.padding.right
+        + node.box.border.left + node.box.border.right;
 
-    float cursor_y = node.rect.y + padding_top;
-    float content_height = 0;
+    float specified_width = parse_length(node.style.get("width"), -1);
+    float content_width = specified_width >= 0 ? specified_width : std::max(0.0f, available_width - horizontal_noncontent);
 
+    node.box.content.x = x + node.box.margin.left + node.box.border.left + node.box.padding.left;
+    node.box.content.y = y + node.box.margin.top + node.box.border.top + node.box.padding.top;
+    node.box.content.width = content_width;
+
+    float cursor_y = node.box.content.y;
     for (auto& child : node.children) {
         if (child->display == LayoutDisplay::None)
             continue;
-
-        layout_node(*child, x, cursor_y, width);
+        layout_node(*child, node.box.content.x, cursor_y, content_width);
         cursor_y = child->rect.y + child->rect.height;
-        content_height = cursor_y - (node.rect.y + padding_top);
     }
 
-    auto explicit_height = node.style.get("height");
-    node.rect.height = parse_length(explicit_height, content_height + padding_top + padding_bottom);
-    if (!explicit_height)
-        node.rect.height += margin_bottom;
+    float content_height = cursor_y - node.box.content.y;
+    float specified_height = parse_length(node.style.get("height"), -1);
+    node.box.content.height = specified_height >= 0 ? specified_height : content_height;
+
+    node.rect.x = x + node.box.margin.left;
+    node.rect.y = y + node.box.margin.top;
+    node.rect.width = content_width + node.box.padding.left + node.box.padding.right + node.box.border.left + node.box.border.right;
+    node.rect.height = node.box.content.height + node.box.padding.top + node.box.padding.bottom + node.box.border.top + node.box.border.bottom;
 }
 
 float LayoutEngine::parse_length(std::string const* value, float fallback)
 {
     if (!value || value->empty() || *value == "auto")
         return fallback;
-
     char* end = nullptr;
     auto parsed = std::strtof(value->c_str(), &end);
     return end != value->c_str() ? parsed : fallback;
 }
 
-float LayoutEngine::resolve_vertical_spacing(StyleProperties const& style, char const* property)
+BoxEdges LayoutEngine::resolve_edges(StyleProperties const& style, char const* prefix)
 {
-    return parse_length(style.get(property), 0);
+    std::string base(prefix);
+    auto side = [&](char const* name) {
+        auto direct = base + "-" + name;
+        if (auto value = style.get(direct))
+            return parse_length(value, 0);
+        if (base == "border") {
+            auto width = std::string("border-") + name + "-width";
+            if (auto value = style.get(width))
+                return parse_length(value, 0);
+        }
+        return 0.0f;
+    };
+    return { side("top"), side("right"), side("bottom"), side("left") };
 }
 
 } // namespace aetheris::rendering

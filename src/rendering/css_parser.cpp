@@ -14,6 +14,7 @@ CssStyleSheet CssParser::parse_tokens(std::vector<CssToken> const& tokens)
 {
     CssStyleSheet sheet;
     size_t position = 0;
+    size_t source_order = 0;
 
     while (position < tokens.size() && tokens[position].type != CssTokenType::EndOfFile) {
         while (position < tokens.size() && !is_significant(tokens[position]))
@@ -47,6 +48,7 @@ CssStyleSheet CssParser::parse_tokens(std::vector<CssToken> const& tokens)
 
         CssRule rule;
         rule.selectors = std::move(selectors);
+        rule.source_order = source_order++;
 
         while (position < tokens.size() && tokens[position].type != CssTokenType::EndOfFile) {
             while (position < tokens.size() && tokens[position].type == CssTokenType::Whitespace)
@@ -72,7 +74,7 @@ CssStyleSheet CssParser::parse_tokens(std::vector<CssToken> const& tokens)
                 break;
             }
 
-            ++position; // colon
+            ++position;
             size_t value_begin = position;
             while (position < tokens.size() && tokens[position].type != CssTokenType::Semicolon
                 && tokens[position].type != CssTokenType::CloseBrace)
@@ -93,7 +95,6 @@ CssStyleSheet CssParser::parse_tokens(std::vector<CssToken> const& tokens)
         if (!rule.selectors.empty())
             sheet.rules.push_back(std::move(rule));
     }
-
     return sheet;
 }
 
@@ -102,11 +103,9 @@ std::string CssParser::trim(std::string value)
     size_t begin = 0;
     while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin])))
         ++begin;
-
     size_t end = value.size();
     while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1])))
         --end;
-
     return value.substr(begin, end - begin);
 }
 

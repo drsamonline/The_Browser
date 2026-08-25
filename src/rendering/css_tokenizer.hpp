@@ -18,6 +18,8 @@ enum class CssTokenType {
     CloseBrace,
     OpenParen,
     CloseParen,
+    ChildCombinator,
+    UniversalSelector,
     Delimiter,
     Whitespace,
     EndOfFile,
@@ -33,7 +35,6 @@ struct CssToken {
 class CssTokenizer {
 public:
     explicit CssTokenizer(std::string_view input);
-
     std::vector<CssToken> tokenize();
 
 private:
