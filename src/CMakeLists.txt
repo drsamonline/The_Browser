@@ -1,4 +1,5 @@
 add_library(AetherisRendering STATIC
+    rendering/color.cpp
     rendering/css_parser.cpp
     rendering/css_tokenizer.cpp
     rendering/dom.cpp
@@ -6,8 +7,10 @@ add_library(AetherisRendering STATIC
     rendering/html_tokenizer.cpp
     rendering/html_tree_builder.cpp
     rendering/layout.cpp
+    rendering/paint_executor.cpp
     rendering/render_document.cpp
     rendering/render_tree.cpp
+    rendering/software_surface.cpp
     rendering/style.cpp
     rendering/text_layout.cpp
 )

@@ -24,4 +24,11 @@ RenderDocument RenderDocument::create(std::string_view html, std::string_view cs
     return RenderDocument(std::move(document), std::move(layout_root), std::move(render_tree));
 }
 
+SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color clear_color) const
+{
+    SoftwareSurface surface(width, height, clear_color);
+    PaintExecutor {}.execute(m_render_tree, surface);
+    return surface;
+}
+
 } // namespace aetheris::rendering

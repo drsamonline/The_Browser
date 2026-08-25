@@ -1,8 +1,10 @@
 #pragma once
 
 #include "document.hpp"
+#include "paint_executor.hpp"
 #include "render_tree.hpp"
 
+#include <memory>
 #include <string_view>
 
 namespace aetheris::rendering {
@@ -14,6 +16,8 @@ public:
     Document const& document() const { return m_document; }
     LayoutNode const& layout_root() const { return *m_layout_root; }
     RenderTree const& render_tree() const { return m_render_tree; }
+
+    SoftwareSurface render_to_surface(int width, int height, Color clear_color = { 255, 255, 255, 255 }) const;
 
 private:
     Document m_document;

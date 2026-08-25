@@ -40,3 +40,10 @@ add_executable(TestAetherisTextLayout
 )
 target_link_libraries(TestAetherisTextLayout PRIVATE AetherisRendering)
 add_test(NAME AetherisTextLayout COMMAND TestAetherisTextLayout)
+
+
+add_executable(TestAetherisPaintBackend
+    TestPaintBackend.cpp
+)
+target_link_libraries(TestAetherisPaintBackend PRIVATE AetherisRendering)
+add_test(NAME AetherisPaintBackend COMMAND TestAetherisPaintBackend)
