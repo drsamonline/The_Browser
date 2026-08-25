@@ -47,3 +47,28 @@ RenderDocument const* NavigationController::current_document() const
 }
 
 } // namespace aetheris::rendering
+
+namespace aetheris::rendering {
+
+NavigationResult NavigationController::navigate(NavigationRequest const& request, ResourceLoader& loader)
+{
+    if (!request.document_url.is_valid())
+        return { NavigationError::InvalidUrl, "Navigation requires a document URL" };
+    if (request.viewport_width <= 0)
+        return { NavigationError::DocumentCreationFailed, "Navigation requires a positive viewport width" };
+
+    auto document = loader.load(ResourceType::Document, request.document_url);
+    if (!document.succeeded())
+        return { NavigationError::MissingDocument, document.message };
+
+    if (!request.stylesheet_url)
+        return { NavigationError::MissingStylesheet, "Navigation currently requires an explicit stylesheet resource" };
+    auto stylesheet_url = request.stylesheet_url->is_absolute() ? *request.stylesheet_url : Url::resolve(request.document_url, request.stylesheet_url->serialized());
+    auto stylesheet = loader.load(ResourceType::Stylesheet, stylesheet_url);
+    if (!stylesheet.succeeded())
+        return { NavigationError::MissingStylesheet, stylesheet.message };
+
+    return navigate(request, loader.cache());
+}
+
+} // namespace aetheris::rendering

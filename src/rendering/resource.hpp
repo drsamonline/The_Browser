@@ -13,6 +13,7 @@ enum class ResourceType {
     Stylesheet,
     Image,
     Font,
+    Binary,
 };
 
 struct ResourceData {

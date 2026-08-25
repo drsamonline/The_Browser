@@ -4,7 +4,9 @@ add_library(AetherisRendering STATIC
     rendering/color.cpp
     rendering/image_output.cpp
     rendering/resource.cpp
+    rendering/content_type.cpp
     rendering/resource_loader.cpp
+    rendering/file_resource_backend.cpp
     rendering/url.cpp
     rendering/navigation.cpp
     rendering/image.cpp

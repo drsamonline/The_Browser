@@ -2,6 +2,7 @@
 
 #include "render_document.hpp"
 #include "resource.hpp"
+#include "resource_loader.hpp"
 #include "url.hpp"
 
 #include <optional>
@@ -35,6 +36,7 @@ struct NavigationResult {
 class NavigationController {
 public:
     NavigationResult navigate(NavigationRequest const&, ResourceCache&);
+    NavigationResult navigate(NavigationRequest const&, ResourceLoader&);
 
     RenderDocument const* current_document() const;
     Url const& current_url() const { return m_current_url; }
