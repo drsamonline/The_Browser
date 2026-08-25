@@ -27,6 +27,7 @@ public:
     void draw_image(LayoutRect const&, Image const&, std::optional<RoundedRect> clip = {});
     void draw_image(LayoutRect const&, Image const&, std::string_view object_fit, std::optional<RoundedRect> clip = {});
     void draw_shadow(LayoutRect const&, float offset_x, float offset_y, float blur, Color, std::optional<RoundedRect> clip = {});
+    void draw_background_image(LayoutRect const&, Image const&, std::string_view repeat, std::string_view position, std::string_view size, std::optional<RoundedRect> clip = {});
 
     Color pixel(int x, int y) const;
     std::vector<uint32_t> const& pixels() const { return m_pixels; }

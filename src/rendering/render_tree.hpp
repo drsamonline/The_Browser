@@ -18,6 +18,8 @@ struct PaintCommand {
         DrawImage,
         DrawShadow,
         DrawOutline,
+        PushStackingContext,
+        PopStackingContext,
     };
 
     Type type { Type::FillRect };
@@ -33,6 +35,10 @@ struct PaintCommand {
     float shadow_offset_y { 0 };
     float shadow_blur { 0 };
     std::string image_fit { "fill" };
+    std::string background_repeat { "no-repeat" };
+    std::string background_position { "0 0" };
+    std::string background_size { "auto" };
+    int z_index { 0 };
     float opacity { 1 };
     bool push_clip { false };
     bool pop_clip { false };

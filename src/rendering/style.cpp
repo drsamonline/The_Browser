@@ -226,6 +226,12 @@ void StyleResolver::apply_initial_values(DomNode const& node, StyleProperties& p
     properties.set("position", "static");
     properties.set("border-style", "solid");
     properties.set("border-radius", "0");
+    properties.set("overflow", "visible");
+    properties.set("z-index", "auto");
+    properties.set("background-repeat", "repeat");
+    properties.set("background-position", "0 0");
+    properties.set("background-size", "auto");
+    properties.set("object-fit", "fill");
 }
 
 } // namespace aetheris::rendering

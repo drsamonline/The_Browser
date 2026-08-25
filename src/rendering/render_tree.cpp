@@ -1,10 +1,14 @@
 #include "render_tree.hpp"
 
 #include <cstdlib>
+#include <algorithm>
+#include <sstream>
 
 namespace aetheris::rendering {
 
 namespace {
+int z_index(LayoutNode const& node) { auto value=node.style.get("z-index"); if (!value || *value=="auto") return 0; char* end=nullptr; long parsed=std::strtol(value->c_str(), &end, 10); return end==value->c_str()?0:static_cast<int>(parsed); }
+
 float number(std::string const* value, float fallback)
 {
     if (!value)
@@ -53,7 +57,7 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
         }
     } else if (node.dom_node && node.dom_node->type == DomNodeType::Element) {
         if (auto shadow = node.style.get("box-shadow")) { PaintCommand command; command.type=PaintCommand::Type::DrawShadow; command.rect=node.rect; command.opacity=opacity; std::istringstream stream(*shadow); std::string x,y,blur,color; stream>>x>>y>>blur>>color; command.shadow_offset_x=number(&x,0); command.shadow_offset_y=number(&y,0); command.shadow_blur=number(&blur,0); command.color=color.empty()?"black":color; commands.push_back(std::move(command)); }
-        if (node.background_image) { PaintCommand command; command.type=PaintCommand::Type::DrawImage; command.rect=node.box.content; command.image=node.background_image; command.image_fit="cover"; command.opacity=opacity; commands.push_back(std::move(command)); }
+        if (node.background_image) { PaintCommand command; command.type=PaintCommand::Type::DrawImage; command.rect=node.box.content; command.image=node.background_image; command.image_fit="fill"; command.background_repeat=node.style.get("background-repeat") ? *node.style.get("background-repeat") : "repeat"; command.background_position=node.style.get("background-position") ? *node.style.get("background-position") : "0 0"; command.background_size=node.style.get("background-size") ? *node.style.get("background-size") : "auto"; command.opacity=opacity; commands.push_back(std::move(command)); }
         if (node.dom_node->name == "img" && node.image) { PaintCommand command; command.type = PaintCommand::Type::DrawImage; command.rect = node.box.content; command.image = node.image; command.image_fit = node.style.get("object-fit") ? *node.style.get("object-fit") : "fill"; command.opacity = opacity; commands.push_back(std::move(command)); }
         if (auto outline=node.style.get("outline")) { std::istringstream stream(*outline); std::string width,style,color; stream>>width>>style>>color; PaintCommand command; command.type=PaintCommand::Type::DrawOutline; command.rect=node.rect; float w=number(&width,0); command.edges={w,w,w,w}; command.border_style=style.empty()?"solid":style; command.color=color.empty()?"black":color; command.opacity=opacity; commands.push_back(std::move(command)); }
         if (auto background = node.style.get("background-color")) {
@@ -79,7 +83,14 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
         }
     }
 
+    std::vector<LayoutNode const*> ordered_children;
+    ordered_children.reserve(node.children.size());
     for (auto const& child : node.children)
+        ordered_children.push_back(child.get());
+    std::stable_sort(ordered_children.begin(), ordered_children.end(), [](auto const* a, auto const* b) {
+        return z_index(*a) < z_index(*b);
+    });
+    for (auto const* child : ordered_children)
         emit(*child, commands, opacity);
 
     if (clips_children) {

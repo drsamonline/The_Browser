@@ -44,7 +44,12 @@ void PaintExecutor::execute(RenderTree const& tree, SoftwareSurface& surface) co
             surface.fill_text_cell(command.rect, color, clip);
             break;
         case PaintCommand::Type::DrawImage:
-            if (command.image) surface.draw_image(command.rect, *command.image, command.image_fit, clip);
+            if (command.image) {
+                if (command.background_repeat != "no-repeat" || command.background_size != "auto" || command.background_position != "0 0")
+                    surface.draw_background_image(command.rect, *command.image, command.background_repeat, command.background_position, command.background_size, clip);
+                else
+                    surface.draw_image(command.rect, *command.image, command.image_fit, clip);
+            }
             break;
         case PaintCommand::Type::DrawShadow:
             surface.draw_shadow(command.rect, command.shadow_offset_x, command.shadow_offset_y, command.shadow_blur, color, clip);

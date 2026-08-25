@@ -184,4 +184,26 @@ void SoftwareSurface::draw_shadow(LayoutRect const& rect,float ox,float oy,float
 {
     int spread=std::max(0,int(std::ceil(blur))); LayoutRect shadow{rect.x+ox-spread,rect.y+oy-spread,rect.width+2*spread,rect.height+2*spread}; color.alpha=uint8_t(color.alpha/std::max(1,spread+1)); fill_rect(shadow,color,clip);
 }
+void SoftwareSurface::draw_background_image(LayoutRect const& rect, Image const& image, std::string_view repeat, std::string_view position, std::string_view size, std::optional<RoundedRect> clip)
+{
+    if (!image.valid() || rect.width <= 0 || rect.height <= 0) return;
+    float tile_w = static_cast<float>(image.width), tile_h = static_cast<float>(image.height);
+    if (size == "cover" || size == "contain") {
+        float scale = size == "cover" ? std::max(rect.width/tile_w, rect.height/tile_h) : std::min(rect.width/tile_w, rect.height/tile_h);
+        tile_w *= scale; tile_h *= scale;
+    } else if (size == "100% 100%") { tile_w = rect.width; tile_h = rect.height; }
+    float ox = rect.x, oy = rect.y;
+    if (position.find("center") != std::string_view::npos) { ox += (rect.width-tile_w)/2; oy += (rect.height-tile_h)/2; }
+    else if (position.find("right") != std::string_view::npos) ox += rect.width-tile_w;
+    else if (position.find("bottom") != std::string_view::npos) oy += rect.height-tile_h;
+    int x_count = (repeat == "repeat" || repeat == "repeat-x") ? static_cast<int>(std::ceil(rect.width/tile_w))+2 : 1;
+    int y_count = (repeat == "repeat" || repeat == "repeat-y") ? static_cast<int>(std::ceil(rect.height/tile_h))+2 : 1;
+    if (repeat == "no-repeat") { x_count=1; y_count=1; }
+    auto effective_clip = clip.value_or(RoundedRect{rect,0});
+    for (int yi=0; yi<y_count; ++yi)
+        for (int xi=0; xi<x_count; ++xi) {
+            LayoutRect tile{ox + xi*tile_w, oy + yi*tile_h, tile_w, tile_h};
+            draw_image(tile, image, "fill", effective_clip);
+        }
+}
 }
