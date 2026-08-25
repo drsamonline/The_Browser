@@ -52,7 +52,10 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
             commands.push_back(std::move(command));
         }
     } else if (node.dom_node && node.dom_node->type == DomNodeType::Element) {
-        if (node.dom_node->name == "img" && node.image) { PaintCommand command; command.type = PaintCommand::Type::DrawImage; command.rect = node.box.content; command.image = node.image; command.opacity = opacity; commands.push_back(std::move(command)); }
+        if (auto shadow = node.style.get("box-shadow")) { PaintCommand command; command.type=PaintCommand::Type::DrawShadow; command.rect=node.rect; command.opacity=opacity; std::istringstream stream(*shadow); std::string x,y,blur,color; stream>>x>>y>>blur>>color; command.shadow_offset_x=number(&x,0); command.shadow_offset_y=number(&y,0); command.shadow_blur=number(&blur,0); command.color=color.empty()?"black":color; commands.push_back(std::move(command)); }
+        if (node.background_image) { PaintCommand command; command.type=PaintCommand::Type::DrawImage; command.rect=node.box.content; command.image=node.background_image; command.image_fit="cover"; command.opacity=opacity; commands.push_back(std::move(command)); }
+        if (node.dom_node->name == "img" && node.image) { PaintCommand command; command.type = PaintCommand::Type::DrawImage; command.rect = node.box.content; command.image = node.image; command.image_fit = node.style.get("object-fit") ? *node.style.get("object-fit") : "fill"; command.opacity = opacity; commands.push_back(std::move(command)); }
+        if (auto outline=node.style.get("outline")) { std::istringstream stream(*outline); std::string width,style,color; stream>>width>>style>>color; PaintCommand command; command.type=PaintCommand::Type::DrawOutline; command.rect=node.rect; float w=number(&width,0); command.edges={w,w,w,w}; command.border_style=style.empty()?"solid":style; command.color=color.empty()?"black":color; command.opacity=opacity; commands.push_back(std::move(command)); }
         if (auto background = node.style.get("background-color")) {
             PaintCommand command;
             command.type = radius > 0 ? PaintCommand::Type::FillRoundedRect : PaintCommand::Type::FillRect;

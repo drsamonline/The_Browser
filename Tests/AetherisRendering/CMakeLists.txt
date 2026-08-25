@@ -75,3 +75,7 @@ add_test(NAME AetherisResourcesImages COMMAND TestAetherisResourcesImages)
 add_executable(TestAetherisTypographyResources TestTypographyResources.cpp)
 target_link_libraries(TestAetherisTypographyResources PRIVATE AetherisRendering)
 add_test(NAME AetherisTypographyResources COMMAND TestAetherisTypographyResources)
+
+add_executable(TestAetherisAdvancedVisuals TestAdvancedVisuals.cpp)
+target_link_libraries(TestAetherisAdvancedVisuals PRIVATE AetherisRendering)
+add_test(NAME AetherisAdvancedVisuals COMMAND TestAetherisAdvancedVisuals)

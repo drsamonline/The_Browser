@@ -44,7 +44,13 @@ void PaintExecutor::execute(RenderTree const& tree, SoftwareSurface& surface) co
             surface.fill_text_cell(command.rect, color, clip);
             break;
         case PaintCommand::Type::DrawImage:
-            if (command.image) surface.draw_image(command.rect, *command.image, clip);
+            if (command.image) surface.draw_image(command.rect, *command.image, command.image_fit, clip);
+            break;
+        case PaintCommand::Type::DrawShadow:
+            surface.draw_shadow(command.rect, command.shadow_offset_x, command.shadow_offset_y, command.shadow_blur, color, clip);
+            break;
+        case PaintCommand::Type::DrawOutline:
+            surface.stroke_rect(command.rect, command.edges, color, clip, command.border_style);
             break;
         }
     }

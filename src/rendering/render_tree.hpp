@@ -16,6 +16,8 @@ struct PaintCommand {
         StrokeRoundedRect,
         DrawText,
         DrawImage,
+        DrawShadow,
+        DrawOutline,
     };
 
     Type type { Type::FillRect };
@@ -27,6 +29,10 @@ struct PaintCommand {
     float baseline { 0 };
     float radius { 0 };
     std::shared_ptr<Image const> image;
+    float shadow_offset_x { 0 };
+    float shadow_offset_y { 0 };
+    float shadow_blur { 0 };
+    std::string image_fit { "fill" };
     float opacity { 1 };
     bool push_clip { false };
     bool pop_clip { false };

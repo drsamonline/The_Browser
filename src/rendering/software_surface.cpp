@@ -169,3 +169,19 @@ void SoftwareSurface::draw_image(LayoutRect const& rect, Image const& image, std
 }
 
 } // namespace aetheris::rendering
+
+namespace aetheris::rendering {
+void SoftwareSurface::draw_image(LayoutRect const& rect, Image const& image, std::string_view object_fit, std::optional<RoundedRect> clip)
+{
+    if (!image.valid() || rect.width <= 0 || rect.height <= 0) return;
+    LayoutRect target=rect;
+    float iw=float(image.width), ih=float(image.height), rw=rect.width, rh=rect.height;
+    if (object_fit == "contain" || object_fit == "cover") { float scale=(object_fit=="contain")?std::min(rw/iw,rh/ih):std::max(rw/iw,rh/ih); target.width=iw*scale; target.height=ih*scale; target.x=rect.x+(rw-target.width)/2; target.y=rect.y+(rh-target.height)/2; }
+    int left=std::max(0,int(std::floor(target.x))), top=std::max(0,int(std::floor(target.y))), right=std::min(m_width,int(std::ceil(target.x+target.width))), bottom=std::min(m_height,int(std::ceil(target.y+target.height)));
+    for(int y=top;y<bottom;++y) for(int x=left;x<right;++x) { if(!accepts(x,y,clip)) continue; int sx=std::clamp(int((x-target.x)*image.width/target.width),0,image.width-1); int sy=std::clamp(int((y-target.y)*image.height/target.height),0,image.height-1); blend_pixel(x,y,image.pixel(sx,sy)); }
+}
+void SoftwareSurface::draw_shadow(LayoutRect const& rect,float ox,float oy,float blur,Color color,std::optional<RoundedRect> clip)
+{
+    int spread=std::max(0,int(std::ceil(blur))); LayoutRect shadow{rect.x+ox-spread,rect.y+oy-spread,rect.width+2*spread,rect.height+2*spread}; color.alpha=uint8_t(color.alpha/std::max(1,spread+1)); fill_rect(shadow,color,clip);
+}
+}

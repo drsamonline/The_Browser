@@ -31,6 +31,7 @@ RenderDocument RenderDocument::create(std::string_view html, std::string_view cs
 void RenderDocument::resolve_images(LayoutNode& node)
 {
     if (node.dom_node && node.dom_node->type == DomNodeType::Element && node.dom_node->name == "img") { if (auto src=node.dom_node->attribute("src")) node.image=m_images.load(*src,m_resources); }
+    if (auto background = node.style.get("background-image")) { auto value=*background; auto open=value.find("url("); auto close=value.rfind(')'); if(open!=std::string::npos && close!=std::string::npos && close>open+4) { auto url=value.substr(open+4,close-(open+4)); if(!url.empty() && (url.front()=='"' || url.front()=='\'')) url=url.substr(1,url.size()-2); node.background_image=m_images.load(url,m_resources); } }
     for (auto& child : node.children) resolve_images(*child);
 }
 

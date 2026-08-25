@@ -52,6 +52,7 @@ struct LayoutNode {
     BoxModel box;
     std::vector<TextFragment> text_fragments;
     std::shared_ptr<Image const> image;
+    std::shared_ptr<Image const> background_image;
     std::vector<std::unique_ptr<LayoutNode>> children;
     LayoutNode* parent { nullptr };
 

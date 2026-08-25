@@ -25,6 +25,8 @@ public:
     void stroke_rounded_rect(LayoutRect const&, float radius, BoxEdges const&, Color, std::optional<RoundedRect> clip = {}, std::string_view style = "solid");
     void fill_text_cell(LayoutRect const&, Color, std::optional<RoundedRect> clip = {});
     void draw_image(LayoutRect const&, Image const&, std::optional<RoundedRect> clip = {});
+    void draw_image(LayoutRect const&, Image const&, std::string_view object_fit, std::optional<RoundedRect> clip = {});
+    void draw_shadow(LayoutRect const&, float offset_x, float offset_y, float blur, Color, std::optional<RoundedRect> clip = {});
 
     Color pixel(int x, int y) const;
     std::vector<uint32_t> const& pixels() const { return m_pixels; }
