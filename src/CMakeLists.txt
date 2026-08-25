@@ -9,6 +9,7 @@ add_library(AetherisRendering STATIC
     rendering/render_document.cpp
     rendering/render_tree.cpp
     rendering/style.cpp
+    rendering/text_layout.cpp
 )
 
 target_include_directories(AetherisRendering

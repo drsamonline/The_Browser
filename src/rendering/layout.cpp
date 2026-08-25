@@ -1,5 +1,7 @@
 #include "layout.hpp"
 
+#include "text_layout.hpp"
+
 #include <algorithm>
 #include <cstdlib>
 
@@ -53,6 +55,7 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
     if (node.display == LayoutDisplay::None) {
         node.rect = {};
         node.box = {};
+        node.text_fragments.clear();
         return;
     }
 
@@ -71,22 +74,49 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
     node.box.content.y = y + node.box.margin.top + node.box.border.top + node.box.padding.top;
     node.box.content.width = content_width;
 
-    float cursor_y = node.box.content.y;
-    for (auto& child : node.children) {
-        if (child->display == LayoutDisplay::None)
-            continue;
-        layout_node(*child, node.box.content.x, cursor_y, content_width);
-        cursor_y = child->rect.y + child->rect.height;
-    }
+    if (node.dom_node && node.dom_node->type == DomNodeType::Text) {
+        node.text_fragments = TextLayout::layout(node.dom_node->data, node.box.content.x, node.box.content.y, content_width, node.style);
+        float line_height = TextLayout::line_height(node.style);
+        node.box.content.height = node.text_fragments.empty() ? 0
+            : node.text_fragments.back().rect.y + line_height - node.box.content.y;
+    } else {
+        float cursor_y = node.box.content.y;
+        bool has_inline = false;
+        for (auto const& child : node.children)
+            has_inline = has_inline || child->display == LayoutDisplay::Inline;
 
-    float content_height = cursor_y - node.box.content.y;
-    float specified_height = parse_length(node.style.get("height"), -1);
-    node.box.content.height = specified_height >= 0 ? specified_height : content_height;
+        if (has_inline)
+            layout_inline_children(node, node.box.content.x, cursor_y, content_width, cursor_y);
+        else {
+            for (auto& child : node.children) {
+                if (child->display == LayoutDisplay::None)
+                    continue;
+                layout_node(*child, node.box.content.x, cursor_y, content_width);
+                cursor_y = child->rect.y + child->rect.height;
+            }
+        }
+
+        float content_height = cursor_y - node.box.content.y;
+        float specified_height = parse_length(node.style.get("height"), -1);
+        node.box.content.height = specified_height >= 0 ? specified_height : content_height;
+    }
 
     node.rect.x = x + node.box.margin.left;
     node.rect.y = y + node.box.margin.top;
     node.rect.width = content_width + node.box.padding.left + node.box.padding.right + node.box.border.left + node.box.border.right;
     node.rect.height = node.box.content.height + node.box.padding.top + node.box.padding.bottom + node.box.border.top + node.box.border.bottom;
+}
+
+void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, float available_width, float& cursor_y)
+{
+    float max_bottom = y;
+    for (auto& child : node.children) {
+        if (child->display == LayoutDisplay::None)
+            continue;
+        layout_node(*child, x, cursor_y, available_width);
+        max_bottom = std::max(max_bottom, child->rect.y + child->rect.height);
+    }
+    cursor_y = max_bottom;
 }
 
 float LayoutEngine::parse_length(std::string const* value, float fallback)

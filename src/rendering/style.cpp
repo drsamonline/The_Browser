@@ -265,7 +265,8 @@ void StyleResolver::apply_declaration(StyleProperties& properties, CssDeclaratio
 bool StyleResolver::is_inherited_property(std::string const& property)
 {
     return property == "color" || property == "font-family" || property == "font-size"
-        || property == "font-weight" || property == "line-height" || property == "text-align";
+        || property == "font-weight" || property == "line-height" || property == "text-align"
+        || property == "white-space";
 }
 
 void StyleResolver::apply_initial_values(DomNode const& node, StyleProperties& properties)
@@ -280,6 +281,7 @@ void StyleResolver::apply_initial_values(DomNode const& node, StyleProperties& p
     properties.set("color", "black");
     properties.set("font-size", "16px");
     properties.set("line-height", "normal");
+    properties.set("white-space", "normal");
 }
 
 } // namespace aetheris::rendering

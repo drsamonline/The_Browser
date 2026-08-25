@@ -36,12 +36,19 @@ enum class LayoutDisplay {
     None,
 };
 
+struct TextFragment {
+    std::string text;
+    LayoutRect rect;
+    float baseline { 0 };
+};
+
 struct LayoutNode {
     DomNode const* dom_node { nullptr };
     StyleProperties style;
     LayoutDisplay display { LayoutDisplay::Block };
     LayoutRect rect;
     BoxModel box;
+    std::vector<TextFragment> text_fragments;
     std::vector<std::unique_ptr<LayoutNode>> children;
     LayoutNode* parent { nullptr };
 
@@ -63,6 +70,7 @@ public:
 
 private:
     static void layout_node(LayoutNode& node, float x, float y, float available_width);
+    static void layout_inline_children(LayoutNode& node, float x, float y, float available_width, float& cursor_y);
     static float parse_length(std::string const* value, float fallback);
     static BoxEdges resolve_edges(StyleProperties const& style, char const* prefix);
 };

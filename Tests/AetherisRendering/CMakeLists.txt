@@ -33,3 +33,10 @@ add_executable(TestAetherisBoxModel
 )
 target_link_libraries(TestAetherisBoxModel PRIVATE AetherisRendering)
 add_test(NAME AetherisBoxModel COMMAND TestAetherisBoxModel)
+
+
+add_executable(TestAetherisTextLayout
+    TestTextLayout.cpp
+)
+target_link_libraries(TestAetherisTextLayout PRIVATE AetherisRendering)
+add_test(NAME AetherisTextLayout COMMAND TestAetherisTextLayout)

@@ -2,7 +2,6 @@
 
 #include "layout.hpp"
 
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -18,6 +17,7 @@ struct PaintCommand {
     LayoutRect rect;
     std::string text;
     std::string color;
+    float baseline { 0 };
 };
 
 class RenderTree {
