@@ -47,3 +47,10 @@ add_executable(TestAetherisPaintBackend
 )
 target_link_libraries(TestAetherisPaintBackend PRIVATE AetherisRendering)
 add_test(NAME AetherisPaintBackend COMMAND TestAetherisPaintBackend)
+
+
+add_executable(TestAetherisPaintEffects
+    TestPaintEffects.cpp
+)
+target_link_libraries(TestAetherisPaintEffects PRIVATE AetherisRendering)
+add_test(NAME AetherisPaintEffects COMMAND TestAetherisPaintEffects)

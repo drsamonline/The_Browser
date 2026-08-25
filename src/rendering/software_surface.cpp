@@ -22,10 +22,19 @@ bool SoftwareSurface::contains(int x, int y) const
     return x >= 0 && y >= 0 && x < m_width && y < m_height;
 }
 
-void SoftwareSurface::set_pixel(int x, int y, Color color)
+void SoftwareSurface::blend_pixel(int x, int y, Color color)
 {
-    if (contains(x, y))
-        m_pixels[static_cast<size_t>(y) * static_cast<size_t>(m_width) + static_cast<size_t>(x)] = color.rgba();
+    if (!contains(x, y))
+        return;
+    auto index = static_cast<size_t>(y) * static_cast<size_t>(m_width) + static_cast<size_t>(x);
+    auto old = m_pixels[index];
+    Color destination {
+        static_cast<uint8_t>(old >> 24),
+        static_cast<uint8_t>(old >> 16),
+        static_cast<uint8_t>(old >> 8),
+        static_cast<uint8_t>(old),
+    };
+    m_pixels[index] = Color::blend_over(color, destination).rgba();
 }
 
 Color SoftwareSurface::pixel(int x, int y) const
@@ -41,33 +50,56 @@ Color SoftwareSurface::pixel(int x, int y) const
     };
 }
 
-void SoftwareSurface::fill_rect(LayoutRect const& rect, Color color)
+std::optional<LayoutRect> SoftwareSurface::clipped(LayoutRect const& rect, std::optional<LayoutRect> const& clip)
 {
-    auto left = static_cast<int>(std::floor(rect.x));
-    auto top = static_cast<int>(std::floor(rect.y));
-    auto right = static_cast<int>(std::ceil(rect.x + rect.width));
-    auto bottom = static_cast<int>(std::ceil(rect.y + rect.height));
+    if (!clip)
+        return rect;
+    auto left = std::max(rect.x, clip->x);
+    auto top = std::max(rect.y, clip->y);
+    auto right = std::min(rect.x + rect.width, clip->x + clip->width);
+    auto bottom = std::min(rect.y + rect.height, clip->y + clip->height);
+    if (right <= left || bottom <= top)
+        return {};
+    return LayoutRect { left, top, right - left, bottom - top };
+}
 
-    left = std::clamp(left, 0, m_width);
-    right = std::clamp(right, 0, m_width);
-    top = std::clamp(top, 0, m_height);
-    bottom = std::clamp(bottom, 0, m_height);
+void SoftwareSurface::fill_rect(LayoutRect const& source_rect, Color color, std::optional<LayoutRect> clip)
+{
+    auto clipped_rect = clipped(source_rect, clip);
+    if (!clipped_rect)
+        return;
+
+    auto const& rect = *clipped_rect;
+    auto left = std::clamp(static_cast<int>(std::floor(rect.x)), 0, m_width);
+    auto top = std::clamp(static_cast<int>(std::floor(rect.y)), 0, m_height);
+    auto right = std::clamp(static_cast<int>(std::ceil(rect.x + rect.width)), 0, m_width);
+    auto bottom = std::clamp(static_cast<int>(std::ceil(rect.y + rect.height)), 0, m_height);
 
     for (int y = top; y < bottom; ++y)
         for (int x = left; x < right; ++x)
-            set_pixel(x, y, color);
+            blend_pixel(x, y, color);
 }
 
-void SoftwareSurface::fill_text_cell(LayoutRect const& rect, Color color)
+void SoftwareSurface::stroke_rect(LayoutRect const& rect, BoxEdges const& edges, Color color, std::optional<LayoutRect> clip)
 {
-    // Deterministic temporary glyph-cell rasterization. Real glyph shaping/rasterization
-    // will replace this backend hook without changing the paint command interface.
+    if (edges.top > 0)
+        fill_rect({ rect.x, rect.y, rect.width, edges.top }, color, clip);
+    if (edges.bottom > 0)
+        fill_rect({ rect.x, rect.y + rect.height - edges.bottom, rect.width, edges.bottom }, color, clip);
+    if (edges.left > 0)
+        fill_rect({ rect.x, rect.y, edges.left, rect.height }, color, clip);
+    if (edges.right > 0)
+        fill_rect({ rect.x + rect.width - edges.right, rect.y, edges.right, rect.height }, color, clip);
+}
+
+void SoftwareSurface::fill_text_cell(LayoutRect const& rect, Color color, std::optional<LayoutRect> clip)
+{
     auto glyph = rect;
     glyph.x += 1;
     glyph.y += 1;
     glyph.width = std::max(0.0f, glyph.width - 2);
     glyph.height = std::max(0.0f, glyph.height * 0.7f - 1);
-    fill_rect(glyph, color);
+    fill_rect(glyph, color, clip);
 }
 
 } // namespace aetheris::rendering

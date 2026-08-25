@@ -1,5 +1,6 @@
 #pragma once
 
+#include "clip.hpp"
 #include "render_tree.hpp"
 #include "software_surface.hpp"
 

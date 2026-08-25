@@ -21,6 +21,7 @@ struct Color {
     }
 
     static std::optional<Color> parse(std::string_view);
+    static Color blend_over(Color source, Color destination);
 };
 
 } // namespace aetheris::rendering

@@ -4,6 +4,7 @@
 #include "layout.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace aetheris::rendering {
@@ -16,15 +17,17 @@ public:
     int height() const { return m_height; }
 
     void clear(Color);
-    void fill_rect(LayoutRect const&, Color);
-    void fill_text_cell(LayoutRect const&, Color);
+    void fill_rect(LayoutRect const&, Color, std::optional<LayoutRect> clip = {});
+    void stroke_rect(LayoutRect const&, BoxEdges const&, Color, std::optional<LayoutRect> clip = {});
+    void fill_text_cell(LayoutRect const&, Color, std::optional<LayoutRect> clip = {});
 
     Color pixel(int x, int y) const;
     std::vector<uint32_t> const& pixels() const { return m_pixels; }
 
 private:
     bool contains(int x, int y) const;
-    void set_pixel(int x, int y, Color);
+    void blend_pixel(int x, int y, Color);
+    static std::optional<LayoutRect> clipped(LayoutRect const&, std::optional<LayoutRect> const&);
 
     int m_width { 0 };
     int m_height { 0 };

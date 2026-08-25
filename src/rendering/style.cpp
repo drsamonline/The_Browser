@@ -25,7 +25,7 @@ bool StyleProperties::contains(std::string const& property) const
 
 void StyleProperties::inherit_from(StyleProperties const& parent)
 {
-    for (auto const* property : { "color", "font-family", "font-size", "font-weight", "line-height", "text-align" }) {
+    for (auto const* property : { "color", "font-family", "font-size", "font-weight", "line-height", "text-align", "white-space" }) {
         if (!contains(property)) {
             if (auto value = parent.get(property))
                 set(property, *value);
@@ -241,7 +241,7 @@ int StyleResolver::specificity(std::string const& selector)
 
 void StyleResolver::apply_declaration(StyleProperties& properties, CssDeclaration const& declaration)
 {
-    if (declaration.property == "margin" || declaration.property == "padding") {
+    if (declaration.property == "margin" || declaration.property == "padding" || declaration.property == "border-width") {
         std::istringstream stream(declaration.value);
         std::vector<std::string> values;
         std::string value;
@@ -257,6 +257,12 @@ void StyleResolver::apply_declaration(StyleProperties& properties, CssDeclaratio
         properties.set(declaration.property + "-right", right);
         properties.set(declaration.property + "-bottom", bottom);
         properties.set(declaration.property + "-left", left);
+        if (declaration.property == "border-width") {
+            properties.set("border-top-width", top);
+            properties.set("border-right-width", right);
+            properties.set("border-bottom-width", bottom);
+            properties.set("border-left-width", left);
+        }
         return;
     }
     properties.set(declaration.property, declaration.value);

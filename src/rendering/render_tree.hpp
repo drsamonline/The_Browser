@@ -10,14 +10,18 @@ namespace aetheris::rendering {
 struct PaintCommand {
     enum class Type {
         FillRect,
+        StrokeRect,
         DrawText,
     };
 
     Type type { Type::FillRect };
     LayoutRect rect;
+    BoxEdges edges;
     std::string text;
     std::string color;
     float baseline { 0 };
+    bool push_clip { false };
+    bool pop_clip { false };
 };
 
 class RenderTree {

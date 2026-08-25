@@ -59,4 +59,29 @@ std::optional<Color> Color::parse(std::string_view value)
     return {};
 }
 
+
+Color Color::blend_over(Color source, Color destination)
+{
+    auto source_alpha = static_cast<unsigned int>(source.alpha);
+    auto destination_alpha = static_cast<unsigned int>(destination.alpha);
+    auto inverse_source_alpha = 255u - source_alpha;
+    auto out_alpha = source_alpha + (destination_alpha * inverse_source_alpha + 127) / 255;
+
+    if (out_alpha == 0)
+        return { 0, 0, 0, 0 };
+
+    auto blend_channel = [&](uint8_t source_channel, uint8_t destination_channel) {
+        auto source_premultiplied = static_cast<unsigned int>(source_channel) * source_alpha;
+        auto destination_premultiplied = static_cast<unsigned int>(destination_channel) * destination_alpha * inverse_source_alpha / 255;
+        return static_cast<uint8_t>((source_premultiplied + destination_premultiplied + out_alpha / 2) / out_alpha);
+    };
+
+    return {
+        blend_channel(source.red, destination.red),
+        blend_channel(source.green, destination.green),
+        blend_channel(source.blue, destination.blue),
+        static_cast<uint8_t>(out_alpha),
+    };
+}
+
 } // namespace aetheris::rendering
