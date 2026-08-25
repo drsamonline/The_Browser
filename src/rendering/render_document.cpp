@@ -28,6 +28,21 @@ RenderDocument RenderDocument::create(std::string_view html, std::string_view cs
     return result;
 }
 
+std::optional<RenderDocument> RenderDocument::create_from_resources(std::string_view document_url, std::string_view stylesheet_url, float viewport_width, ResourceCache& resources)
+{
+    auto document = resources.get(std::string(document_url));
+    auto stylesheet = resources.get(std::string(stylesheet_url));
+
+    if (!document || !stylesheet)
+        return std::nullopt;
+    if (document->type != ResourceType::Document || stylesheet->type != ResourceType::Stylesheet)
+        return std::nullopt;
+
+    auto result = create(resources.get_text(document->url), resources.get_text(stylesheet->url), viewport_width, &resources);
+    result.m_source_url = std::string(document_url);
+    return result;
+}
+
 void RenderDocument::resolve_images(LayoutNode& node)
 {
     if (node.dom_node && node.dom_node->type == DomNodeType::Element && node.dom_node->name == "img") { if (auto src=node.dom_node->attribute("src")) node.image=m_images.load(*src,m_resources); }

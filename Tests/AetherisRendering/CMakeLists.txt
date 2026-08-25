@@ -119,3 +119,7 @@ add_test(NAME AetherisTextAlignment COMMAND TestTextAlignment)
 add_executable(TestTextDecoration TestTextDecoration.cpp)
 target_link_libraries(TestTextDecoration PRIVATE AetherisRendering)
 add_test(NAME AetherisTextDecoration COMMAND TestTextDecoration)
+
+add_executable(TestAetherisDocumentResources TestDocumentResources.cpp)
+target_link_libraries(TestAetherisDocumentResources PRIVATE AetherisRendering)
+add_test(NAME AetherisDocumentResources COMMAND TestAetherisDocumentResources)

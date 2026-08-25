@@ -1,60 +1,39 @@
-# Participating in Ladybird
+# Contributing to Aetheris Browser
 
-Ladybird is developed by a group of project maintainers, who introduce all changes to the codebase. We do not accept
-pull requests from non-maintainers and do not allow code change proposals through any other route.
+Aetheris is an experimental derivative browser project. Contributions must respect both Aetheris-specific development work and the provenance of upstream-derived code.
 
-Your involvement still matters: clear bug reports, reductions, website testing, standards discussion, design discussion,
-security reports, and technical feedback all help move the project forward.
+## Before changing code
 
-Read [the Ladybird documentation](https://github.com/LadybirdBrowser/ladybird/tree/master/Documentation) if you'd like to understand how Ladybird works.
+1. Identify the subsystem being changed.
+2. Determine, where reasonably possible, whether the code is upstream-derived or Aetheris-specific.
+3. Preserve existing copyright, license, and attribution notices.
+4. Avoid unnecessary rewrites of imported infrastructure.
+5. Add regression coverage for new behavior where practical.
 
-## Communication
+## Validation
 
-Join [our Discord server](https://discord.gg/nvfjVJ4Svh) to participate in development discussion.
+Run the relevant build and tests before committing. Reconfigure CMake when build configuration or registered source files change.
 
-## Issue policy
+```text
+Inspect → Implement → Build → Test → Review diff → Commit
+```
 
-Please file any bugs you find, keeping the following in mind:
+## Commit messages
 
-* One issue per bug. Putting multiple things in the same issue makes both discussion and completion unnecessarily complicated.
-* Follow the [detailed issue-reporting guidelines](ISSUES.md).
-* No build issues (or other support requests). If the GitHub Actions CI build succeeds, the build problem is most likely on your side. Work it out locally, or ask in the `#build-problems` channel on Discord.
-* Don't comment on issues just to add a joke or irrelevant commentary. Hundreds of people get notified about comments so let's keep them relevant.
+Prefer concise subsystem-oriented messages, for example:
 
-## Project governance
+```text
+Aetheris Layout: add flex wrapping foundation
+Aetheris Rendering: improve text decoration painting
+Aetheris Resources: add document resource integration
+Docs: clarify upstream provenance
+Tests: add resource integration coverage
+```
 
-The Ladybird project is driven by the [Ladybird Browser Initiative](https://ladybird.org/), a 501(c)(3) non-profit organization.
+Avoid claiming performance improvements unless they were measured and documented.
 
-## Human language policy
+## Attribution and licensing
 
-In Ladybird, we treat human language as seriously as we do programming language.
+Do not remove or replace upstream notices simply to rebrand code as Aetheris. If provenance or licensing is unclear, document the uncertainty and resolve it before making a broad ownership or relicensing claim.
 
-The following applies to all user-facing strings, code, comments, and commit messages:
-
-* The official project language is American English with ISO 8601 dates and metric units.
-* Use proper spelling, grammar, and punctuation.
-* Write in an authoritative and technical tone.
-* Avoid contractions, slang, and idioms.
-* Avoid humor, sarcasm, and other forms of non-literal language.
-* Use gender-neutral pronouns, except when referring to a specific person.
-
-Note that this also applies to debug logging and other internal strings, as they may be exposed to users in the future.
-
-## On neutrality
-
-Our goal is to build a browser for everyone, irrespective of their specific opinions and worldviews.
-To achieve this, we strive to set our differences aside and focus on the shared goal of building the browser.
-
-This means:
-- We welcome involvement from anyone who is committed to the project's goals and respects the collaborative environment.
-- Our discussions and work will remain strictly related to browser development and web standards. We do not take positions on issues outside this scope.
-- The project will not be used as a platform to advertise or promote causes unrelated to browser development or web standards.
-- To maintain a focused and productive environment, discussions on societal politics and other divisive topics are discouraged in project spaces.
-
-We encourage everyone to share their personal views and opinions outside project spaces, so we can keep them focused on project goals.
-
-## On bad-faith contributions and brigading
-
-We reserve the right to reject issues and other interactions that appear to be motivated by bad faith.
-
-Additionally, anyone found participating in social media brigading of Ladybird will be permanently banned from the project.
+See [`docs/UPSTREAM_ATTRIBUTION.md`](docs/UPSTREAM_ATTRIBUTION.md).
