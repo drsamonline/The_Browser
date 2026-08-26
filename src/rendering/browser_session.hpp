@@ -3,6 +3,9 @@
 #include "navigation.hpp"
 #include "document_interaction.hpp"
 #include "viewport.hpp"
+#include "visual_state.hpp"
+#include "form_runtime.hpp"
+#include <memory>
 
 #include <cstddef>
 #include <optional>
@@ -36,6 +39,10 @@ public:
     void scroll_to(float x, float y);
     Viewport const& viewport() const { return m_viewport; }
     HitTestResult hit_test(float viewport_x, float viewport_y) const;
+    bool hover_at(float viewport_x, float viewport_y);
+    bool activate_control_at(float viewport_x, float viewport_y);
+    VisualInteractionState const& visual_state() const { return m_visual_state; }
+    FormRuntime const* form_runtime() const { return m_form_runtime.get(); }
 
     bool can_go_back() const;
     bool can_go_forward() const;
@@ -56,6 +63,8 @@ private:
     std::optional<PageMetadata> m_current_page;
     Viewport m_viewport;
     DocumentInteraction m_interaction;
+    VisualInteractionState m_visual_state;
+    std::unique_ptr<FormRuntime> m_form_runtime;
 };
 
 } // namespace aetheris::rendering

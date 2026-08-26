@@ -11,6 +11,7 @@ add_library(AetherisRendering STATIC
     rendering/navigation.cpp
     rendering/page_lifecycle.cpp
     rendering/form_runtime.cpp
+    rendering/visual_state.cpp
     rendering/image.cpp
     rendering/font.cpp
     rendering/css_parser.cpp

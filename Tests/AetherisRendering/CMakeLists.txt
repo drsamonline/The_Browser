@@ -143,3 +143,7 @@ add_test(NAME AetherisPageLifecycle COMMAND TestAetherisPageLifecycle)
 add_executable(TestAetherisFormRuntime TestFormRuntime.cpp)
 target_link_libraries(TestAetherisFormRuntime PRIVATE AetherisRendering)
 add_test(NAME AetherisFormRuntime COMMAND TestAetherisFormRuntime)
+
+add_executable(TestAetherisVisualInteraction TestVisualInteraction.cpp)
+target_link_libraries(TestAetherisVisualInteraction PRIVATE AetherisRendering)
+add_test(NAME AetherisVisualInteraction COMMAND TestAetherisVisualInteraction)

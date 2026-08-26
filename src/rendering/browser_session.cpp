@@ -74,11 +74,15 @@ NavigationResult BrowserSession::commit(NavigationRequest const& request, Resour
 
     m_current_page = std::move(metadata);
     auto const* document = m_navigation.current_document();
+    m_visual_state = {};
     if (document) {
+        m_form_runtime = std::make_unique<FormRuntime>(document->document());
         auto const& rect = document->layout_root().rect;
         m_viewport.set_document_size(rect.width, rect.height);
         if (m_viewport.width() == 0)
             m_viewport.set_size(request.viewport_width, rect.height);
+    } else {
+        m_form_runtime.reset();
     }
     return result;
 }
@@ -182,3 +186,8 @@ std::string BrowserSession::extract_title(ResourceLoader& loader, Url const& url
 }
 
 } // namespace aetheris::rendering
+
+namespace aetheris::rendering {
+bool BrowserSession::hover_at(float x,float y){ auto hit=hit_test(x,y); return m_visual_state.set_hovered(hit.dom_node); }
+bool BrowserSession::activate_control_at(float x,float y){ auto hit=hit_test(x,y); if(!hit.dom_node||!m_form_runtime) return false; for(size_t i=0;i<m_form_runtime->control_count();++i){auto c=m_form_runtime->control(i); if(c&&c->node==hit.dom_node){ if(m_form_runtime->activate(i)){m_visual_state.set_focused(hit.dom_node); m_visual_state.mark_layout_dirty(); return true;} return false; }} return false;}
+}
