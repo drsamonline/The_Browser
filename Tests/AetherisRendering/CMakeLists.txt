@@ -140,10 +140,6 @@ add_executable(TestAetherisPageLifecycle TestPageLifecycle.cpp)
 target_link_libraries(TestAetherisPageLifecycle PRIVATE AetherisRendering)
 add_test(NAME AetherisPageLifecycle COMMAND TestAetherisPageLifecycle)
 
-add_executable(TestAetherisBrowserSession TestBrowserSession.cpp)
-target_link_libraries(TestAetherisBrowserSession PRIVATE AetherisRendering)
-add_test(NAME AetherisBrowserSession COMMAND TestAetherisBrowserSession)
-
-add_executable(TestAetherisDocumentInteraction TestDocumentInteraction.cpp)
-target_link_libraries(TestAetherisDocumentInteraction PRIVATE AetherisRendering)
-add_test(NAME AetherisDocumentInteraction COMMAND TestAetherisDocumentInteraction)
+add_executable(TestAetherisFormRuntime TestFormRuntime.cpp)
+target_link_libraries(TestAetherisFormRuntime PRIVATE AetherisRendering)
+add_test(NAME AetherisFormRuntime COMMAND TestAetherisFormRuntime)

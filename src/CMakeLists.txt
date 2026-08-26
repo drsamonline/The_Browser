@@ -10,9 +10,7 @@ add_library(AetherisRendering STATIC
     rendering/url.cpp
     rendering/navigation.cpp
     rendering/page_lifecycle.cpp
-    rendering/browser_session.cpp
-    rendering/viewport.cpp
-    rendering/document_interaction.cpp
+    rendering/form_runtime.cpp
     rendering/image.cpp
     rendering/font.cpp
     rendering/css_parser.cpp
