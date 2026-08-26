@@ -139,3 +139,7 @@ add_test(NAME AetherisResourceBackends COMMAND TestAetherisResourceBackends)
 add_executable(TestAetherisPageLifecycle TestPageLifecycle.cpp)
 target_link_libraries(TestAetherisPageLifecycle PRIVATE AetherisRendering)
 add_test(NAME AetherisPageLifecycle COMMAND TestAetherisPageLifecycle)
+
+add_executable(TestAetherisBrowserSession TestBrowserSession.cpp)
+target_link_libraries(TestAetherisBrowserSession PRIVATE AetherisRendering)
+add_test(NAME AetherisBrowserSession COMMAND TestAetherisBrowserSession)
