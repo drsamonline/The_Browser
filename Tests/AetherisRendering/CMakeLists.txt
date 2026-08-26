@@ -155,3 +155,11 @@ add_test(NAME AetherisRuntimeStyles COMMAND TestAetherisRuntimeStyles)
 add_executable(TestBrowserApplication TestBrowserApplication.cpp)
 target_link_libraries(TestBrowserApplication PRIVATE AetherisRendering)
 add_test(NAME TestBrowserApplication COMMAND TestBrowserApplication)
+
+add_executable(TestAetherisDynamicRuntime TestDynamicRuntime.cpp)
+target_link_libraries(TestAetherisDynamicRuntime PRIVATE AetherisRendering)
+add_test(NAME AetherisDynamicRuntime COMMAND TestAetherisDynamicRuntime)
+
+add_executable(TestAetherisHttpState TestHttpState.cpp)
+target_link_libraries(TestAetherisHttpState PRIVATE AetherisRendering)
+add_test(NAME AetherisHttpState COMMAND TestAetherisHttpState)

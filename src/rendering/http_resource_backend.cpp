@@ -1,0 +1,8 @@
+#include "http_resource_backend.hpp"
+#include <algorithm>
+namespace aetheris::rendering {
+HttpResourceBackend::HttpResourceBackend(Transport t,CookieJar* c):m_transport(std::move(t)),m_cookies(c){}
+bool HttpResourceBackend::supports(Url const& u) const{return u.scheme()=="http"||u.scheme()=="https";}
+ResourceType HttpResourceBackend::infer_type(std::string const& ct,Url const& u){ if(ct.find("text/css")!=std::string::npos||u.path().ends_with(".css")) return ResourceType::Stylesheet; if(ct.starts_with("image/")||u.path().ends_with(".png")||u.path().ends_with(".jpg")||u.path().ends_with(".jpeg")||u.path().ends_with(".gif")) return ResourceType::Image; return ResourceType::Document; }
+ResourceBackendResult HttpResourceBackend::load(Url const& u){ if(!supports(u)) return {ResourceBackendState::Unsupported,{},"Unsupported URL scheme"}; if(!m_transport) return {ResourceBackendState::Failed,{},"No HTTP transport is configured"}; HttpRequest req{u}; if(m_cookies){auto h=m_cookies->cookie_header(u);if(!h.empty())req.headers["Cookie"]=h;} auto response=m_transport(req); if(!response.succeeded()) return {ResourceBackendState::Missing,{},response.message.empty()?"HTTP request failed":response.message}; if(m_cookies){auto it=response.headers.find("Set-Cookie");if(it!=response.headers.end())m_cookies->set_from_header(response.final_url.is_valid()?response.final_url:u,it->second);} ResourceData data; auto final=response.final_url.is_valid()?response.final_url:u; data.url=final.serialized(); data.type=infer_type(response.content_type,final); data.bytes=std::move(response.body); return {ResourceBackendState::Ready,std::move(data),{}}; }
+}

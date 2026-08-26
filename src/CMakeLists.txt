@@ -6,6 +6,9 @@ add_library(AetherisRendering STATIC
     rendering/resource.cpp
     rendering/content_type.cpp
     rendering/resource_loader.cpp
+    rendering/cookie_jar.cpp
+    rendering/http_resource_backend.cpp
+    rendering/document_runtime.cpp
     rendering/file_resource_backend.cpp
     rendering/url.cpp
     rendering/navigation.cpp
