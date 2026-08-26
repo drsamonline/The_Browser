@@ -15,6 +15,7 @@ add_library(AetherisRendering STATIC
     rendering/viewport.cpp
     rendering/document_interaction.cpp
     rendering/browser_session.cpp
+    rendering/browser_application.cpp
     rendering/image.cpp
     rendering/font.cpp
     rendering/css_parser.cpp
