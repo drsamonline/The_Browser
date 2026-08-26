@@ -17,6 +17,8 @@ public:
     std::string const& scheme() const { return m_scheme; }
     std::string const& authority() const { return m_authority; }
     std::string const& path() const { return m_path; }
+    std::string const& fragment() const { return m_fragment; }
+    bool has_fragment() const { return !m_fragment.empty(); }
     bool is_absolute() const { return !m_scheme.empty(); }
     bool is_valid() const { return !m_serialized.empty(); }
 
@@ -25,6 +27,7 @@ private:
     std::string m_scheme;
     std::string m_authority;
     std::string m_path;
+    std::string m_fragment;
 
     void parse_components();
 };

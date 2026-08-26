@@ -73,7 +73,82 @@ NavigationResult BrowserSession::commit(NavigationRequest const& request, Resour
     }
 
     m_current_page = std::move(metadata);
+    auto const* document = m_navigation.current_document();
+    if (document) {
+        auto const& rect = document->layout_root().rect;
+        m_viewport.set_document_size(rect.width, rect.height);
+        if (m_viewport.width() == 0)
+            m_viewport.set_size(request.viewport_width, rect.height);
+    }
     return result;
+}
+
+NavigationResult BrowserSession::activate_at(float viewport_x, float viewport_y, ResourceLoader& loader)
+{
+    auto const* document = m_navigation.current_document();
+    if (!document)
+        return { NavigationError::InvalidUrl, "No document is available for interaction" };
+
+    auto hit = m_interaction.hit_test(*document, m_viewport, viewport_x, viewport_y);
+    if (!hit.is_link())
+        return { NavigationError::InvalidUrl, "No navigable hyperlink was activated" };
+
+    auto destination = *hit.link_url;
+    if (destination.has_fragment()) {
+        auto base = m_navigation.current_url().serialized();
+        if (auto marker = base.find('#'); marker != std::string::npos)
+            base.erase(marker);
+        auto target_base = destination.serialized();
+        if (auto marker = target_base.find('#'); marker != std::string::npos)
+            target_base.erase(marker);
+        if (target_base == base) {
+            if (!scroll_to_fragment(destination.fragment()))
+                return { NavigationError::InvalidUrl, "Fragment target was not found" };
+            return {};
+        }
+    }
+
+    NavigationRequest request { destination, std::nullopt, m_viewport.width() };
+    return navigate(request, loader);
+}
+
+bool BrowserSession::scroll_to_fragment(std::string const& fragment)
+{
+    auto const* document = m_navigation.current_document();
+    if (!document)
+        return false;
+    auto target = m_interaction.fragment_target(*document, fragment);
+    if (!target)
+        return false;
+    m_viewport.scroll_to(target->x, target->y);
+    return true;
+}
+
+void BrowserSession::set_viewport(float width, float height)
+{
+    m_viewport.set_size(width, height);
+    if (auto const* document = m_navigation.current_document()) {
+        auto const& rect = document->layout_root().rect;
+        m_viewport.set_document_size(rect.width, rect.height);
+    }
+}
+
+void BrowserSession::scroll_by(float dx, float dy)
+{
+    m_viewport.scroll_by(dx, dy);
+}
+
+void BrowserSession::scroll_to(float x, float y)
+{
+    m_viewport.scroll_to(x, y);
+}
+
+HitTestResult BrowserSession::hit_test(float viewport_x, float viewport_y) const
+{
+    auto const* document = m_navigation.current_document();
+    if (!document)
+        return {};
+    return m_interaction.hit_test(*document, m_viewport, viewport_x, viewport_y);
 }
 
 std::string BrowserSession::extract_title(ResourceLoader& loader, Url const& url)
