@@ -33,7 +33,7 @@ void StyleProperties::inherit_from(StyleProperties const& parent)
     }
 }
 
-StyleProperties StyleResolver::resolve(DomNode const& node, CssStyleSheet const& sheet, StyleProperties const* parent_style) const
+StyleProperties StyleResolver::resolve(DomNode const& node, CssStyleSheet const& sheet, StyleProperties const* parent_style, VisualInteractionState const* interaction_state) const
 {
     StyleProperties properties;
     apply_initial_values(node, properties);
@@ -47,7 +47,7 @@ StyleProperties StyleResolver::resolve(DomNode const& node, CssStyleSheet const&
 
     for (auto const& rule : sheet.rules) {
         for (auto const& selector : rule.selectors) {
-            if (!matches(node, selector))
+            if (!matches(node, selector, interaction_state))
                 continue;
             for (auto const& declaration : rule.declarations)
                 matches.push_back({ specificity(selector), rule.source_order, &declaration });
@@ -69,12 +69,12 @@ StyleProperties StyleResolver::resolve(DomNode const& node, CssStyleSheet const&
     return properties;
 }
 
-bool StyleResolver::matches(DomNode const& node, std::string const& selector)
+bool StyleResolver::matches(DomNode const& node, std::string const& selector, VisualInteractionState const* interaction_state)
 {
-    return matches_simple(node, selector);
+    return matches_simple(node, selector, interaction_state);
 }
 
-bool StyleResolver::matches_simple(DomNode const& node, std::string const& selector)
+bool StyleResolver::matches_simple(DomNode const& node, std::string const& selector, VisualInteractionState const* interaction_state)
 {
     if (node.type != DomNodeType::Element)
         return false;
@@ -87,20 +87,23 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
     std::string tag;
     std::string id;
     std::vector<std::string> classes;
+    std::vector<std::string> pseudo_classes;
     size_t i = 0;
 
-    while (i < text.size() && text[i] != '#' && text[i] != '.')
+    while (i < text.size() && text[i] != '#' && text[i] != '.' && text[i] != ':')
         tag += text[i++];
 
     while (i < text.size()) {
         char marker = text[i++];
         std::string value;
-        while (i < text.size() && text[i] != '#' && text[i] != '.')
+        while (i < text.size() && text[i] != '#' && text[i] != '.' && text[i] != ':')
             value += text[i++];
         if (marker == '#')
             id = value;
         else if (marker == '.' && !value.empty())
             classes.push_back(value);
+        else if (marker == ':' && !value.empty())
+            pseudo_classes.push_back(value);
     }
 
     if (!tag.empty() && tag != "*" && node.name != tag)
@@ -124,6 +127,13 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
                 return false;
         }
     }
+    for (auto const& pseudo : pseudo_classes) {
+        if (!interaction_state) return false;
+        if (pseudo == "hover" && interaction_state->hovered != &node) return false;
+        if (pseudo == "focus" && interaction_state->focused != &node) return false;
+        if (pseudo == "active" && interaction_state->active != &node) return false;
+        if (pseudo != "hover" && pseudo != "focus" && pseudo != "active") return false;
+    }
     return true;
 }
 
@@ -139,7 +149,7 @@ int StyleResolver::specificity(std::string const& selector)
         if (c == '#') {
             ++ids;
             in_name = false;
-        } else if (c == '.') {
+        } else if (c == '.' || c == ':') {
             ++classes;
             in_name = false;
         } else if (std::isalpha(static_cast<unsigned char>(c)) && !in_name) {
@@ -231,6 +241,7 @@ void StyleResolver::apply_initial_values(DomNode const& node, StyleProperties& p
     properties.set("background-repeat", "repeat");
     properties.set("background-position", "0 0");
     properties.set("background-size", "auto");
+    if (node.type == DomNodeType::Element && (node.name == "input" || node.name == "textarea" || node.name == "select" || node.name == "button")) { properties.set("display", "inline-block"); properties.set("border-width", "1px"); properties.set("padding", "4px"); properties.set("background-color", "white"); }
     properties.set("object-fit", "fill");
 }
 

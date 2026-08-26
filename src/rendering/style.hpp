@@ -2,6 +2,7 @@
 
 #include "css_stylesheet.hpp"
 #include "dom.hpp"
+#include "visual_state.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -21,11 +22,11 @@ private:
 
 class StyleResolver {
 public:
-    StyleProperties resolve(DomNode const& node, CssStyleSheet const& sheet, StyleProperties const* parent_style = nullptr) const;
+    StyleProperties resolve(DomNode const& node, CssStyleSheet const& sheet, StyleProperties const* parent_style = nullptr, VisualInteractionState const* interaction_state = nullptr) const;
 
 private:
-    static bool matches(DomNode const& node, std::string const& selector);
-    static bool matches_simple(DomNode const& node, std::string const& selector);
+    static bool matches(DomNode const& node, std::string const& selector, VisualInteractionState const* interaction_state);
+    static bool matches_simple(DomNode const& node, std::string const& selector, VisualInteractionState const* interaction_state);
     static int specificity(std::string const& selector);
     static void apply_declaration(StyleProperties& properties, CssDeclaration const& declaration);
 

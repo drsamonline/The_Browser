@@ -14,12 +14,12 @@ LayoutNode& LayoutNode::append_child(std::unique_ptr<LayoutNode> child)
     return *children.back();
 }
 
-std::unique_ptr<LayoutNode> LayoutTreeBuilder::build(DomNode const& document, CssStyleSheet const& sheet) const
+std::unique_ptr<LayoutNode> LayoutTreeBuilder::build(DomNode const& document, CssStyleSheet const& sheet, VisualInteractionState const* interaction_state) const
 {
-    return build_node(document, sheet, nullptr, nullptr);
+    return build_node(document, sheet, nullptr, nullptr, interaction_state);
 }
 
-std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, CssStyleSheet const& sheet, LayoutNode* parent, StyleProperties const* parent_style) const
+std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, CssStyleSheet const& sheet, LayoutNode* parent, StyleProperties const* parent_style, VisualInteractionState const* interaction_state) const
 {
     auto layout_node = std::make_unique<LayoutNode>();
     layout_node->dom_node = &node;

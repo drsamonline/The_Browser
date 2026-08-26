@@ -147,3 +147,7 @@ add_test(NAME AetherisFormRuntime COMMAND TestAetherisFormRuntime)
 add_executable(TestAetherisVisualInteraction TestVisualInteraction.cpp)
 target_link_libraries(TestAetherisVisualInteraction PRIVATE AetherisRendering)
 add_test(NAME AetherisVisualInteraction COMMAND TestAetherisVisualInteraction)
+
+add_executable(TestAetherisRuntimeStyles TestRuntimeStyles.cpp)
+target_link_libraries(TestAetherisRuntimeStyles PRIVATE AetherisRendering)
+add_test(NAME AetherisRuntimeStyles COMMAND TestAetherisRuntimeStyles)

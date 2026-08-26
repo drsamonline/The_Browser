@@ -5,6 +5,8 @@
 #include "render_tree.hpp"
 #include "resource.hpp"
 #include "image.hpp"
+#include "css_stylesheet.hpp"
+#include "visual_state.hpp"
 
 #include <memory>
 #include <optional>
@@ -29,13 +31,17 @@ public:
     RenderTree const& render_tree() const { return m_render_tree; }
 
     SoftwareSurface render_to_surface(int width, int height, Color clear_color = { 255, 255, 255, 255 }) const;
+    void apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width);
+    std::size_t visual_generation() const { return m_visual_generation; }
 
 private:
     Document m_document;
     std::unique_ptr<LayoutNode> m_layout_root;
     RenderTree m_render_tree;
+    CssStyleSheet m_stylesheet;
+    std::size_t m_visual_generation { 0 };
 
-    RenderDocument(Document document, std::unique_ptr<LayoutNode> layout_root, RenderTree render_tree);
+    RenderDocument(Document document, std::unique_ptr<LayoutNode> layout_root, RenderTree render_tree, CssStyleSheet sheet);
     void resolve_images(LayoutNode&);
     ResourceCache m_resources;
     ImageCache m_images;

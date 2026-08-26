@@ -2,6 +2,7 @@
 
 #include "dom.hpp"
 #include "style.hpp"
+#include "visual_state.hpp"
 #include "image.hpp"
 
 #include <memory>
@@ -63,10 +64,10 @@ struct LayoutNode {
 
 class LayoutTreeBuilder {
 public:
-    std::unique_ptr<LayoutNode> build(DomNode const& document, CssStyleSheet const& sheet) const;
+    std::unique_ptr<LayoutNode> build(DomNode const& document, CssStyleSheet const& sheet, VisualInteractionState const* interaction_state = nullptr) const;
 
 private:
-    std::unique_ptr<LayoutNode> build_node(DomNode const& node, CssStyleSheet const& sheet, LayoutNode* parent, StyleProperties const* parent_style) const;
+    std::unique_ptr<LayoutNode> build_node(DomNode const& node, CssStyleSheet const& sheet, LayoutNode* parent, StyleProperties const* parent_style, VisualInteractionState const* interaction_state) const;
     static LayoutDisplay display_for(DomNode const& node, StyleProperties const& style);
 };
 

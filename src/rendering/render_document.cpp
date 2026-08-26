@@ -5,10 +5,11 @@
 
 namespace aetheris::rendering {
 
-RenderDocument::RenderDocument(Document document, std::unique_ptr<LayoutNode> layout_root, RenderTree render_tree)
+RenderDocument::RenderDocument(Document document, std::unique_ptr<LayoutNode> layout_root, RenderTree render_tree, CssStyleSheet sheet)
     : m_document(std::move(document))
     , m_layout_root(std::move(layout_root))
     , m_render_tree(std::move(render_tree))
+    , m_stylesheet(std::move(sheet))
 {
 }
 
@@ -21,7 +22,7 @@ RenderDocument RenderDocument::create(std::string_view html, std::string_view cs
     LayoutEngine {}.layout(*layout_root, viewport_width);
 
     auto render_tree = RenderTree::from_layout(*layout_root);
-    RenderDocument result(std::move(document), std::move(layout_root), std::move(render_tree));
+    RenderDocument result(std::move(document), std::move(layout_root), std::move(render_tree), std::move(sheet));
     if (resources) result.m_resources = *resources;
     result.resolve_images(*result.m_layout_root);
     result.m_render_tree = RenderTree::from_layout(*result.m_layout_root);
@@ -64,6 +65,17 @@ void RenderDocument::resolve_images(LayoutNode& node)
     if (node.dom_node && node.dom_node->type == DomNodeType::Element && node.dom_node->name == "img") { if (auto src=node.dom_node->attribute("src")) node.image=m_images.load(*src,m_resources); }
     if (auto background = node.style.get("background-image")) { auto value=*background; auto open=value.find("url("); auto close=value.rfind(')'); if(open!=std::string::npos && close!=std::string::npos && close>open+4) { auto url=value.substr(open+4,close-(open+4)); if(!url.empty() && (url.front()=='"' || url.front()=='\'')) url=url.substr(1,url.size()-2); node.background_image=m_images.load(url,m_resources); } }
     for (auto& child : node.children) resolve_images(*child);
+}
+
+void RenderDocument::apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width)
+{
+    if (m_visual_generation == interaction_state.generation && !interaction_state.layout_dirty && !interaction_state.paint_dirty)
+        return;
+    m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet, &interaction_state);
+    LayoutEngine {}.layout(*m_layout_root, viewport_width);
+    resolve_images(*m_layout_root);
+    m_render_tree = RenderTree::from_layout(*m_layout_root);
+    m_visual_generation = interaction_state.generation;
 }
 
 SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color clear_color) const
