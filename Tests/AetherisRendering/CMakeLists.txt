@@ -163,3 +163,11 @@ add_test(NAME AetherisDynamicRuntime COMMAND TestAetherisDynamicRuntime)
 add_executable(TestAetherisHttpState TestHttpState.cpp)
 target_link_libraries(TestAetherisHttpState PRIVATE AetherisRendering)
 add_test(NAME AetherisHttpState COMMAND TestAetherisHttpState)
+
+add_executable(TestAetherisSecurityPolicy TestSecurityPolicy.cpp)
+target_link_libraries(TestAetherisSecurityPolicy PRIVATE AetherisRendering)
+add_test(NAME AetherisSecurityPolicy COMMAND TestAetherisSecurityPolicy)
+
+add_executable(TestAetherisSecurityIntegration TestSecurityIntegration.cpp)
+target_link_libraries(TestAetherisSecurityIntegration PRIVATE AetherisRendering)
+add_test(NAME AetherisSecurityIntegration COMMAND TestAetherisSecurityIntegration)
