@@ -175,3 +175,7 @@ add_test(NAME AetherisSecurityIntegration COMMAND TestAetherisSecurityIntegratio
 add_executable(TestBrowserChrome TestBrowserChrome.cpp)
 target_link_libraries(TestBrowserChrome PRIVATE AetherisRendering LibTest)
 add_test(NAME TestBrowserChrome COMMAND TestBrowserChrome)
+
+add_executable(TestAetherisReleaseSmoke TestReleaseSmoke.cpp)
+target_link_libraries(TestAetherisReleaseSmoke PRIVATE AetherisRendering)
+add_test(NAME AetherisReleaseSmoke COMMAND TestAetherisReleaseSmoke)
