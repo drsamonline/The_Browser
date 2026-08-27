@@ -56,7 +56,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path Build | Out-Null
           if (-not (Test-Path "$env:VCPKG_ROOT/vcpkg.exe")) {
-            git clone --depth 1 https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
+            git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
             & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
           }
 
