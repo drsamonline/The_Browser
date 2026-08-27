@@ -29,6 +29,29 @@
       }
     },
     {
+      "hidden": true,
+      "name": "windows_msvc_base",
+      "inherits": "base",
+      "description": "Visual Studio MSVC x64 toolchain",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "AETHERIS_WINDOWS_LINKER_MODE": "SYSTEM"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "intelliSenseMode": "windows-msvc-x64"
+        }
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
       "name": "Release",
       "inherits": [
         "windows_base",
@@ -57,6 +80,24 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
+    },
+    {
+      "name": "MSVC-Debug",
+      "inherits": [
+        "windows_msvc_base",
+        "Debug_base"
+      ],
+      "displayName": "Windows MSVC Debug Config",
+      "description": "Windows Debug build using MSVC, vcpkg manifest dependencies, and the system linker"
+    },
+    {
+      "name": "MSVC-Release",
+      "inherits": [
+        "windows_msvc_base",
+        "Release_base"
+      ],
+      "displayName": "Windows MSVC Release Config",
+      "description": "Windows Release build using MSVC, vcpkg manifest dependencies, and the system linker"
     }
   ]
 }
