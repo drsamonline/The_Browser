@@ -39,18 +39,32 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
+      - name: Restore Aetheris dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            Build/caches
+            Build/vcpkg/downloads
+            Build/vcpkg/packages
+            Build/vcpkg/installed
+          key: aetheris-vcpkg-windows-x64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'Meta/CMake/vcpkg/**', 'Meta/CMake/presets/**') }}
+          restore-keys: |
+            aetheris-vcpkg-windows-x64-
+
       - name: Bootstrap repository-local vcpkg
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path Build | Out-Null
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
-          & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+          if (-not (Test-Path "$env:VCPKG_ROOT/vcpkg.exe")) {
+            New-Item -ItemType Directory -Force -Path Build | Out-Null
+            git clone --depth 1 https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
+            & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+          }
 
       - name: Configure Release
         shell: pwsh
         run: |
           $env:LADYBIRD_SOURCE_DIR = (Get-Location).Path
-          cmake --preset Release
+          cmake --preset MSVC-Release
 
       - name: Build Release
         shell: pwsh
