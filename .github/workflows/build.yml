@@ -3,7 +3,19 @@ name: Build Aetheris
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aetheris-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-windows:
@@ -15,37 +27,61 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          submodules: recursive
 
-      - name: Setup Visual Studio Environment
+      - name: Setup Visual Studio
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install vcpkg and Dependencies
-        run: |
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git
-          cd vcpkg
-          .\bootstrap-vcpkg.bat -disableMetrics
-          .\vcpkg install lz4:x64-windows nlohmann-json:x64-windows
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Install vcpkg
         shell: pwsh
-
-      - name: Configure CMake
         run: |
-          cmake -B build -S . `
-            -G "Visual Studio 17 2022" `
-            -A x64 `
-            -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=TRUE
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git Build/vcpkg
+          & Build/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+
+      - name: Configure Release
         shell: pwsh
+        run: |
+          $env:LADYBIRD_SOURCE_DIR = (Get-Location).Path
+          $env:VCPKG_ROOT = Join-Path $env:LADYBIRD_SOURCE_DIR 'Build/vcpkg'
+          cmake --preset Release
 
-      - name: Build Aetheris
-        run: cmake --build build --config Release --parallel
+      - name: Build Release
+        shell: pwsh
+        run: |
+          cmake --build Build/release --config RelWithDebInfo --parallel
 
-      - name: Test Aetheris
-        run: ctest --test-dir build --output-on-failure -C Release
+      - name: Test Release
+        shell: pwsh
+        run: |
+          ctest --test-dir Build/release -C RelWithDebInfo --output-on-failure
 
-      - name: Upload Artifact
+      - name: Package Windows build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $executables = Get-ChildItem -Path Build/release -Recurse -Filter *.exe -File
+          if (-not $executables) {
+            Write-Error 'No Windows executables were produced by the build.'
+          }
+          $executables | ForEach-Object {
+            Copy-Item $_.FullName -Destination (Join-Path 'dist' $_.Name) -Force
+          }
+          Compress-Archive -Path dist/* -DestinationPath aetheris-windows-x64.zip -Force
+
+      - name: Upload CI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aetheris-browser
-          path: build/Release/*.exe
-          if-no-files-found: warn
+          name: aetheris-windows-x64-${{ github.sha }}
+          path: aetheris-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: aetheris-windows-x64.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
