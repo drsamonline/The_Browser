@@ -18,10 +18,35 @@ if (NOT APPLE AND NOT ANDROID AND NOT VCPKG_TARGET_ANDROID AND NOT WIN32 AND NOT
     endif()
 endif()
 
-if(WIN32 AND NOT LAGOM_USE_LINKER)
-    # We do not need to check for its presence.
-    # We know it is there with the installation of clang-cl which we require.
-    set(LAGOM_USE_LINKER "lld" CACHE STRING "" FORCE)
+if (WIN32 AND NOT LAGOM_USE_LINKER)
+    string(TOUPPER "${AETHERIS_WINDOWS_LINKER_MODE}" aetheris_windows_linker_mode)
+
+    if (NOT aetheris_windows_linker_mode MATCHES "^(AUTO|SYSTEM|LLD)$")
+        message(FATAL_ERROR
+            "Invalid AETHERIS_WINDOWS_LINKER_MODE='${AETHERIS_WINDOWS_LINKER_MODE}'. "
+            "Expected AUTO, SYSTEM, or LLD.")
+    endif()
+
+    if (aetheris_windows_linker_mode STREQUAL "LLD")
+        find_program(AETHERIS_LLD_LINK NAMES "lld-link")
+        if (NOT AETHERIS_LLD_LINK)
+            message(FATAL_ERROR
+                "AETHERIS_WINDOWS_LINKER_MODE=LLD requires lld-link.exe, but it was not found. "
+                "Install the LLVM linker or configure with -DAETHERIS_WINDOWS_LINKER_MODE=SYSTEM.")
+        endif()
+        message(STATUS "Using lld-link for Windows linking.")
+        set(LAGOM_USE_LINKER "lld" CACHE STRING "" FORCE)
+    elseif (aetheris_windows_linker_mode STREQUAL "AUTO")
+        find_program(AETHERIS_LLD_LINK NAMES "lld-link")
+        if (AETHERIS_LLD_LINK)
+            message(STATUS "Using lld-link for Windows linking.")
+            set(LAGOM_USE_LINKER "lld" CACHE STRING "" FORCE)
+        else()
+            message(STATUS "lld-link was not found; using the linker selected by the active Windows toolchain.")
+        endif()
+    else()
+        message(STATUS "Using the linker selected by the active Windows toolchain.")
+    endif()
 endif()
 
 if (LAGOM_USE_LINKER)

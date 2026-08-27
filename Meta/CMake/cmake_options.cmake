@@ -88,6 +88,12 @@ option(ENABLE_FUZZERS "Build fuzzing targets" OFF)
 option(ENABLE_FUZZERS_LIBFUZZER "Build fuzzers using Clang's libFuzzer" OFF)
 option(ENABLE_FUZZERS_OSSFUZZ "Build OSS-Fuzz compatible fuzzers" OFF)
 option(ENABLE_LAGOM_CCACHE "Enable ccache for Lagom builds" ${AETHERIS_ENABLE_CCACHE})
+# Windows linker selection for Aetheris. AUTO prefers lld-link when it is available
+# and otherwise uses the linker selected by the active toolchain. SYSTEM never
+# overrides the active toolchain. LLD requires lld-link to be available.
+set(AETHERIS_WINDOWS_LINKER_MODE "AUTO" CACHE STRING "Windows linker policy: AUTO, SYSTEM, or LLD")
+set_property(CACHE AETHERIS_WINDOWS_LINKER_MODE PROPERTY STRINGS AUTO SYSTEM LLD)
+
 set(LAGOM_USE_LINKER "" CACHE STRING "The linker to use (e.g. lld, mold) instead of the system default")
 set(LAGOM_LINK_POOL_SIZE "" CACHE STRING "The maximum number of parallel jobs to use for linking")
 option(ENABLE_LTO_FOR_RELEASE "Enable link-time optimization for release builds" ${RELEASE_LTO_DEFAULT})
