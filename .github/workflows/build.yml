@@ -16,6 +16,11 @@ concurrency:
   group: aetheris-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/Build/vcpkg
+  VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/Build/caches/vcpkg-binary-cache,readwrite
+  X_VCPKG_ASSET_SOURCES: clear;x-azurl,https://vcpkg-cache.app.ladybird.org/ladybird/source-assets/
+
 jobs:
   build-windows:
     name: Build Aetheris (Windows)
@@ -28,23 +33,23 @@ jobs:
           fetch-depth: 1
           submodules: recursive
 
-      - name: Setup Visual Studio
+      - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
-      - name: Install vcpkg
+      - name: Bootstrap repository-local vcpkg
         shell: pwsh
         run: |
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git Build/vcpkg
-          & Build/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          New-Item -ItemType Directory -Force -Path Build | Out-Null
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
+          & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
 
       - name: Configure Release
         shell: pwsh
         run: |
           $env:LADYBIRD_SOURCE_DIR = (Get-Location).Path
-          $env:VCPKG_ROOT = Join-Path $env:LADYBIRD_SOURCE_DIR 'Build/vcpkg'
           cmake --preset Release
 
       - name: Build Release
