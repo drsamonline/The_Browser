@@ -80,7 +80,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $executables = Get-ChildItem -Path Build/release -Recurse -Filter *.exe -File
+          $executables = Get-ChildItem -Path Build/release -Recurse -Filter *.exe -File |
+            Where-Object { $_.FullName -notmatch '[\\/]CMakeFiles[\\/]' }
           if (-not $executables) {
             Write-Error 'No Windows executables were produced by the build.'
           }
