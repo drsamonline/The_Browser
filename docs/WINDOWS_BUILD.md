@@ -70,3 +70,6 @@ if exist build rmdir /s /q build
 ```
 
 Do not commit the generated `build` directory.
+
+CI validation checkpoint.
+
