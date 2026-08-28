@@ -72,14 +72,14 @@ jobs:
               -OutFile $hstsPath
           }
 
-      - name: Initialize MSVC developer environment
+      - name: Configure Release with MSVC
         shell: pwsh
         run: |
           $vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
           if (-not (Test-Path $vsWhere)) {
             Write-Error "vswhere.exe was not found. Visual Studio Build Tools is required."
           }
-          $vsPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vsPath = (& $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1).Trim()
           if (-not $vsPath) {
             Write-Error "No Visual Studio installation with MSVC x64 tools was found."
           }
@@ -87,24 +87,8 @@ jobs:
           if (-not (Test-Path $vsDevCmd)) {
             Write-Error "VsDevCmd.bat was not found at $vsDevCmd"
           }
-          cmd /c "call `"$vsDevCmd`" -arch=x64 && set" | ForEach-Object {
-            if ($_ -match '^(\w+)=(.*)$') {
-              [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
-            }
-          }
-          where.exe cl
-          where.exe link
-          cl
-
-      - name: Configure Release
-        shell: pwsh
-        run: |
           $env:LADYBIRD_SOURCE_DIR = (Get-Location).Path
-          $env:CMAKE_C_COMPILER = (Get-Command cl.exe).Source
-          $env:CMAKE_CXX_COMPILER = (Get-Command cl.exe).Source
-          $env:CC = $env:CMAKE_C_COMPILER
-          $env:CXX = $env:CMAKE_CXX_COMPILER
-          cmake --preset MSVC-Release
+          cmd /c "call `"$vsDevCmd`" -arch=x64 && where cl && where link && cl && cmake --preset MSVC-Release"
 
       - name: Build Release
         shell: pwsh
