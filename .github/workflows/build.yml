@@ -60,6 +60,18 @@ jobs:
             & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
           }
 
+      - name: Prime HSTS preload data
+        shell: pwsh
+        run: |
+          $hstsDir = Join-Path $env:GITHUB_WORKSPACE 'Build/caches/HSTSPreload'
+          $hstsPath = Join-Path $hstsDir 'transport_security_state_static.json'
+          New-Item -ItemType Directory -Force -Path $hstsDir | Out-Null
+          if (-not (Test-Path $hstsPath)) {
+            Invoke-WebRequest `
+              -Uri 'https://raw.githubusercontent.com/chromium/chromium/main/net/http/transport_security_state_static.json' `
+              -OutFile $hstsPath
+          }
+
       - name: Configure Release
         shell: pwsh
         run: |
