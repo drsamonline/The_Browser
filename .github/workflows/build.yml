@@ -56,9 +56,38 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path Build | Out-Null
           if (-not (Test-Path "$env:VCPKG_ROOT/vcpkg.exe")) {
-            git clone --depth 1 https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
+            git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
             & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
           }
+
+      - name: Prime HSTS preload data
+        shell: pwsh
+        run: |
+          $hstsDir = Join-Path $env:GITHUB_WORKSPACE 'Build/caches/HSTSPreload'
+          $hstsPath = Join-Path $hstsDir 'transport_security_state_static.json'
+          New-Item -ItemType Directory -Force -Path $hstsDir | Out-Null
+          if (-not (Test-Path $hstsPath)) {
+            Invoke-WebRequest `
+              -Uri 'https://raw.githubusercontent.com/chromium/chromium/main/net/http/transport_security_state_static.json' `
+              -OutFile $hstsPath
+          }
+
+      - name: Initialize and verify MSVC environment
+        shell: pwsh
+        run: |
+          $vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          if (-not (Test-Path $vsWhere)) {
+            Write-Error "vswhere.exe was not found. Visual Studio Build Tools is required."
+          }
+          $vsPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) {
+            Write-Error "No Visual Studio installation with MSVC x64 tools was found."
+          }
+          $vsDevCmd = Join-Path $vsPath 'Common7/Tools/VsDevCmd.bat'
+          if (-not (Test-Path $vsDevCmd)) {
+            Write-Error "VsDevCmd.bat was not found at $vsDevCmd"
+          }
+          cmd /c "call `"$vsDevCmd`" -arch=x64 && where cl && where link && cl" 
 
       - name: Configure Release
         shell: pwsh
