@@ -341,7 +341,11 @@ else()
 endif()
 
 if (DEFINED FLAP_ARCH)
-    enable_language(ASM)
+    if (WIN32)
+        enable_language(ASM_MASM)
+    else()
+        enable_language(ASM)
+    endif()
     if (WIN32 AND CMAKE_ASM_COMPILER_ID MATCHES "Clang")
         set(CMAKE_ASM_COMPILE_OPTIONS_MSVC_DEBUG_INFORMATION_FORMAT_ProgramDatabase "")
         set(CMAKE_ASM_COMPILE_OPTIONS_MSVC_DEBUG_INFORMATION_FORMAT_EditAndContinue "")
@@ -414,6 +418,9 @@ if (DEFINED FLAP_ARCH)
         COMMENT "Generating interpreter_${FLAP_ARCH}.S from Flap"
     )
 
+    if (WIN32)
+        set_source_files_properties("${FLAP_GENERATED_S}" PROPERTIES LANGUAGE ASM_MASM)
+    endif()
     target_sources(LibJS PRIVATE "${FLAP_GENERATED_S}")
     if ("${FLAP_ARCH}" STREQUAL "x86_64" AND CMAKE_ASM_COMPILER_ID MATCHES "Clang")
         # Keep conditional branches within 32-byte boundaries so Intel's
