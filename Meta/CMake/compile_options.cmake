@@ -138,12 +138,6 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 elseif (MSVC)
     # Warning options and defines
     add_cxx_compile_options(/W4)
-    add_cxx_compile_options(-Wno-implicit-const-int-float-conversion)
-    add_cxx_compile_options(-Wno-reserved-identifier)
-    add_cxx_compile_options(-Wno-user-defined-literals)
-    add_cxx_compile_options(-Wno-unqualified-std-cast-call)
-    add_cxx_compile_options(-Wno-c23-extensions)
-    add_cxx_compile_options(-Wno-microsoft-unqualified-friend) # MSVC doesn't support unqualified friends
     add_cxx_compile_definitions(_CRT_SECURE_NO_WARNINGS) # _s replacements not desired (or implemented on any other platform other than VxWorks)
     add_cxx_compile_definitions(_CRT_NONSTDC_NO_WARNINGS) # POSIX names are just fine, thanks
 
