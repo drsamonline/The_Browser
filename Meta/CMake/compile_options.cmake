@@ -61,28 +61,32 @@ elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
     # ISA or target string. Unfortunately hardware probing is also neither easy nor reliable at the moment.
     # For the time being use the defaults for the best compatibility with existing hardware and toolchains.
     # FIXME: Remove this branch once -march=native is supported.
-elseif (NOT CMAKE_CROSSCOMPILING)
+elseif (NOT CMAKE_CROSSCOMPILING AND NOT MSVC)
     # In all other cases, compile for the native architecture of the host system.
     add_cxx_compile_options(-march=native)
 endif()
 
-add_cxx_compile_options(-Wcast-qual)
-add_cxx_compile_options(-Wformat=2)
-add_cxx_compile_options(-Wimplicit-fallthrough)
-add_cxx_compile_options(-Wlogical-op)
-add_cxx_compile_options(-Wmissing-declarations)
-add_cxx_compile_options(-Wmissing-field-initializers)
-add_cxx_compile_options(-Wsuggest-override)
+if (NOT MSVC)
+    add_cxx_compile_options(-Wcast-qual)
+    add_cxx_compile_options(-Wformat=2)
+    add_cxx_compile_options(-Wimplicit-fallthrough)
+    add_cxx_compile_options(-Wlogical-op)
+    add_cxx_compile_options(-Wmissing-declarations)
+    add_cxx_compile_options(-Wmissing-field-initializers)
+    add_cxx_compile_options(-Wsuggest-override)
 
-add_cxx_compile_options(-Wno-expansion-to-defined)
-add_cxx_compile_options(-Wno-invalid-offsetof)
-add_cxx_compile_options(-Wno-maybe-uninitialized)
-add_cxx_compile_options(-Wno-shorten-64-to-32)
-add_cxx_compile_options(-Wno-unknown-warning-option)
-add_cxx_compile_options(-Wno-unused-command-line-argument)
-add_cxx_compile_options(-Wno-user-defined-literals)
+    add_cxx_compile_options(-Wno-expansion-to-defined)
+    add_cxx_compile_options(-Wno-invalid-offsetof)
+    add_cxx_compile_options(-Wno-maybe-uninitialized)
+    add_cxx_compile_options(-Wno-shorten-64-to-32)
+    add_cxx_compile_options(-Wno-unknown-warning-option)
+    add_cxx_compile_options(-Wno-unused-command-line-argument)
+    add_cxx_compile_options(-Wno-user-defined-literals)
 
-add_cxx_compile_options(-Werror)
+    add_cxx_compile_options(-Werror)
+else()
+    add_cxx_compile_options(/WX)
+endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "18")
     add_cxx_compile_options(-Wpadded-bitfield)
@@ -165,10 +169,12 @@ elseif (MSVC)
     add_cxx_compile_options(/Zc:inline)
     # equivalent of -fvisibility-inlines-hidden
     add_cxx_compile_options(/Zc:dllexportInlines-)
-    # clang-cl has this off by default unlike other clang versions
-    add_cxx_compile_options(-fstrict-aliasing)
-    add_cxx_compile_options(/clang:-fstrict-flex-arrays=2)
-    add_cxx_compile_options(/clang:-ftrivial-auto-var-init=zero)
+    # These options are only valid when the Clang frontend is actually being used.
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID MATCHES "MSVC")
+        add_cxx_compile_options(-fstrict-aliasing)
+        add_cxx_compile_options(/clang:-fstrict-flex-arrays=2)
+        add_cxx_compile_options(/clang:-ftrivial-auto-var-init=zero)
+    endif()
     # create COMDATs from functions and data, enables deduplication
     add_cxx_compile_options(/Gw)
     add_cxx_compile_options(/Gy)
@@ -182,10 +188,12 @@ elseif (MSVC)
     add_cxx_link_options(/GUARD:CF)
     add_cxx_link_option_if_supported(-prefetch-inputs)
 
-    # Use ghash compressed debug info for build time and pdb size reduction
+    # Use ghash compressed debug info when supported by the Clang frontend.
     if (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo" OR "Debug")
-        add_cxx_compile_options(-gcodeview-ghash)
-        add_cxx_link_options(/DEBUG:GHASH)
+        if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID MATCHES "MSVC")
+            add_cxx_compile_options(-gcodeview-ghash)
+            add_cxx_link_options(/DEBUG:GHASH)
+        endif()
     endif()
 endif()
 
