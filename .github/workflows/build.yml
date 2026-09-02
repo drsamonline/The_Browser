@@ -286,7 +286,7 @@ jobs:
             -Force
 
       - name: Upload CI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: aetheris-windows-x64-${{ github.sha }}
           path: aetheris-windows-x64.zip
