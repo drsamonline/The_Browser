@@ -55,9 +55,15 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path Build | Out-Null
+
           if (-not (Test-Path "$env:VCPKG_ROOT/vcpkg.exe")) {
             git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
+
             & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
           }
 
       - name: Prime HSTS preload data
@@ -65,46 +71,169 @@ jobs:
         run: |
           $hstsDir = Join-Path $env:GITHUB_WORKSPACE 'Build/caches/HSTSPreload'
           $hstsPath = Join-Path $hstsDir 'transport_security_state_static.json'
+
           New-Item -ItemType Directory -Force -Path $hstsDir | Out-Null
+
           if (-not (Test-Path $hstsPath)) {
             Invoke-WebRequest `
               -Uri 'https://raw.githubusercontent.com/chromium/chromium/main/net/http/transport_security_state_static.json' `
               -OutFile $hstsPath
           }
 
-      - name: Initialize and verify MSVC environment
+      - name: Initialize Visual Studio and LLVM environment
         shell: pwsh
         run: |
           $vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+
           if (-not (Test-Path $vsWhere)) {
-            Write-Error "vswhere.exe was not found. Visual Studio Build Tools is required."
+            Write-Error "vswhere.exe was not found."
+            exit 1
           }
-          $vsPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+
+          $vsPath = & $vsWhere `
+            -latest `
+            -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+
           if (-not $vsPath) {
             Write-Error "No Visual Studio installation with MSVC x64 tools was found."
+            exit 1
           }
+
           $vsDevCmd = Join-Path $vsPath 'Common7/Tools/VsDevCmd.bat'
+
           if (-not (Test-Path $vsDevCmd)) {
             Write-Error "VsDevCmd.bat was not found at $vsDevCmd"
+            exit 1
           }
-          cmd /c "call `"$vsDevCmd`" -arch=x64 && where cl && where link && cl" 
+
+          $envDump = cmd /c "`"$vsDevCmd`" -arch=x64 && set"
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "VsDevCmd.bat failed."
+            exit $LASTEXITCODE
+          }
+
+          foreach ($line in $envDump) {
+            if ($line -match '^([^=]+)=(.*)$') {
+              "$($matches[1])=$($matches[2])" | Out-File `
+                -FilePath $env:GITHUB_ENV `
+                -Encoding utf8 `
+                -Append
+            }
+          }
+
+          $llvmCandidates = @(
+            (Join-Path $vsPath 'VC\Tools\Llvm\x64\bin\clang-cl.exe'),
+            'C:\Program Files\LLVM\bin\clang-cl.exe'
+          )
+
+          $clangCl = $null
+
+          foreach ($candidate in $llvmCandidates) {
+            if (Test-Path $candidate) {
+              $clangCl = $candidate
+              break
+            }
+          }
+
+          if (-not $clangCl) {
+            $clangCommand = Get-Command clang-cl.exe -ErrorAction SilentlyContinue
+
+            if ($clangCommand) {
+              $clangCl = $clangCommand.Source
+            }
+          }
+
+          if (-not $clangCl) {
+            Write-Error "clang-cl.exe was not found on the Windows runner."
+            exit 1
+          }
+
+          $llvmBin = Split-Path $clangCl -Parent
+
+          $llvmBin | Out-File `
+            -FilePath $env:GITHUB_PATH `
+            -Encoding utf8 `
+            -Append
+
+          Write-Host "Visual Studio installation: $vsPath"
+          Write-Host "clang-cl: $clangCl"
+
+          & $clangCl --version
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
 
       - name: Configure Release
         shell: pwsh
         run: |
           $env:LADYBIRD_SOURCE_DIR = (Get-Location).Path
 
-          $vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-          $vsPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if (-not $vsPath) {
-            Write-Error "No Visual Studio installation with MSVC x64 tools was found."
+          if (Test-Path "Build/release/CMakeCache.txt") {
+            Remove-Item "Build/release/CMakeCache.txt" -Force
           }
 
-          $vsDevCmd = Join-Path $vsPath 'Common7/Tools/VsDevCmd.bat'
+          cmake --preset Release
 
-          cmd /c "call `"$vsDevCmd`" -arch=x64 && where cl && where link && where ml64 && cmake --preset MSVC-Release"
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
+          }
+
+          $cache = "Build/release/CMakeCache.txt"
+
+          if (-not (Test-Path $cache)) {
+            Write-Error "CMakeCache.txt was not generated."
+            exit 1
+          }
+
+          Write-Host ""
+          Write-Host "===== CMake compiler configuration ====="
+
+          $compiler = Select-String `
+            -Path $cache `
+            -Pattern '^CMAKE_CXX_COMPILER:FILEPATH='
+
+          $compilerId = Select-String `
+            -Path $cache `
+            -Pattern '^CMAKE_CXX_COMPILER_ID:STATIC='
+
+          $simulateId = Select-String `
+            -Path $cache `
+            -Pattern '^CMAKE_CXX_SIMULATE_ID:STATIC='
+
+          $frontend = Select-String `
+            -Path $cache `
+            -Pattern '^CMAKE_CXX_COMPILER_FRONTEND_VARIANT:INTERNAL='
+
+          $compiler
+          $compilerId
+          $simulateId
+          $frontend
+
+          Write-Host "========================================="
+          Write-Host ""
+
+          if (-not $compiler -or $compiler.Line -notmatch 'clang-cl') {
+            Write-Error "CMake did not select clang-cl."
+            exit 1
+          }
+
+          if (-not $compilerId -or $compilerId.Line -notmatch 'Clang') {
+            Write-Error "CMake compiler ID is not Clang."
+            exit 1
+          }
+
+          if ($simulateId -and $simulateId.Line -notmatch 'MSVC') {
+            Write-Error "clang-cl is not simulating the MSVC frontend."
+            exit 1
+          }
+
+          if ($frontend -and $frontend.Line -notmatch 'MSVC') {
+            Write-Error "CMake compiler frontend variant is not MSVC."
+            exit 1
           }
 
       - name: Build Release
@@ -112,24 +241,49 @@ jobs:
         run: |
           cmake --build Build/release --config RelWithDebInfo --parallel
 
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
       - name: Test Release
         shell: pwsh
         run: |
           ctest --test-dir Build/release -C RelWithDebInfo --output-on-failure
 
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
       - name: Package Windows build
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $executables = Get-ChildItem -Path Build/release -Recurse -Filter *.exe -File |
-            Where-Object { $_.FullName -notmatch '[\\/]CMakeFiles[\\/]' }
+
+          $executables = Get-ChildItem `
+            -Path Build/release `
+            -Recurse `
+            -Filter *.exe `
+            -File |
+            Where-Object {
+              $_.FullName -notmatch '[\\/]CMakeFiles[\\/]'
+            }
+
           if (-not $executables) {
             Write-Error 'No Windows executables were produced by the build.'
+            exit 1
           }
+
           $executables | ForEach-Object {
-            Copy-Item $_.FullName -Destination (Join-Path 'dist' $_.Name) -Force
+            Copy-Item `
+              $_.FullName `
+              -Destination (Join-Path 'dist' $_.Name) `
+              -Force
           }
-          Compress-Archive -Path dist/* -DestinationPath aetheris-windows-x64.zip -Force
+
+          Compress-Archive `
+            -Path dist/* `
+            -DestinationPath aetheris-windows-x64.zip `
+            -Force
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v4
