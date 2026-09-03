@@ -191,50 +191,55 @@ jobs:
 
           Write-Host ""
           Write-Host "===== CMake compiler configuration ====="
+          Write-Host "========================================="
 
-          $compiler = Select-String `
-            -Path $cache `
-            -Pattern '^CMAKE_CXX_COMPILER:FILEPATH='
+          $cacheContent = Get-Content $cache
 
-          $compilerId = Select-String `
-            -Path $cache `
-            -Pattern '^CMAKE_CXX_COMPILER_ID:STATIC='
+          $compilerLine = $cacheContent |
+            Where-Object { $_ -match '^CMAKE_CXX_COMPILER(:[^=]+)?=' } |
+            Select-Object -First 1
 
-          $simulateId = Select-String `
-            -Path $cache `
-            -Pattern '^CMAKE_CXX_SIMULATE_ID:STATIC='
+          $compilerIdLine = $cacheContent |
+            Where-Object { $_ -match '^CMAKE_CXX_COMPILER_ID(:[^=]+)?=' } |
+            Select-Object -First 1
 
-          $frontend = Select-String `
-            -Path $cache `
-            -Pattern '^CMAKE_CXX_COMPILER_FRONTEND_VARIANT:INTERNAL='
+          $simulateIdLine = $cacheContent |
+            Where-Object { $_ -match '^CMAKE_CXX_SIMULATE_ID(:[^=]+)?=' } |
+            Select-Object -First 1
 
-          $compiler
-          $compilerId
-          $simulateId
-          $frontend
+          $frontendLine = $cacheContent |
+            Where-Object { $_ -match '^CMAKE_CXX_COMPILER_FRONTEND_VARIANT(:[^=]+)?=' } |
+            Select-Object -First 1
+
+          Write-Host "CXX compiler: $compilerLine"
+          Write-Host "CXX compiler ID: $compilerIdLine"
+          Write-Host "CXX simulate ID: $simulateIdLine"
+          Write-Host "CXX frontend variant: $frontendLine"
 
           Write-Host "========================================="
           Write-Host ""
 
-          if (-not $compiler -or $compiler.Line -notmatch 'clang-cl') {
-            Write-Error "CMake did not select clang-cl."
+          if (-not $compilerLine -or $compilerLine -notmatch 'clang-cl') {
+            Write-Error "CMake CXX compiler is not clang-cl."
             exit 1
           }
 
-          if (-not $compilerId -or $compilerId.Line -notmatch 'Clang') {
-            Write-Error "CMake compiler ID is not Clang."
+          if (-not $compilerIdLine -or $compilerIdLine -notmatch 'Clang') {
+            Write-Error "CMake CXX compiler ID is not Clang."
             exit 1
           }
 
-          if ($simulateId -and $simulateId.Line -notmatch 'MSVC') {
+          if ($simulateIdLine -and $simulateIdLine -notmatch 'MSVC') {
             Write-Error "clang-cl is not simulating the MSVC frontend."
             exit 1
           }
 
-          if ($frontend -and $frontend.Line -notmatch 'MSVC') {
+          if ($frontendLine -and $frontendLine -notmatch 'MSVC') {
             Write-Error "CMake compiler frontend variant is not MSVC."
             exit 1
           }
+
+          Write-Host "Clang-cl configuration verified successfully."
 
       - name: Build Release
         shell: pwsh
