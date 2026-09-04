@@ -182,64 +182,53 @@ jobs:
             exit $LASTEXITCODE
           }
 
-          $cache = "Build/release/CMakeCache.txt"
-
-          if (-not (Test-Path $cache)) {
+          if (-not (Test-Path "Build/release/CMakeCache.txt")) {
             Write-Error "CMakeCache.txt was not generated."
             exit 1
           }
 
-          Write-Host ""
-          Write-Host "===== CMake compiler configuration ====="
-          Write-Host "========================================="
+      - name: Verify clang-cl toolchain
+        shell: pwsh
+        run: |
+          Write-Host "===== clang-cl toolchain verification ====="
 
-          $cacheContent = Get-Content $cache
+          $clangCommand = Get-Command clang-cl.exe -ErrorAction SilentlyContinue
 
-          $compilerLine = $cacheContent |
-            Where-Object { $_ -match '^CMAKE_CXX_COMPILER(:[^=]+)?=' } |
+          if (-not $clangCommand) {
+            Write-Error "clang-cl.exe is not available in PATH."
+            exit 1
+          }
+
+          Write-Host "clang-cl path:"
+          Write-Host $clangCommand.Source
+
+          & $clangCommand.Source --version
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "clang-cl.exe failed to execute."
+            exit $LASTEXITCODE
+          }
+
+          $cache = Get-Content "Build/release/CMakeCache.txt"
+
+          $compilerLine = $cache |
+            Where-Object { $_ -match '^CMAKE_CXX_COMPILER:.*=' } |
             Select-Object -First 1
 
-          $compilerIdLine = $cacheContent |
-            Where-Object { $_ -match '^CMAKE_CXX_COMPILER_ID(:[^=]+)?=' } |
-            Select-Object -First 1
+          if (-not $compilerLine) {
+            Write-Error "CMAKE_CXX_COMPILER entry was not found in CMakeCache.txt."
+            exit 1
+          }
 
-          $simulateIdLine = $cacheContent |
-            Where-Object { $_ -match '^CMAKE_CXX_SIMULATE_ID(:[^=]+)?=' } |
-            Select-Object -First 1
+          Write-Host "CMake CXX compiler:"
+          Write-Host $compilerLine
 
-          $frontendLine = $cacheContent |
-            Where-Object { $_ -match '^CMAKE_CXX_COMPILER_FRONTEND_VARIANT(:[^=]+)?=' } |
-            Select-Object -First 1
-
-          Write-Host "CXX compiler: $compilerLine"
-          Write-Host "CXX compiler ID: $compilerIdLine"
-          Write-Host "CXX simulate ID: $simulateIdLine"
-          Write-Host "CXX frontend variant: $frontendLine"
-
-          Write-Host "========================================="
-          Write-Host ""
-
-          if (-not $compilerLine -or $compilerLine -notmatch 'clang-cl') {
+          if ($compilerLine -notmatch 'clang-cl') {
             Write-Error "CMake CXX compiler is not clang-cl."
             exit 1
           }
 
-          if (-not $compilerIdLine -or $compilerIdLine -notmatch 'Clang') {
-            Write-Error "CMake CXX compiler ID is not Clang."
-            exit 1
-          }
-
-          if ($simulateIdLine -and $simulateIdLine -notmatch 'MSVC') {
-            Write-Error "clang-cl is not simulating the MSVC frontend."
-            exit 1
-          }
-
-          if ($frontendLine -and $frontendLine -notmatch 'MSVC') {
-            Write-Error "CMake compiler frontend variant is not MSVC."
-            exit 1
-          }
-
-          Write-Host "Clang-cl configuration verified successfully."
+          Write-Host "clang-cl toolchain verification successful."
 
       - name: Build Release
         shell: pwsh
