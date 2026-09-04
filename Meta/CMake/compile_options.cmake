@@ -108,7 +108,7 @@ if (NOT MSVC)
     endif()
 endif()
 
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CXX_SIMULATE_ID  MATCHES "MSVC")
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CXX_SIMULATE_ID MATCHES "MSVC")
     # Clang's default constexpr-steps limit is 1048576(2^20), GCC doesn't have one
     add_cxx_compile_options(-fconstexpr-steps=16777216)
 
@@ -163,12 +163,21 @@ elseif (MSVC)
     add_cxx_compile_options(/Zc:inline)
     # equivalent of -fvisibility-inlines-hidden
     add_cxx_compile_options(/Zc:dllexportInlines-)
+
     # These options are only valid when the Clang frontend is actually being used.
     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID MATCHES "MSVC")
         add_cxx_compile_options(-fstrict-aliasing)
         add_cxx_compile_options(/clang:-fstrict-flex-arrays=2)
         add_cxx_compile_options(/clang:-ftrivial-auto-var-init=zero)
+
+        # Clang-cl compatibility:
+        # These warnings are valid diagnostics, but treating them as errors
+        # prevents the upstream AK codebase from building with newer Clang.
+        add_cxx_compile_options(/clang:-Wno-error=unqualified-std-cast-call)
+        add_cxx_compile_options(/clang:-Wno-error=user-defined-literals)
+        add_cxx_compile_options(/clang:-Wno-error=unknown-warning-option)
     endif()
+
     # create COMDATs from functions and data, enables deduplication
     add_cxx_compile_options(/Gw)
     add_cxx_compile_options(/Gy)
@@ -287,7 +296,7 @@ elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
             add_cxx_compile_options(/Qpar)  # Parallel compilation
             add_cxx_compile_options(/Ob3)  # Aggressive inlining
         elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-            # GCC/Clang: Enable LTO, aggressive optimization, and dead-code elimination
+            # GCC/Clang: Enable LTO, aggressive optimization, and dead code elimination
             add_cxx_compile_options(-flto=auto -ffat-lto-objects)
             add_cxx_compile_options(-fdata-sections -ffunction-sections)
             add_cxx_link_options(-Wl,--gc-sections)  # Dead code elimination
