@@ -176,6 +176,7 @@ elseif (MSVC)
         add_cxx_compile_options(/clang:-Wno-error=unqualified-std-cast-call)
         add_cxx_compile_options(/clang:-Wno-error=user-defined-literals)
         add_cxx_compile_options(/clang:-Wno-error=unknown-warning-option)
+        add_cxx_compile_options(/clang:-Wno-error=invalid-offsetof)
     endif()
 
     # create COMDATs from functions and data, enables deduplication
