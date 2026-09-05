@@ -39,6 +39,8 @@
         "strategy": "external"
       },
       "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
         "AETHERIS_WINDOWS_LINKER_MODE": "SYSTEM"
       },
       "vendor": {
