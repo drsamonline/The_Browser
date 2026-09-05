@@ -699,28 +699,17 @@ void Heap::collect_garbage(CollectionType collection_type, bool print_report)
 void Heap::collect_garbage_aggressive()
 {
     dbgln("Aetheris: Triggering aggressive GC for immediate memory reclamation");
-    
+
     // Disable incremental sweeping - do everything synchronously
     bool was_incremental_enabled = m_incremental_sweep_enabled;
     m_incremental_sweep_enabled = false;
-    
+
     // Force full collection of everything
     collect_garbage(CollectionType::CollectEverything, true);
-    
+
     // Restore previous setting
     m_incremental_sweep_enabled = was_incremental_enabled;
-    
-    // Run all post-GC tasks immediately
-    run_post_gc_tasks();
-    
-    // Free any empty heap blocks back to the system
-    for_each_block([&](auto& block) {
-        if (block.live_cell_count() == 0 && block.is_empty()) {
-            // Block will be freed by normal sweep process
-        }
-        return IterationDecision::Continue;
-    });
-    
+
     dbgln("Aetheris: Aggressive GC completed - memory reclaimed");
 }
 
