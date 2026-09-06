@@ -19,7 +19,7 @@ public:
     bool remove(DomNode*);
     bool dirty() const{return m_dirty;} bool consume_dirty(){bool d=m_dirty;m_dirty=false;return d;}
 private:
-    Document& m_document; bool m_dirty{false}; std::unordered_map<DomNode*,std::unordered_map<int,std::vector<Listener>>> m_listeners;
+    bool m_dirty{false}; std::unordered_map<DomNode*,std::unordered_map<int,std::vector<Listener>>> m_listeners;
     void mark_dirty();
 };
 }
