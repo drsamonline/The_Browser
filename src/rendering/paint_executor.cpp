@@ -60,6 +60,9 @@ void PaintExecutor::execute(RenderTree const& tree, SoftwareSurface& surface) co
         case PaintCommand::Type::DrawOutline:
             surface.stroke_rect(command.rect, command.edges, color, clip, command.border_style);
             break;
+        case PaintCommand::Type::PushStackingContext:
+        case PaintCommand::Type::PopStackingContext:
+            break;
         }
     }
 }

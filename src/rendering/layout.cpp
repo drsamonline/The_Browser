@@ -28,7 +28,7 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
     layout_node->display = display_for(node, layout_node->style);
 
     for (auto const& child : node.children)
-        layout_node->append_child(build_node(*child, sheet, layout_node.get(), &layout_node->style));
+        layout_node->append_child(build_node(*child, sheet, layout_node.get(), &layout_node->style, interaction_state));
     return layout_node;
 }
 
@@ -287,12 +287,12 @@ void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width,
     auto parse_tracks = [&](std::string const* value) {
         std::vector<float> tracks;
         if (!value) return tracks;
-        std::string token; float fixed = 0; int fr_count = 0;
+        std::string token; float fixed = 0;
         for (size_t i = 0; i <= value->size(); ++i) {
             char c = i < value->size() ? (*value)[i] : ' ';
             if (c == ' ' || c == '\t' || i == value->size()) {
                 if (!token.empty()) {
-                    if (token.size() >= 2 && token.substr(token.size()-2) == "fr") { tracks.push_back(-std::max(0.0f, std::strtof(token.c_str(), nullptr))); ++fr_count; }
+                    if (token.size() >= 2 && token.substr(token.size()-2) == "fr") { tracks.push_back(-std::max(0.0f, std::strtof(token.c_str(), nullptr))); }
                     else { float v = parse_length(&token, 0, available_width); tracks.push_back(v); fixed += v; }
                     token.clear();
                 }
