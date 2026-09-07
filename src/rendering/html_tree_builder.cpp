@@ -26,14 +26,14 @@ void HtmlTreeBuilder::insert_token(DomNode& document, std::vector<DomNode*>& ope
 
     switch (token.type) {
     case HtmlTokenType::Doctype:
-        insert_node(*current, std::make_unique<DomNode>(DomNodeType::Doctype, {}, token.data), open_elements, false);
+        insert_node(*current, std::make_unique<DomNode>(DomNodeType::Doctype, std::string {}, token.data), open_elements, false);
         break;
     case HtmlTokenType::Comment:
-        insert_node(*current, std::make_unique<DomNode>(DomNodeType::Comment, {}, token.data), open_elements, false);
+        insert_node(*current, std::make_unique<DomNode>(DomNodeType::Comment, std::string {}, token.data), open_elements, false);
         break;
     case HtmlTokenType::Text:
         if (!token.data.empty())
-            insert_node(*current, std::make_unique<DomNode>(DomNodeType::Text, {}, token.data), open_elements, false);
+            insert_node(*current, std::make_unique<DomNode>(DomNodeType::Text, std::string {}, token.data), open_elements, false);
         break;
     case HtmlTokenType::StartTag:
     case HtmlTokenType::SelfClosingTag: {
