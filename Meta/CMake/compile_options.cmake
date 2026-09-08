@@ -177,6 +177,7 @@ elseif (MSVC)
         add_cxx_compile_options(/clang:-Wno-error=user-defined-literals)
         add_cxx_compile_options(/clang:-Wno-error=unknown-warning-option)
         add_cxx_compile_options(/clang:-Wno-error=invalid-offsetof)
+        add_cxx_compile_options(/clang:-Wno-error=c23-extensions)
     endif()
 
     # create COMDATs from functions and data, enables deduplication
