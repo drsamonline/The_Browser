@@ -418,9 +418,7 @@ if (DEFINED FLAP_ARCH)
         COMMENT "Generating interpreter_${FLAP_ARCH}.S from Flap"
     )
 
-    if (WIN32)
-        set_source_files_properties("${FLAP_GENERATED_S}" PROPERTIES LANGUAGE ASM_MASM)
-    endif()
+
     target_sources(LibJS PRIVATE "${FLAP_GENERATED_S}")
     if ("${FLAP_ARCH}" STREQUAL "x86_64" AND CMAKE_ASM_COMPILER_ID MATCHES "Clang")
         # Keep conditional branches within 32-byte boundaries so Intel's
