@@ -43,24 +43,24 @@ StyleProperties StyleResolver::resolve(DomNode const& node, CssStyleSheet const&
         size_t source_order;
         CssDeclaration const* declaration;
     };
-    std::vector<Match> matches;
+    std::vector<Match> matching_declarations;
 
     for (auto const& rule : sheet.rules) {
         for (auto const& selector : rule.selectors) {
             if (!matches(node, selector, interaction_state))
                 continue;
             for (auto const& declaration : rule.declarations)
-                matches.push_back({ specificity(selector), rule.source_order, &declaration });
+                matching_declarations.push_back({ specificity(selector), rule.source_order, &declaration });
         }
     }
 
-    std::stable_sort(matches.begin(), matches.end(), [](auto const& a, auto const& b) {
+    std::stable_sort(matching_declarations.begin(), matching_declarations.end(), [](auto const& a, auto const& b) {
         if (a.specificity != b.specificity)
             return a.specificity < b.specificity;
         return a.source_order < b.source_order;
     });
 
-    for (auto const& match : matches)
+    for (auto const& match : matching_declarations)
         apply_declaration(properties, *match.declaration);
 
     if (parent_style)

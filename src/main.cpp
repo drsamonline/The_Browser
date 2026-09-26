@@ -8,9 +8,11 @@
 #include "aetheris/cache/ghost_cache.hpp"
 #include "aetheris/ui/window_manager.hpp"
 
+#include <chrono>
+#include <cstdio>
 #include <iostream>
 #include <string>
-#include <chrono>
+#include <thread>
 
 using namespace aetheris;
 
