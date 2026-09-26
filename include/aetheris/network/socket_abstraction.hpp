@@ -259,7 +259,7 @@ private:
     static constexpr int INVALID_SOCKET_VALUE = -1;
 #endif
     
-    decltype(INVALID_SOCKET_VALUE) m_socket{INVALID_SOCKET_VALUE};
+    std::remove_const_t<decltype(INVALID_SOCKET_VALUE)> m_socket{INVALID_SOCKET_VALUE};
 };
 
 /**
