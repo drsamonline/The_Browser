@@ -1,5 +1,7 @@
 blank_issues_enabled: true
 contact_links:
+  # NOTE (Aetheris): the links below point to the upstream Ladybird project,
+  # from which this repository derives much of its code. See docs/UPSTREAM_ATTRIBUTION.md.
   - name: Join our Discord server
     url: https://discord.gg/nvfjVJ4Svh
     about: Chat with the Ladybird maintainers and contributors and other users.

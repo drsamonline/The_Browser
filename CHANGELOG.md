@@ -8,6 +8,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 
 ### Added
 
+- GitHub community health files: pull request template (`.github/PULL_REQUEST_TEMPLATE.md`) and Aetheris feature-request issue form (`.github/ISSUE_TEMPLATE/feature_request.yml`).
 - Browser application, tab, input, navigation, and browser-chrome foundations.
 - Resource loading, HTTP transport abstraction, cookie-state foundation, and dynamic runtime infrastructure.
 - Security-policy and secure-resource-loading foundations.

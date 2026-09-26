@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose a new capability for the Aetheris rendering engine or browser project.
+title: "[Feature]: "
+labels: ["enhancement", "aetheris"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature for **Aetheris** (maintained by Dr. Sohil Momin).
+        Please check existing issues first. For upstream Ladybird features, file against the upstream repository instead.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem does this feature solve?
+      placeholder: As a …, I want … so that …
+    validations:
+      required: true
+  - type: dropdown
+    id: subsystem
+    attributes:
+      label: Subsystem
+      options:
+        - Aetheris Rendering (src/rendering)
+        - Aetheris Core (src/core)
+        - Build system (CMake / vcpkg)
+        - Documentation
+        - Other / unknown
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the approach you have in mind (APIs, modules, behavior).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other designs or workarounds you evaluated.
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Agreement
+      options:
+        - label: I agree to follow the Aetheris Code of Conduct and preserve upstream attribution rules.
+          required: true
