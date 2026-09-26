@@ -1,5 +1,7 @@
 # Security Policy
 
+**Author:** Dr. Sohil Momin · Part of the [Aetheris documentation set](docs/USER_GUIDE.md)
+
 Ladybird is unreleased software still in early development, and so bugs and vulnerabilities in its code can be safely
 disclosed publicly. The preference is to report security issues as [GitHub issues](https://github.com/LadybirdBrowser/ladybird/issues/new?template=bug_report.yml).
 
@@ -47,3 +49,7 @@ resolution steps throughout the process.
 
 In the case that a security issue is also reported to other browser vendors or OSS projects, the maintainers will work
 with the longest disclosure timeline to ensure that all parties have sufficient time to resolve the issue.
+
+---
+
+*Aetheris Browser — security policy. Authored and maintained by **Dr. Sohil Momin**.*

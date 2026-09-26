@@ -1,5 +1,7 @@
 # Aetheris Browser build guide
 
+**Author:** Dr. Sohil Momin · Part of the [Aetheris documentation set](docs/USER_GUIDE.md)
+
 Aetheris is built on a Ladybird/SerenityOS-derived codebase. Build requirements depend on the enabled upstream components and platform. Do not assume that a small generic dependency list is sufficient for every configuration.
 
 ## Standard development build
@@ -21,3 +23,7 @@ Use a current Visual Studio C++ toolchain and run CMake from a Developer PowerSh
 ## Reproducibility
 
 Record compiler version, generator, build type, platform, enabled options, and dependency versions when reporting build failures or performance measurements.
+
+---
+
+*Aetheris Browser — build guide. Authored and maintained by **Dr. Sohil Momin**.*

@@ -1,5 +1,7 @@
 # Issue-reporting guidelines
 
+**Author:** Dr. Sohil Momin · Part of the [Aetheris documentation set](docs/USER_GUIDE.md)
+
 Report problems using our detailed [bug-reporting
 form](https://github.com/LadybirdBrowser/ladybird/issues/new?template=bug_report.yml), which helps to ensure that, for us to reproduce and investigate the problem, your bug report includes the information needed — including a reduced test case.
 
@@ -74,3 +76,7 @@ When investigating a bug, it can be helpful to use the `--enable-idl-tracing` co
 ```bash
 ./Meta/ladybird.py run ladybird --enable-idl-tracing
 ```
+
+---
+
+*Aetheris Browser — issue-reporting guidelines. Authored and maintained by **Dr. Sohil Momin**.*

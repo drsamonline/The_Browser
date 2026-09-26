@@ -1,5 +1,7 @@
 # Aetheris development workflow
 
+**Author:** Dr. Sohil Momin · Part of the [Aetheris documentation set](USER_GUIDE.md)
+
 Aetheris is an experimental browser project derived from the Ladybird/SerenityOS ecosystem. Keep upstream provenance intact and avoid representing Aetheris-specific additions as upstream work.
 
 ## Local validation
@@ -20,3 +22,7 @@ git status
 ```
 
 Do not commit generated build directories, local caches, credentials, or unrelated experiments.
+
+---
+
+*Aetheris Browser — development workflow. Authored and maintained by **Dr. Sohil Momin**.*

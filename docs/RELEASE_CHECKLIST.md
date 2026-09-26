@@ -1,5 +1,7 @@
 # Aetheris release checklist
 
+**Author:** Dr. Sohil Momin · Part of the [Aetheris documentation set](USER_GUIDE.md)
+
 ## Source and repository
 
 - [ ] Working tree reviewed.
@@ -27,3 +29,7 @@
 ## Tagging
 
 Create a version tag only after the release candidate has passed the checks above and the repository documentation has been reviewed for provenance and accuracy.
+
+---
+
+*Aetheris Browser — release checklist. Authored and maintained by **Dr. Sohil Momin**.*

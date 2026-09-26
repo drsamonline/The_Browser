@@ -71,5 +71,6 @@ if exist build rmdir /s /q build
 
 Do not commit the generated `build` directory.
 
-CI validation checkpoint.
+---
 
+*Aetheris Browser — Windows build guide. Maintained by Dr. Sohil Momin.*
