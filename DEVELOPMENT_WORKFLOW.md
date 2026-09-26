@@ -168,7 +168,11 @@ JS Engine → DOM Binding → Event System
 UI Components → Tab Management → Navigation Controls
 ```
 
-## Performance Targets
+## Performance Targets (aspirational — not verified claims)
+
+> ⚠️ The numbers below are early design targets from the initial prototype
+> phase. They are **not** measured results and must not be quoted as product
+> guarantees. See README “Performance and benchmarking” for the evidence policy.
 
 | Metric               | Target          | Measurement Method          |
 |----------------------|-----------------|-----------------------------|
@@ -178,4 +182,7 @@ UI Components → Tab Management → Navigation Controls
 | Page Load Time       | <500ms (simple) | Network + rendering timing  |
 | Cache Compression    | 2-4x ratio      | Before/after compression    |
 | JS Execution Speed   | 80% of V8       | Standard JS benchmarks      |
-```
+
+---
+
+*Aetheris Browser — development workflow. Authored and maintained by Dr. Sohil Momin.*

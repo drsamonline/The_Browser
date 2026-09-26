@@ -1,5 +1,7 @@
 # Contributing to Aetheris Browser
 
+**Author:** Dr. Sohil Momin · Part of the [Aetheris documentation set](docs/USER_GUIDE.md)
+
 Aetheris is an experimental derivative browser project. Contributions must respect both Aetheris-specific development work and the provenance of upstream-derived code.
 
 ## Before changing code
@@ -37,3 +39,7 @@ Avoid claiming performance improvements unless they were measured and documented
 Do not remove or replace upstream notices simply to rebrand code as Aetheris. If provenance or licensing is unclear, document the uncertainty and resolve it before making a broad ownership or relicensing claim.
 
 See [`docs/UPSTREAM_ATTRIBUTION.md`](docs/UPSTREAM_ATTRIBUTION.md).
+
+---
+
+*Aetheris Browser — contributor guide. Authored and maintained by **Dr. Sohil Momin**.*

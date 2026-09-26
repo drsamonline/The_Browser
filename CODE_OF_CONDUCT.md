@@ -1,3 +1,10 @@
+# Code of Conduct
+
+**Author/Maintainer context:** Aetheris Browser — Dr. Sohil Momin.
+
+This code of conduct governs the Aetheris community. It is retained from the upstream
+Ladybird project with its original attribution intact.
+
 The Ladybird code of conduct is derived from [The Ruby Community Conduct Guideline](https://www.ruby-lang.org/en/conduct/).
 
 - Participants will be tolerant of opposing views.

@@ -1,4 +1,22 @@
-"# Aetheris Rendering Engine Implementation Plan
+# Aetheris Rendering Engine Implementation Plan
+
+> **Author:** Dr. Sohil Momin · **Status:** historical planning document
+>
+> ⚠️ This plan predates the shipped code and is kept for provenance of design
+> decisions. Where it disagrees with the repository, the repository wins:
+>
+> | Planned in this document | Shipped as (in `src/rendering/`) |
+> |--------------------------|----------------------------------|
+> | `dom.hpp` / `dom.cpp` | `dom.{hpp,cpp}` + `document.{hpp,cpp}` (`Document::parse_html`) |
+> | `html_tokenizer.hpp/cpp` | `html_tokenizer.{hpp,cpp}` + `html_tree_builder.{hpp,cpp}` |
+> | `css_parser.hpp/cpp` | `css_parser.{hpp,cpp}` + `css_tokenizer.{hpp,cpp}` |
+> | `style_system.hpp/cpp` | `style.{hpp,cpp}` (`StyleResolver`) |
+> | `box_model.hpp/cpp` | `layout.{hpp,cpp}`, `geometry.{hpp,cpp}`, `viewport.{hpp,cpp}` |
+> | `text_layout.hpp/cpp` | `text_layout.{hpp,cpp}` + `font.{hpp,cpp}` |
+> | `rendering_context.hpp` / `renderer.hpp` | `paint_executor.{hpp,cpp}`, `software_surface.{hpp,cpp}`, `render_document.{hpp,cpp}`, `render_tree.{hpp,cpp}` |
+> | WindowManager integration | `browser_session`, `browser_application`, `browser_chrome` (the X11 prototype in `src/ui/` is dormant — see [ISSUES.md](../ISSUES.md)) |
+>
+> Current state of the pipeline is documented in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Overview
 This document outlines the implementation plan for the Aetheris HTML/CSS rendering engine, which will enable the browser to display web content.
@@ -339,4 +357,8 @@ Create a set of test HTML/CSS files:
 2. Implement basic tokenization
 3. Create test cases for HTML parsing
 4. Implement DOM construction
-5. Begin CSS parser implementation"
+5. Begin CSS parser implementation
+
+---
+
+*Aetheris Browser — historical rendering-engine plan. Authored and maintained by **Dr. Sohil Momin**.*

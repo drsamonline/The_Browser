@@ -1,0 +1,19 @@
+Aetheris Browser — Authors
+==========================
+
+Project lead and primary Aetheris author
+----------------------------------------
+
+Dr. Sohil Momin <sohilmomin2000@gmail.com>
+  - Aetheris rendering-foundation experiments (src/rendering, Tests/AetherisRendering)
+  - Build, documentation, and release engineering for the Aetheris fork
+  - Git identity: "Dr. Sam Online" / "drsamonline" maps to this author (see .mailmap)
+
+Upstream attribution
+--------------------
+
+This repository also contains code derived from the Ladybird and SerenityOS
+ecosystems (AK, Libraries, Services, UI, Meta, Documentation, and related
+infrastructure). Upstream authors retain copyright of their contributions;
+their notices must not be removed or replaced by project rebranding. See
+docs/UPSTREAM_ATTRIBUTION.md for the full provenance policy.

@@ -1,5 +1,7 @@
 # Upstream Attribution and Provenance
 
+**Author:** Dr. Sohil Momin · Part of the [Aetheris documentation set](USER_GUIDE.md)
+
 ## Purpose
 
 Aetheris Browser is a derivative project containing code and infrastructure associated with the Ladybird and SerenityOS ecosystem. The repository includes recognizable upstream components and libraries such as `AK`, `LibCore`, and related browser infrastructure.
@@ -30,3 +32,7 @@ Before a release or broad relicensing statement, perform and record:
 Until that audit is complete, Aetheris should be described as an experimental derivative project built on a Ladybird/SerenityOS-derived codebase, not as a browser implemented entirely from scratch.
 
 Official upstream projects include Ladybird and SerenityOS. Consult the license and copyright notices present in the source tree for authoritative legal terms applicable to individual components.
+
+---
+
+*Aetheris Browser — provenance policy. Authored and maintained by **Dr. Sohil Momin**.*

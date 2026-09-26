@@ -39,9 +39,11 @@ add_library(AetherisRendering STATIC
     rendering/text_layout.cpp
 )
 
+# Consumers (including the Tests/AetherisRendering suite) include these headers
+# as <name.hpp>, so the directory must be an INTERFACE include dir as well.
 target_include_directories(AetherisRendering
     PUBLIC
-        ${LADYBIRD_SOURCE_DIR}/src/rendering
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rendering>
 )
 
 target_compile_features(AetherisRendering PUBLIC cxx_std_20)
