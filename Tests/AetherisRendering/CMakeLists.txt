@@ -172,8 +172,10 @@ add_executable(TestAetherisSecurityIntegration TestSecurityIntegration.cpp)
 target_link_libraries(TestAetherisSecurityIntegration PRIVATE AetherisRendering)
 add_test(NAME AetherisSecurityIntegration COMMAND TestAetherisSecurityIntegration)
 
+# The AetherisRendering suite is standalone (plain-C++ assertions, no LibTest
+# dependency), so this test must not link the upstream Lagom test framework.
 add_executable(TestBrowserChrome TestBrowserChrome.cpp)
-target_link_libraries(TestBrowserChrome PRIVATE AetherisRendering LibTest)
+target_link_libraries(TestBrowserChrome PRIVATE AetherisRendering)
 add_test(NAME TestBrowserChrome COMMAND TestBrowserChrome)
 
 add_executable(TestAetherisReleaseSmoke TestReleaseSmoke.cpp)
