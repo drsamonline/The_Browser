@@ -10,6 +10,7 @@
 #define AETHERIS_SOCKET_ABSTRACTION_HPP
 
 #include "aetheris/core.hpp"
+#include <charconv>
 #include <string>
 #include <string_view>
 #include <optional>
@@ -318,11 +319,17 @@ public:
                 
                 // Check Content-Length
                 if (key == "Content-Length" || key == "content-length") {
-                    try {
-                        metadata.content_length = std::stoull(value);
-                    } catch (...) {
-                        // Ignore parse errors
+                    // NOTE: no std::stoull here - the project compiles with
+                    // -fno-exceptions and stoull throws on malformed input.
+                    // from_chars parses without any exception machinery.
+                    auto first = value.data();
+                    auto last = value.data() + value.size();
+                    unsigned long long parsed = 0;
+                    auto result = std::from_chars(first, last, parsed);
+                    if (result.ec == std::errc {} && result.ptr != first) {
+                        metadata.content_length = parsed;
                     }
+                    // Ignore parse errors: leave content_length untouched.
                 }
             }
             

@@ -80,12 +80,16 @@ static int run_smoke_test() {
     int frames = 0;
     window.show();
     for (; frames < kMaxSmokeFrames; ++frames) {
-        window.clear();
-        window.draw_debug_overlay("AETHERIS SMOKE TEST");
-        window.swap_buffers();
+        // Poll first: on the X11 backend a failed poll (no display server,
+        // e.g. CI without xvfb) must abort the loop instead of driving the
+        // render path with uninitialized platform state.
         if (!window.poll_events()) {
             break;
         }
+
+        window.clear();
+        window.draw_debug_overlay("AETHERIS SMOKE TEST");
+        window.swap_buffers();
     }
 
     std::cout << "Smoke test finished after " << frames << " frame(s)." << std::endl;
@@ -190,6 +194,10 @@ int main(int argc, char* argv[]) {
         if (!window.poll_events()) {
             break;
         }
+
+        // Small idle sleep so the loop never busy-spins when there are no
+        // events pending (keeps CPU usage flat in headless/X11 mode).
+        std::this_thread::sleep_for(8ms);
         
         // Clear and render
         window.clear();

@@ -30,9 +30,35 @@
         // manager compiles against a headless no-op backend (see the
         // AETHERIS_HEADLESS_UI implementation block below). No X11 headers.
     #else
+        // NOTE: X11 headers are macro-polluted legacy C headers. `None`
+        // (#define None 0L from <X.h>) collides with enumerators elsewhere
+        // in this file, and function-like macros such as KeyPress or
+        // DestroyWindow shadow our own identifiers. Include them first, then
+        // neutralize the offenders; the code below only uses real Xlib types
+        // (Display, Window, GC, XEvent, ...) and prefixed X* functions.
         #include <X11/Xlib.h>
         #include <X11/Xutil.h>
         #include <X11/keysym.h>
+
+        #undef None
+        #undef Bool
+        #undef Status
+        #undef Success
+        #undef KeyPress
+        #undef KeyRelease
+        #undef ButtonPress
+        #undef ButtonRelease
+        #undef Expose
+        #undef FocusIn
+        #undef FocusOut
+        #undef VisibilityHint
+        #undef NoExpose
+        #undef DestroyWindow
+        #undef UnmapWindow
+        #undef MapWindow
+        #undef CopyArea
+        #undef DrawLine
+        #undef DrawString
     #endif
 #endif
 
@@ -58,7 +84,10 @@ struct WindowConfig {
 
 // Event types
 enum class EventType : uint8_t {
-    None = 0,
+    // NOTE: `NoEvent`, not `None`: X11's <X.h> defines `#define None 0L`,
+    // which otherwise explodes this enumerator (and every use of the type)
+    // into `enum class ... : uint8_t { 0 = 0, ... }` on Linux builds.
+    NoEvent = 0,
     Resize,
     Close,
     Focus,
@@ -590,6 +619,14 @@ inline void WindowManager::cleanup_platform() noexcept {
 }
 
 inline bool WindowManager::process_events_platform() noexcept {
+    // No display (create failed or was destroyed): report "no more events"
+    // so callers stop the frame loop instead of dereferencing a null
+    // Display* (Xlib aborts the process on null displays). This lets
+    // `aetheris --smoke-test` exit gracefully on CI runners without Xvfb.
+    if (!m_display) {
+        return false;
+    }
+
     XEvent event{};
     
     while (XPending(m_display) > 0) {

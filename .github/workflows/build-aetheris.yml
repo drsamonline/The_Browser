@@ -27,9 +27,10 @@ env:
 jobs:
   # Fast, dependency-light validation of the Aetheris-specific code in src/
   # (AetherisRendering + AetherisRuntime + the `aetheris` executable) and its
-  # CTest suite. This job does not require vcpkg; it only needs system dev
-  # packages, so it gives pull requests quick signal even when the full
-  # Ladybird-derived tree cannot be configured on a runner.
+  # CTest suite. This job uses the AETHERIS_STANDALONE_BUILD profile, which
+  # skips the full Ladybird-derived tree (AK/Libraries/Services/UI need a
+  # complete vcpkg manifest that cannot resolve on bare runners). It needs
+  # only system dev packages, giving pull requests quick signal.
   test-standalone:
     name: Test Aetheris standalone (Linux)
     runs-on: ubuntu-latest
@@ -49,8 +50,7 @@ jobs:
       - name: Configure
         run: >
           cmake -S . -B build-standalone -G Ninja -DCMAKE_BUILD_TYPE=Debug
-          -DENABLE_GUI_TARGETS=OFF
-          -DAETHERIS_MINIMAL_BUILD=OFF
+          -DAETHERIS_STANDALONE_BUILD=ON
           -DAETHERIS_ENABLE_TESTING=ON
           -DBUILD_TESTING=ON
 
@@ -60,13 +60,59 @@ jobs:
       - name: Test
         run: ctest --test-dir build-standalone --output-on-failure --no-tests=error
 
+      # Headless smoke run: `--smoke-test` initializes every subsystem, runs
+      # a bounded frame loop and exits 0. No xvfb needed - the binary works
+      # both with the X11 backend (graceful fallback when no display exists)
+      # and the headless backend (when libX11 dev packages are absent).
       - name: Smoke-run the aetheris executable
-        run: |
-          sudo apt-get install -y --no-install-recommends xvfb
-          xvfb-run -a ./build-standalone/bin/aetheris --help || true
+        run: ./build-standalone/bin/aetheris --smoke-test
 
+  # Fast MSVC-based validation of the Aetheris targets on Windows WITHOUT the
+  # multi-hour vcpkg bootstrap (the standalone profile has no hard external
+  # deps: LZ4 and the UI layer fall back to bundled shims when not found).
+  # This gives PRs quick Windows signal and catches platform-specific breakage
+  # long before the expensive full-tree Release job runs.
+  test-windows-standalone:
+    name: Test Aetheris standalone (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Add MSVC to PATH
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build-standalone -G "Ninja Multi-Config" `
+            -DAETHERIS_STANDALONE_BUILD=ON `
+            -DAETHERIS_ENABLE_TESTING=ON `
+            -DBUILD_TESTING=ON `
+            -DCMAKE_C_COMPILER=cl `
+            -DCMAKE_CXX_COMPILER=cl
+
+      - name: Build
+        run: cmake --build build-standalone --config Debug --parallel
+
+      - name: Test
+        run: ctest --test-dir build-standalone -C Debug --output-on-failure --no-tests=error
+
+      - name: Smoke-run the aetheris executable
+        run: ./build-standalone/bin/Debug/aetheris.exe --smoke-test
+
+  # Full-tree Windows build (vcpkg manifest + clang-cl). Expensive: it only
+  # runs on main pushes, tags, and manual dispatches - NOT on every PR - so
+  # pull-request latency stays low. The vcpkg caches below make repeat runs
+  # incremental instead of bootstrapping every dependency from source.
   build-windows:
     name: Build Aetheris (Windows)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
 
     steps:
@@ -82,17 +128,28 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
-      - name: Restore Aetheris dependency cache
-        uses: actions/cache@v4
+      # Binary cache keyed ONLY on the dependency manifests (not on the whole
+      # Meta/CMake tree), so ordinary source changes never invalidate it.
+      - name: Restore vcpkg binary cache
+        uses: actions/cache/restore@v4
+        with:
+          path: Build/caches/vcpkg-binary-cache
+          key: aetheris-vcpkg-bin-windows-x64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            aetheris-vcpkg-bin-windows-x64-
+
+      # Installed-tree cache: lets vcpkg skip re-planning and lets CMake reuse
+      # already-built ports even when a partial binary-cache miss occurs.
+      - name: Restore vcpkg installed tree
+        uses: actions/cache/restore@v4
         with:
           path: |
-            Build/caches
             Build/vcpkg/downloads
             Build/vcpkg/packages
             Build/vcpkg/installed
-          key: aetheris-vcpkg-windows-x64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'Meta/CMake/vcpkg/**', 'Meta/CMake/presets/**') }}
+          key: aetheris-vcpkg-tree-windows-x64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
-            aetheris-vcpkg-windows-x64-
+            aetheris-vcpkg-tree-windows-x64-
 
       - name: Bootstrap repository-local vcpkg
         shell: pwsh
@@ -123,7 +180,7 @@ jobs:
               -OutFile $hstsPath
           }
 
-      - name: Initialize Visual Studio and LLVM environment
+      - name: Initialize Visual Studio environment
         shell: pwsh
         run: |
           $vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
@@ -151,7 +208,23 @@ jobs:
             exit 1
           }
 
-          $envDump = cmd /c "`"$vsDevCmd`" -arch=x64 && set"
+          # Only propagate the variables CMake actually needs from VsDevCmd.
+          # Dumping the full `set` output into GITHUB_ENV previously polluted
+          # every later step (PATH bloat, clashing toolchain env vars) and is
+          # what made configure/build behave differently between steps.
+          $wanted = @(
+            'VSCMD_ARG_TGT_ARCH',
+            'Platform',
+            'WindowsSdkDir',
+            'WindowsSDKVersion',
+            'UCRTVersion',
+            'VSINSTALLDIR',
+            'VCINSTALLDIR',
+            'VCToolsInstallDir',
+            'VCToolsRedistDir'
+          )
+
+          $envDump = cmd /c "`"$vsDevCmd`" -arch=x64 -no_logo && set"
 
           if ($LASTEXITCODE -ne 0) {
             Write-Error "VsDevCmd.bat failed."
@@ -159,7 +232,7 @@ jobs:
           }
 
           foreach ($line in $envDump) {
-            if ($line -match '^([^=]+)=(.*)$') {
+            if ($line -match '^([^=]+)=(.*)$' -and $wanted -contains $matches[1]) {
               "$($matches[1])=$($matches[2])" | Out-File `
                 -FilePath $env:GITHUB_ENV `
                 -Encoding utf8 `
@@ -167,15 +240,20 @@ jobs:
             }
           }
 
-          $llvmCandidates = @(
-            (Join-Path $vsPath 'VC\Tools\Llvm\x64\bin\clang-cl.exe'),
+          Write-Host "Visual Studio installation: $vsPath"
+
+      - name: Locate clang-cl
+        id: clang
+        shell: pwsh
+        run: |
+          $candidates = @(
+            (Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64\clang-cl.exe'),
             'C:\Program Files\LLVM\bin\clang-cl.exe'
           )
 
           $clangCl = $null
-
-          foreach ($candidate in $llvmCandidates) {
-            if (Test-Path $candidate) {
+          foreach ($candidate in $candidates) {
+            if ($candidate -and (Test-Path $candidate)) {
               $clangCl = $candidate
               break
             }
@@ -183,7 +261,6 @@ jobs:
 
           if (-not $clangCl) {
             $clangCommand = Get-Command clang-cl.exe -ErrorAction SilentlyContinue
-
             if ($clangCommand) {
               $clangCl = $clangCommand.Source
             }
@@ -195,33 +272,39 @@ jobs:
           }
 
           $llvmBin = Split-Path $clangCl -Parent
+          $llvmBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-          $llvmBin | Out-File `
-            -FilePath $env:GITHUB_PATH `
-            -Encoding utf8 `
-            -Append
-
-          Write-Host "Visual Studio installation: $vsPath"
-          Write-Host "clang-cl: $clangCl"
+          "path=$clangCl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
           & $clangCl --version
-
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
 
+      # Use explicit cmake flags instead of `cmake --preset Release`: the
+      # preset pins the Ninja generator while the build step used
+      # `--config RelWithDebInfo` (a multi-config concept), so configure and
+      # build disagreed about the build tree and the step failed. Writing the
+      # cache directly also avoids preset/env drift between steps.
       - name: Configure Release
         shell: pwsh
         run: |
-          $env:LADYBIRD_SOURCE_DIR = (Get-Location).Path
-          # NOTE: If Aetheris is not Ladybird-derived, replace the line above
-          # with the correct source-dir variable (or remove it entirely).
+          $env:LADYBIRD_SOURCE_DIR = $env:GITHUB_WORKSPACE
+
+          New-Item -ItemType Directory -Force -Path Build | Out-Null
 
           if (Test-Path "Build/release/CMakeCache.txt") {
             Remove-Item "Build/release/CMakeCache.txt" -Force
           }
 
-          cmake --preset Release
+          cmake -S . -B Build/release -G "Ninja Multi-Config" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DCMAKE_C_COMPILER=clang-cl `
+            -DCMAKE_CXX_COMPILER=clang-cl `
+            -DAETHERIS_WINDOWS_LINKER_MODE=SYSTEM `
+            -DVCPKG_OVERLAY_TRIPLETS="$env:GITHUB_WORKSPACE/Meta/CMake/vcpkg/release-triplets" `
+            -DLADYBIRD_CACHE_DIR="$env:GITHUB_WORKSPACE/Build/caches"
 
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
@@ -236,23 +319,6 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "===== clang-cl toolchain verification ====="
-
-          $clangCommand = Get-Command clang-cl.exe -ErrorAction SilentlyContinue
-
-          if (-not $clangCommand) {
-            Write-Error "clang-cl.exe is not available in PATH."
-            exit 1
-          }
-
-          Write-Host "clang-cl path:"
-          Write-Host $clangCommand.Source
-
-          & $clangCommand.Source --version
-
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "clang-cl.exe failed to execute."
-            exit $LASTEXITCODE
-          }
 
           $cache = Get-Content "Build/release/CMakeCache.txt"
 
@@ -278,7 +344,11 @@ jobs:
       - name: Build Release
         shell: pwsh
         run: |
-          cmake --build Build/release --config RelWithDebInfo --parallel
+          # Single-config semantics: the configure step sets
+          # CMAKE_BUILD_TYPE=RelWithDebInfo, so do NOT pass --config here
+          # (passing it to a single-config generator is ignored/error-prone
+          # and caused outputs to be looked for in the wrong directory).
+          cmake --build Build/release --parallel
 
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
@@ -290,11 +360,28 @@ jobs:
           # --no-tests=error: the Windows release build must register tests;
           # if none are found, something is wrong with the test wiring and CI
           # should fail loudly instead of silently passing.
-          ctest --test-dir Build/release -C RelWithDebInfo --output-on-failure --no-tests=error
+          ctest --test-dir Build/release --output-on-failure --no-tests=error
 
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
+
+      - name: Save vcpkg binary cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: Build/caches/vcpkg-binary-cache
+          key: aetheris-vcpkg-bin-windows-x64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}-${{ github.run_id }}
+
+      - name: Save vcpkg installed tree cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            Build/vcpkg/downloads
+            Build/vcpkg/packages
+            Build/vcpkg/installed
+          key: aetheris-vcpkg-tree-windows-x64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}-${{ github.run_id }}
 
       - name: Package Windows build
         shell: pwsh
