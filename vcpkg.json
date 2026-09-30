@@ -90,6 +90,7 @@
     },
     "libjpeg-turbo",
     "libjxl",
+    "lz4",
     {
       "name": "libpng",
       "features": [

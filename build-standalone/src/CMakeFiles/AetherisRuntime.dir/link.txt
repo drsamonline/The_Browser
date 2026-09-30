@@ -1,0 +1,2 @@
+/usr/bin/ar qc ../lib/libAetherisRuntime.a CMakeFiles/AetherisRuntime.dir/network/socket_abstraction.cpp.o CMakeFiles/AetherisRuntime.dir/cache/ghost_cache.cpp.o CMakeFiles/AetherisRuntime.dir/ui/window_manager.cpp.o
+/usr/bin/ranlib ../lib/libAetherisRuntime.a

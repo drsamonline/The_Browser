@@ -1,0 +1,1 @@
+/usr/bin/c++ -g -fstack-protector-strong -Wl,-z,relro -Wl,-z,now -Wl,-z,defs -Wl,--no-undefined -Wl,--no-allow-shlib-undefined -fPIE -pie CMakeFiles/aetheris.dir/main.cpp.o -o ../bin/aetheris  -Wl,-rpath,"\$ORIGIN:\$ORIGIN/../lib" ../lib/libAetherisRuntime.a /usr/lib/x86_64-linux-gnu/libX11.so /usr/lib/x86_64-linux-gnu/liblz4.so 
