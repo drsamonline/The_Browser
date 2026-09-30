@@ -1,0 +1,61 @@
+Performing C++ SOURCE FILE Test AETHERIS_HAS_FLAG_fstrict_flex_arrays_2 failed with the following output:
+Change Dir: /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-6SEe4i
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_65da2/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_65da2.dir/build.make CMakeFiles/cmTC_65da2.dir/build
+gmake[1]: Entering directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-6SEe4i'
+Building CXX object CMakeFiles/cmTC_65da2.dir/src.cxx.o
+/usr/bin/c++ -DAETHERIS_HAS_FLAG_fstrict_flex_arrays_2  -fstrict-flex-arrays=2 -Werror   -fstrict-flex-arrays=2 -std=c++23 -o CMakeFiles/cmTC_65da2.dir/src.cxx.o -c /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-6SEe4i/src.cxx
+c++: error: unrecognized command-line option '-fstrict-flex-arrays=2'
+c++: error: unrecognized command-line option '-fstrict-flex-arrays=2'
+gmake[1]: *** [CMakeFiles/cmTC_65da2.dir/build.make:78: CMakeFiles/cmTC_65da2.dir/src.cxx.o] Error 1
+gmake[1]: Leaving directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-6SEe4i'
+gmake: *** [Makefile:127: cmTC_65da2/fast] Error 2
+
+
+Source file was:
+int main() { return 0; }
+
+Performing C++ SOURCE FILE Test LAGOM_LINKER_SUPPORTS_LINKER:--gdb-index failed with the following output:
+Change Dir: /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-kZ0c7c
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_9d66e/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_9d66e.dir/build.make CMakeFiles/cmTC_9d66e.dir/build
+gmake[1]: Entering directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-kZ0c7c'
+Building CXX object CMakeFiles/cmTC_9d66e.dir/src.cxx.o
+/usr/bin/c++   -fPIE   -DLAGOM_LINKER_SUPPORTS_LINKER:--gdb-index -std=c++23 -o CMakeFiles/cmTC_9d66e.dir/src.cxx.o -c /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-kZ0c7c/src.cxx
+<command-line>: warning: ISO C++11 requires whitespace after the macro name
+Linking CXX executable cmTC_9d66e
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_9d66e.dir/link.txt --verbose=1
+/usr/bin/c++ -Wl,--gdb-index CMakeFiles/cmTC_9d66e.dir/src.cxx.o -o cmTC_9d66e 
+/usr/bin/ld: unrecognized option '--gdb-index'
+/usr/bin/ld: use the --help option for usage information
+collect2: error: ld returned 1 exit status
+gmake[1]: *** [CMakeFiles/cmTC_9d66e.dir/build.make:99: cmTC_9d66e] Error 1
+gmake[1]: Leaving directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-kZ0c7c'
+gmake: *** [Makefile:127: cmTC_9d66e/fast] Error 2
+
+
+Source file was:
+int main() { return 0; }
+
+Performing C++ SOURCE FILE Test LAGOM_LINKER_SUPPORTS_LINKER:-Bsymbolic-non-weak-functions failed with the following output:
+Change Dir: /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-15uQlU
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_17da3/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_17da3.dir/build.make CMakeFiles/cmTC_17da3.dir/build
+gmake[1]: Entering directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-15uQlU'
+Building CXX object CMakeFiles/cmTC_17da3.dir/src.cxx.o
+/usr/bin/c++   -fPIE   -DLAGOM_LINKER_SUPPORTS_LINKER:-Bsymbolic-non-weak-functions -std=c++23 -o CMakeFiles/cmTC_17da3.dir/src.cxx.o -c /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-15uQlU/src.cxx
+<command-line>: warning: ISO C++11 requires whitespace after the macro name
+Linking CXX executable cmTC_17da3
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_17da3.dir/link.txt --verbose=1
+/usr/bin/c++ -Wl,-Bsymbolic-non-weak-functions CMakeFiles/cmTC_17da3.dir/src.cxx.o -o cmTC_17da3 
+/usr/bin/ld: unrecognized option '-Bsymbolic-non-weak-functions'
+/usr/bin/ld: use the --help option for usage information
+collect2: error: ld returned 1 exit status
+gmake[1]: *** [CMakeFiles/cmTC_17da3.dir/build.make:99: cmTC_17da3] Error 1
+gmake[1]: Leaving directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-15uQlU'
+gmake: *** [Makefile:127: cmTC_17da3/fast] Error 2
+
+
+Source file was:
+int main() { return 0; }
+

@@ -24,8 +24,23 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
     auto layout_node = std::make_unique<LayoutNode>();
     layout_node->dom_node = &node;
     layout_node->parent = parent;
-    layout_node->style = StyleResolver {}.resolve(node, sheet, parent_style);
+    layout_node->style = StyleResolver {}.resolve(node, sheet, parent_style, interaction_state);
     layout_node->display = display_for(node, layout_node->style);
+
+    if (layout_node->display == LayoutDisplay::None) {
+        // Elements with display: none do not generate boxes themselves; their
+        // non-hidden descendants are hoisted into the nearest generating box.
+        for (auto const& child : node.children) {
+            auto child_layout = build_node(*child, sheet, parent, parent_style, interaction_state);
+            if (child_layout->display == LayoutDisplay::None) {
+                for (auto& grandchild : child_layout->children)
+                    parent->append_child(std::move(grandchild));
+            } else {
+                parent->append_child(std::move(child_layout));
+            }
+        }
+        return layout_node;
+    }
 
     for (auto const& child : node.children)
         layout_node->append_child(build_node(*child, sheet, layout_node.get(), &layout_node->style, interaction_state));

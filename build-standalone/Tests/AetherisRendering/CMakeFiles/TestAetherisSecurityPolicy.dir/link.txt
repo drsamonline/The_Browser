@@ -1,0 +1,1 @@
+/usr/bin/c++ -g -fstack-protector-strong -Wl,-z,relro -Wl,-z,now -Wl,-z,defs -Wl,--no-undefined -Wl,--no-allow-shlib-undefined -fPIE -pie CMakeFiles/TestAetherisSecurityPolicy.dir/TestSecurityPolicy.cpp.o -o ../../bin/TestAetherisSecurityPolicy  -Wl,-rpath,"\$ORIGIN:\$ORIGIN/../lib" ../../lib/libAetherisRendering.a 
