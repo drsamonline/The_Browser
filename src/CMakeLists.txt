@@ -43,6 +43,10 @@ add_library(AetherisRendering STATIC
 # as <name.hpp>, so the directory must be an INTERFACE include dir as well.
 target_include_directories(AetherisRendering
     PUBLIC
+        # ${CMAKE_CURRENT_SOURCE_DIR} lets consumers include headers as
+        # "rendering/foo.hpp"; ${CMAKE_CURRENT_SOURCE_DIR}/rendering keeps the
+        # legacy bare "foo.hpp" style working.
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rendering>
 )
 

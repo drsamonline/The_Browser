@@ -1,0 +1,19 @@
+Start testing: Sep 30 05:30 UTC
+----------------------------------------------------------
+32/39 Testing: AetherisRuntimeStyles
+32/39 Test: AetherisRuntimeStyles
+Command: "/workspace/build-docs/bin/TestAetherisRuntimeStyles"
+Directory: /workspace/build-docs/Tests/AetherisRendering
+"AetherisRuntimeStyles" start time: Sep 30 05:30 UTC
+Output:
+----------------------------------------------------------
+TestAetherisRuntimeStyles: /workspace/Tests/AetherisRendering/TestRuntimeStyles.cpp:24: int main(): Assertion `layout_button && layout_button->style.get("color") && *layout_button->style.get("color") == "red"' failed.
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Failed.
+"AetherisRuntimeStyles" end time: Sep 30 05:30 UTC
+"AetherisRuntimeStyles" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 30 05:30 UTC

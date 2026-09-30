@@ -1,0 +1,61 @@
+Performing C++ SOURCE FILE Test AETHERIS_HAS_FLAG_fstrict_flex_arrays_2 failed with the following output:
+Change Dir: /workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-qaZI43
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_34b41/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_34b41.dir/build.make CMakeFiles/cmTC_34b41.dir/build
+gmake[1]: Entering directory '/workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-qaZI43'
+Building CXX object CMakeFiles/cmTC_34b41.dir/src.cxx.o
+/usr/bin/c++ -DAETHERIS_HAS_FLAG_fstrict_flex_arrays_2  -fstrict-flex-arrays=2 -Werror   -fstrict-flex-arrays=2 -std=c++23 -o CMakeFiles/cmTC_34b41.dir/src.cxx.o -c /workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-qaZI43/src.cxx
+c++: error: unrecognized command-line option '-fstrict-flex-arrays=2'
+c++: error: unrecognized command-line option '-fstrict-flex-arrays=2'
+gmake[1]: *** [CMakeFiles/cmTC_34b41.dir/build.make:78: CMakeFiles/cmTC_34b41.dir/src.cxx.o] Error 1
+gmake[1]: Leaving directory '/workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-qaZI43'
+gmake: *** [Makefile:127: cmTC_34b41/fast] Error 2
+
+
+Source file was:
+int main() { return 0; }
+
+Performing C++ SOURCE FILE Test LAGOM_LINKER_SUPPORTS_LINKER:--gdb-index failed with the following output:
+Change Dir: /workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-ergjYC
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_2a0ed/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_2a0ed.dir/build.make CMakeFiles/cmTC_2a0ed.dir/build
+gmake[1]: Entering directory '/workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-ergjYC'
+Building CXX object CMakeFiles/cmTC_2a0ed.dir/src.cxx.o
+/usr/bin/c++   -fPIE   -DLAGOM_LINKER_SUPPORTS_LINKER:--gdb-index -std=c++23 -o CMakeFiles/cmTC_2a0ed.dir/src.cxx.o -c /workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-ergjYC/src.cxx
+<command-line>: warning: ISO C++11 requires whitespace after the macro name
+Linking CXX executable cmTC_2a0ed
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_2a0ed.dir/link.txt --verbose=1
+/usr/bin/c++ -Wl,--gdb-index CMakeFiles/cmTC_2a0ed.dir/src.cxx.o -o cmTC_2a0ed 
+/usr/bin/ld: unrecognized option '--gdb-index'
+/usr/bin/ld: use the --help option for usage information
+collect2: error: ld returned 1 exit status
+gmake[1]: *** [CMakeFiles/cmTC_2a0ed.dir/build.make:99: cmTC_2a0ed] Error 1
+gmake[1]: Leaving directory '/workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-ergjYC'
+gmake: *** [Makefile:127: cmTC_2a0ed/fast] Error 2
+
+
+Source file was:
+int main() { return 0; }
+
+Performing C++ SOURCE FILE Test LAGOM_LINKER_SUPPORTS_LINKER:-Bsymbolic-non-weak-functions failed with the following output:
+Change Dir: /workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-27LP4G
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_16276/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_16276.dir/build.make CMakeFiles/cmTC_16276.dir/build
+gmake[1]: Entering directory '/workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-27LP4G'
+Building CXX object CMakeFiles/cmTC_16276.dir/src.cxx.o
+/usr/bin/c++   -fPIE   -DLAGOM_LINKER_SUPPORTS_LINKER:-Bsymbolic-non-weak-functions -std=c++23 -o CMakeFiles/cmTC_16276.dir/src.cxx.o -c /workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-27LP4G/src.cxx
+<command-line>: warning: ISO C++11 requires whitespace after the macro name
+Linking CXX executable cmTC_16276
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_16276.dir/link.txt --verbose=1
+/usr/bin/c++ -Wl,-Bsymbolic-non-weak-functions CMakeFiles/cmTC_16276.dir/src.cxx.o -o cmTC_16276 
+/usr/bin/ld: unrecognized option '-Bsymbolic-non-weak-functions'
+/usr/bin/ld: use the --help option for usage information
+collect2: error: ld returned 1 exit status
+gmake[1]: *** [CMakeFiles/cmTC_16276.dir/build.make:99: cmTC_16276] Error 1
+gmake[1]: Leaving directory '/workspace/build-docs/CMakeFiles/CMakeScratch/TryCompile-27LP4G'
+gmake: *** [Makefile:127: cmTC_16276/fast] Error 2
+
+
+Source file was:
+int main() { return 0; }
+
