@@ -19,10 +19,52 @@ concurrency:
 env:
   VCPKG_ROOT: ${{ github.workspace }}/Build/vcpkg
   VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/Build/caches/vcpkg-binary-cache,readwrite
-  # NOTE: Removed X_VCPKG_ASSET_SOURCES — it was hardcoded to Ladybird's cache.
-  # If Aetheris genuinely reuses Ladybird's asset cache, restore it here.
+  # NOTE: X_VCPKG_ASSET_SOURCES is intentionally not set. Aetheris does not
+  # reuse Ladybird's private asset cache; vcpkg falls back to upstream
+  # sources for downloads. Restore this only if an Aetheris-hosted mirror
+  # is provisioned.
 
 jobs:
+  # Fast, dependency-light validation of the Aetheris-specific code in src/
+  # (AetherisRendering + AetherisRuntime + the `aetheris` executable) and its
+  # CTest suite. This job does not require vcpkg; it only needs system dev
+  # packages, so it gives pull requests quick signal even when the full
+  # Ladybird-derived tree cannot be configured on a runner.
+  test-standalone:
+    name: Test Aetheris standalone (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config g++ libx11-dev liblz4-dev libedit-dev uuid-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-standalone -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          -DENABLE_GUI_TARGETS=OFF
+          -DAETHERIS_MINIMAL_BUILD=OFF
+          -DAETHERIS_ENABLE_TESTING=ON
+          -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build-standalone --parallel
+
+      - name: Test
+        run: ctest --test-dir build-standalone --output-on-failure --no-tests=error
+
+      - name: Smoke-run the aetheris executable
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb
+          xvfb-run -a ./build-standalone/bin/aetheris --help || true
+
   build-windows:
     name: Build Aetheris (Windows)
     runs-on: windows-latest
@@ -245,9 +287,10 @@ jobs:
       - name: Test Release
         shell: pwsh
         run: |
-          # NOTE: --no-tests=error prevents ctest from failing when no tests
-          # are registered. If tests are expected, change to =error to enforce.
-          ctest --test-dir Build/release -C RelWithDebInfo --output-on-failure --no-tests=ignore
+          # --no-tests=error: the Windows release build must register tests;
+          # if none are found, something is wrong with the test wiring and CI
+          # should fail loudly instead of silently passing.
+          ctest --test-dir Build/release -C RelWithDebInfo --output-on-failure --no-tests=error
 
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE

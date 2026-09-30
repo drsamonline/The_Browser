@@ -23,6 +23,43 @@ if (APPLE AND NOT CMAKE_OSX_SYSROOT)
     set(CMAKE_OSX_SYSROOT macosx)
 endif()
 
+# Aetheris standalone build profile: builds only the self-contained Aetheris
+# code in src/ (AetherisRendering, AetherisRuntime, the `aetheris` executable)
+# plus the Tests/AetherisRendering CTest suite. The upstream Ladybird-derived
+# tree (AK, Libraries, Services, UI) is skipped entirely because it requires a
+# full vcpkg dependency set (ICU 78.3 EXACT, SDL3, ANGLE, Skia, ffmpeg, ...)
+# that is not available without vcpkg. Use this profile for fast local and CI
+# validation of the Aetheris-specific code; use the presets (vcpkg toolchain)
+# for full browser builds.
+option(AETHERIS_STANDALONE_BUILD "Build only the self-contained Aetheris targets from src/" OFF)
+
+if (AETHERIS_STANDALONE_BUILD)
+    # No GUI services / Qt layer in the standalone profile.
+    set(ENABLE_GUI_TARGETS OFF CACHE BOOL "" FORCE)
+
+    project(ladybird
+        VERSION 0.1.0
+        LANGUAGES C CXX
+        DESCRIPTION "Ladybird Web Browser"
+        HOMEPAGE_URL "https://ladybird.org"
+    )
+
+    set(LADYBIRD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    list(APPEND CMAKE_MODULE_PATH "${LADYBIRD_SOURCE_DIR}/Meta/CMake")
+
+    include(compile_options)
+    include(cmake_options)
+
+    add_subdirectory(src)
+
+    if (AETHERIS_ENABLE_TESTING AND BUILD_TESTING)
+        include(CTest)
+        add_subdirectory(Tests/AetherisRendering)
+    endif()
+
+    return()
+endif()
+
 project(ladybird
     VERSION 0.1.0
     LANGUAGES C CXX
