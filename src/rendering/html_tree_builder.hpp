@@ -16,6 +16,7 @@ public:
 private:
     void insert_token(DomNode& document, std::vector<DomNode*>& open_elements, HtmlToken const& token);
     void insert_node(DomNode& parent, std::unique_ptr<DomNode> node, std::vector<DomNode*>& open_elements, bool push_to_stack);
+    static void synthesize_document_structure(DomNode& document);
     static void close_element(std::vector<DomNode*>& open_elements, std::string_view name);
     static bool is_void_element(std::string_view name);
 };
