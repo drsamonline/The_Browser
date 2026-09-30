@@ -52,9 +52,75 @@ private:
     std::string m_overlay_text;
 };
 
+// Headless smoke mode: run a bounded number of frames and exit with status 0.
+// Used by CI (`aetheris --smoke-test`) where no display server is attached to
+// the process environment.
+static int run_smoke_test() {
+    auto net_error = network::Socket::initialize();
+    if (net_error != network::SocketError::None) {
+        std::cerr << "Failed to initialize network subsystem" << std::endl;
+        return 1;
+    }
+
+    ui::WindowManager window;
+    ui::WindowConfig config;
+    config.width = 1280;
+    config.height = 720;
+    config.title = "Aetheris Browser (smoke test)";
+
+    if (!window.create(config)) {
+        std::cerr << "Failed to create window" << std::endl;
+        network::Socket::cleanup();
+        return 1;
+    }
+
+    cache::GhostCache ghost_cache;
+
+    constexpr int kMaxSmokeFrames = 10;
+    int frames = 0;
+    window.show();
+    for (; frames < kMaxSmokeFrames; ++frames) {
+        window.clear();
+        window.draw_debug_overlay("AETHERIS SMOKE TEST");
+        window.swap_buffers();
+        if (!window.poll_events()) {
+            break;
+        }
+    }
+
+    std::cout << "Smoke test finished after " << frames << " frame(s)." << std::endl;
+    std::cout << "  Active cache entries: " << ghost_cache.active_entries() << std::endl;
+
+    ghost_cache.clear_all();
+    window.destroy();
+    network::Socket::cleanup();
+
+    std::cout << "Aetheris smoke test passed." << std::endl;
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     using namespace std::chrono;
-    
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg(argv[i]);
+        if (arg == "--help" || arg == "-h") {
+            std::cout << "Usage: aetheris [options]\n"
+                      << "  --smoke-test   Initialize all subsystems, run a few headless\n"
+                      << "                 frames, print stats and exit 0 (used by CI).\n"
+                      << "  --version      Print version information.\n"
+                      << "  -h, --help     Print this help.\n";
+            return 0;
+        }
+        if (arg == "--version" || arg == "-v") {
+            std::cout << "Aetheris Browser v1.0.0" << std::endl;
+            return 0;
+        }
+        if (arg == "--smoke-test") {
+            return run_smoke_test();
+        }
+    }
+
     std::cout << "=== AETHERIS BROWSER v1.0.0 ===" << std::endl;
     std::cout << "Hyper-optimized, zero-bloat cross-platform browser" << std::endl;
     std::cout << std::endl;
