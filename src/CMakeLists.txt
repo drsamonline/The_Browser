@@ -43,6 +43,10 @@ add_library(AetherisRendering STATIC
 # as <name.hpp>, so the directory must be an INTERFACE include dir as well.
 target_include_directories(AetherisRendering
     PUBLIC
+        # ${CMAKE_CURRENT_SOURCE_DIR} lets consumers include headers as
+        # "rendering/foo.hpp"; ${CMAKE_CURRENT_SOURCE_DIR}/rendering keeps the
+        # legacy bare "foo.hpp" style working.
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rendering>
 )
 
@@ -71,36 +75,17 @@ target_include_directories(AetherisRuntime
 
 target_compile_features(AetherisRuntime PUBLIC cxx_std_20)
 
-find_package(PkgConfig QUIET)
-if (NOT WIN32 AND NOT APPLE)
-    if (PkgConfig_FOUND)
-        pkg_check_modules(AETHERIS_X11 REQUIRED IMPORTED_TARGET x11)
-        target_link_libraries(AetherisRuntime PUBLIC PkgConfig::AETHERIS_X11)
-    else()
-        find_package(X11 REQUIRED)
-        target_link_libraries(AetherisRuntime PUBLIC ${X11_LIBRARIES})
-        target_include_directories(AetherisRuntime PUBLIC ${X11_INCLUDE_DIR})
-    endif()
-endif()
+# Optional dependency discovery (LZ4 + X11) with graceful fallbacks: when a
+# dependency is missing we compile the bundled shim / headless backend instead
+# of failing configuration, so minimal CI runners can build the full tree.
+include("${LADYBIRD_SOURCE_DIR}/cmake/AetherisStandaloneDeps.cmake")
 
-find_package(LZ4 QUIET)
-if (TARGET LZ4::lz4_static OR TARGET LZ4::lz4_shared)
-    if (TARGET LZ4::lz4_static)
-        target_link_libraries(AetherisRuntime PUBLIC LZ4::lz4_static)
-    else()
-        target_link_libraries(AetherisRuntime PUBLIC LZ4::lz4_shared)
-    endif()
+target_link_libraries(AetherisRuntime PUBLIC ${AETHERIS_LZ4_TARGET})
+
+if (AETHERIS_X11_TARGET)
+    target_link_libraries(AetherisRuntime PUBLIC ${AETHERIS_X11_TARGET})
 else()
-    # Fall back to the system library discovered via pkg-config / raw search.
-    pkg_check_modules(AETHERIS_LZ4 IMPORTED_TARGET liblz4)
-    if (AETHERIS_LZ4_FOUND)
-        target_link_libraries(AetherisRuntime PUBLIC PkgConfig::AETHERIS_LZ4)
-    else()
-        find_path(AETHERIS_LZ4_INCLUDE_DIR NAMES lz4.h REQUIRED)
-        find_library(AETHERIS_LZ4_LIBRARY NAMES lz4 liblz4 REQUIRED)
-        target_include_directories(AetherisRuntime PUBLIC ${AETHERIS_LZ4_INCLUDE_DIR})
-        target_link_libraries(AetherisRuntime PUBLIC ${AETHERIS_LZ4_LIBRARY})
-    endif()
+    target_compile_definitions(AetherisRuntime PUBLIC AETHERIS_HEADLESS_UI=1)
 endif()
 
 # ---------------------------------------------------------------------------

@@ -25,9 +25,107 @@
     // Actual implementation in .mm file
     typedef struct objc_object* id;
 #elif AETHERIS_PLATFORM_LINUX
-    #include <X11/Xlib.h>
-    #include <X11/Xutil.h>
-    #include <X11/keysym.h>
+    #if defined(AETHERIS_HEADLESS_UI)
+        // Standalone profile without system X11 dev packages: the window
+        // manager compiles against a headless no-op backend (see the
+        // AETHERIS_HEADLESS_UI implementation block below). No X11 headers.
+    #else
+        // NOTE: X11 headers are macro-polluted legacy C headers. `None`
+        // (#define None 0L from <X.h>) collides with enumerators elsewhere
+        // in this file, and object-like macros such as DestroyWindow shadow
+        // our own identifiers. Include them first, capture the handful of
+        // event-type constants we need into constexpr values, then
+        // neutralize every offender so the rest of this header can use clean
+        // C++ identifiers. The X backend refers to events via the captured
+        // kX11* constants below (the macros expand at capture time).
+        #include <X11/Xlib.h>
+        #include <X11/Xutil.h>
+        #include <X11/Xatom.h>
+        #include <X11/keysym.h>
+
+        namespace aetheris::ui::x11detail {
+            // Captured before the #undef block below removes the macros.
+            inline constexpr int kKeyPress = KeyPress;
+            inline constexpr int kKeyRelease = KeyRelease;
+            inline constexpr int kButtonPress = ButtonPress;
+            inline constexpr int kButtonRelease = ButtonRelease;
+            inline constexpr int kClientMessage = ClientMessage;
+            inline constexpr int kConfigureNotify = ConfigureNotify;
+            inline constexpr int kExpose = Expose;
+            inline constexpr int kDestroyNotify = DestroyNotify;
+            inline constexpr int kFocusIn = FocusIn;
+            inline constexpr int kFocusOut = FocusOut;
+        }
+
+        #undef None
+        #undef Bool
+        #undef Status
+        #undef Success
+        #undef KeyPress
+        #undef KeyRelease
+        #undef ButtonPress
+        #undef ButtonRelease
+        #undef ClientMessage
+        #undef ConfigureNotify
+        #undef Expose
+        #undef DestroyNotify
+        #undef FocusIn
+        #undef FocusOut
+        #undef VisibilityHint
+        #undef NoExpose
+        #undef ReparentNotify
+        #undef UnmapNotify
+        #undef MapNotify
+        #undef MappingNotify
+        #undef CirculateNotify
+        #undef GravityNotify
+        #undef ColormapNotify
+        #undef PropertyNotify
+        #undef SelectionClear
+        #undef SelectionRequest
+        #undef SelectionNotify
+        #undef VisibilityNotify
+        #undef NoImage
+        #undef MinSize
+        #undef MaxSize
+        #undef MinAspect
+        #undef MaxAspect
+        #undef AspectRatio
+        #undef NormalHints
+        #undef IsUnmapped
+        #undef IsUnviewable
+        #undef IsViewable
+        #undef DestroyWindow
+        #undef UnmapWindow
+        #undef MapWindow
+        #undef RaiseWindow
+        #undef LowerWindow
+        #undef MoveWindow
+        #undef ResizeWindow
+        #undef ConfigureWindow
+        #undef ChangeProperty
+        #undef DeleteProperty
+        #undef GetProperty
+        #undef ListProperties
+        #undef SetSelectionOwner
+        #undef GetSelectionOwner
+        #undef ConvertSelection
+        #undef SendEvent
+        #undef IntersectRegion
+        #undef UnionRegion
+        #undef SubtractRegion
+        #undef CopyArea
+        #undef DrawLine
+        #undef DrawString
+    #endif
+#endif
+
+// The headless fallback also covers any platform where none of the native
+// backends above are available.
+#if !AETHERIS_PLATFORM_WINDOWS && !AETHERIS_PLATFORM_MACOS && !(AETHERIS_PLATFORM_LINUX && !defined(AETHERIS_HEADLESS_UI))
+    #ifndef AETHERIS_HEADLESS_UI
+        #define AETHERIS_HEADLESS_UI 1
+    #endif
 #endif
 
 namespace aetheris::ui {
@@ -44,7 +142,10 @@ struct WindowConfig {
 
 // Event types
 enum class EventType : uint8_t {
-    None = 0,
+    // NOTE: `NoEvent`, not `None`: X11's <X.h> defines `#define None 0L`,
+    // which otherwise explodes this enumerator (and every use of the type)
+    // into `enum class ... : uint8_t { 0 = 0, ... }` on Linux builds.
+    NoEvent = 0,
     Resize,
     Close,
     Focus,
@@ -167,8 +268,10 @@ public:
     [[nodiscard]] HWND get_native_handle() const noexcept { return m_hwnd; }
 #elif AETHERIS_PLATFORM_MACOS
     [[nodiscard]] void* get_native_handle() const noexcept { return m_ns_window; }
-#elif AETHERIS_PLATFORM_LINUX
+#elif AETHERIS_PLATFORM_LINUX && !defined(AETHERIS_HEADLESS_UI)
     [[nodiscard]] Window get_native_handle() const noexcept { return m_x11_window; }
+#elif defined(AETHERIS_HEADLESS_UI)
+    [[nodiscard]] void* get_native_handle() const noexcept { return nullptr; }
 #endif
     
 private:
@@ -187,6 +290,10 @@ private:
     bool m_is_visible{false};
     bool m_is_running{false};
     bool m_is_fullscreen{false};
+    // Backend-agnostic frame counter (used by the headless fallback, harmless
+    // elsewhere). Declared for every platform so move operations can always
+    // transfer it.
+    std::uint64_t m_frame_count{0};
     
 #if AETHERIS_PLATFORM_WINDOWS
     HINSTANCE m_hinstance{nullptr};
@@ -201,7 +308,7 @@ private:
     void* m_ns_window{nullptr};   // NSWindow*
     void* m_ns_view{nullptr};     // NSView* (content view)
     
-#elif AETHERIS_PLATFORM_LINUX
+#elif AETHERIS_PLATFORM_LINUX && !defined(AETHERIS_HEADLESS_UI)
     Display* m_display{nullptr};
     Window m_x11_window{0};
     GC m_gc{nullptr};
@@ -210,6 +317,9 @@ private:
     
     // For simple software rendering (fallback)
     XImage* m_back_buffer{nullptr};
+#elif defined(AETHERIS_HEADLESS_UI)
+    // Headless backend: no native handle, no display server required.
+    bool m_headless_open{false};
 #endif
 };
 
@@ -491,7 +601,7 @@ inline void WindowManager::swap_buffers() noexcept {
     // Stub: Flush Core Graphics/Metal context
 }
 
-#elif AETHERIS_PLATFORM_LINUX
+#elif AETHERIS_PLATFORM_LINUX && !defined(AETHERIS_HEADLESS_UI)
 
 inline bool WindowManager::init_platform() noexcept {
     m_display = XOpenDisplay(nullptr);
@@ -567,16 +677,24 @@ inline void WindowManager::cleanup_platform() noexcept {
 }
 
 inline bool WindowManager::process_events_platform() noexcept {
+    // No display (create failed or was destroyed): report "no more events"
+    // so callers stop the frame loop instead of dereferencing a null
+    // Display* (Xlib aborts the process on null displays). This lets
+    // `aetheris --smoke-test` exit gracefully on CI runners without Xvfb.
+    if (!m_display) {
+        return false;
+    }
+
     XEvent event{};
     
     while (XPending(m_display) > 0) {
         XNextEvent(m_display, &event);
         
         switch (event.type) {
-            case ClientMessage:
+            case x11detail::kClientMessage:
                 return false;  // Window close requested
                 
-            case ConfigureNotify:
+            case x11detail::kConfigureNotify:
                 m_config.width = event.xconfigure.width;
                 m_config.height = event.xconfigure.height;
                 if (m_event_callback) {
@@ -584,12 +702,12 @@ inline bool WindowManager::process_events_platform() noexcept {
                 }
                 break;
                 
-            case KeyPress:
-            case KeyRelease:
+            case x11detail::kKeyPress:
+            case x11detail::kKeyRelease:
                 if (m_event_callback) {
                     KeyEvent key{};
                     key.keycode = event.xkey.keycode;
-                    key.is_pressed = (event.type == KeyPress);
+                    key.is_pressed = (event.type == x11detail::kKeyPress);
                     m_event_callback(EventType::KeyPress, key, {});
                 }
                 break;
@@ -666,6 +784,69 @@ inline void WindowManager::swap_buffers() noexcept {
     }
 }
 
+#elif defined(AETHERIS_HEADLESS_UI)
+
+// ============================================================================
+// HEADLESS FALLBACK BACKEND
+// Used by the standalone build profile when no native UI SDK (Win32/Cocoa/
+// X11) is available. The window exists only as bookkeeping: create/show/
+// poll/swap succeed trivially so the browser shell can run in CI containers
+// without a display server.
+// ============================================================================
+
+inline bool WindowManager::init_platform() noexcept {
+    m_headless_open = true;
+    return true;
+}
+
+inline void WindowManager::cleanup_platform() noexcept {
+    m_headless_open = false;
+}
+
+inline bool WindowManager::process_events_platform() noexcept {
+    // No event source: deliver a Close event once and stop the loop so a
+    // headless invocation exits cleanly instead of spinning forever.
+    if (++m_frame_count > 1) {
+        if (m_event_callback) {
+            m_event_callback(EventType::Close, {}, {});
+        }
+        return false;
+    }
+    return true;
+}
+
+inline void WindowManager::draw_overlay_platform(std::string_view text) noexcept {
+    (void)text;
+}
+
+inline void WindowManager::set_title(std::string_view title) noexcept {
+    m_config.title = std::string(title);
+}
+
+inline void WindowManager::show() noexcept {
+    if (m_headless_open) {
+        m_is_visible = true;
+    }
+}
+
+inline void WindowManager::hide() noexcept {
+    m_is_visible = false;
+}
+
+inline void WindowManager::toggle_fullscreen() noexcept {
+    m_is_fullscreen = !m_is_fullscreen;
+}
+
+inline void WindowManager::draw_debug_overlay(std::string_view text) noexcept {
+    draw_overlay_platform(text);
+}
+
+inline void WindowManager::clear() noexcept {
+}
+
+inline void WindowManager::swap_buffers() noexcept {
+}
+
 #endif
 
 // ============================================================================
@@ -678,6 +859,7 @@ inline WindowManager::WindowManager(WindowManager&& other) noexcept
     , m_is_visible(other.m_is_visible)
     , m_is_running(other.m_is_running)
     , m_is_fullscreen(other.m_is_fullscreen)
+    , m_frame_count(other.m_frame_count)
 {
 #if AETHERIS_PLATFORM_WINDOWS
     m_hinstance = other.m_hinstance;
@@ -693,7 +875,7 @@ inline WindowManager::WindowManager(WindowManager&& other) noexcept
     other.m_ns_app = nullptr;
     other.m_ns_window = nullptr;
     other.m_ns_view = nullptr;
-#elif AETHERIS_PLATFORM_LINUX
+#elif AETHERIS_PLATFORM_LINUX && !defined(AETHERIS_HEADLESS_UI)
     m_display = other.m_display;
     m_x11_window = other.m_x11_window;
     m_gc = other.m_gc;
@@ -704,6 +886,9 @@ inline WindowManager::WindowManager(WindowManager&& other) noexcept
     other.m_x11_window = 0;
     other.m_gc = nullptr;
     other.m_back_buffer = nullptr;
+#elif defined(AETHERIS_HEADLESS_UI)
+    m_headless_open = other.m_headless_open;
+    other.m_headless_open = false;
 #endif
     
     other.m_is_visible = false;
@@ -719,6 +904,7 @@ inline WindowManager& WindowManager::operator=(WindowManager&& other) noexcept {
         m_is_visible = other.m_is_visible;
         m_is_running = other.m_is_running;
         m_is_fullscreen = other.m_is_fullscreen;
+        m_frame_count = other.m_frame_count;
         
 #if AETHERIS_PLATFORM_WINDOWS
         m_hinstance = other.m_hinstance;
@@ -734,7 +920,7 @@ inline WindowManager& WindowManager::operator=(WindowManager&& other) noexcept {
         other.m_ns_app = nullptr;
         other.m_ns_window = nullptr;
         other.m_ns_view = nullptr;
-#elif AETHERIS_PLATFORM_LINUX
+#elif AETHERIS_PLATFORM_LINUX && !defined(AETHERIS_HEADLESS_UI)
         m_display = other.m_display;
         m_x11_window = other.m_x11_window;
         m_gc = other.m_gc;
@@ -745,6 +931,9 @@ inline WindowManager& WindowManager::operator=(WindowManager&& other) noexcept {
         other.m_x11_window = 0;
         other.m_gc = nullptr;
         other.m_back_buffer = nullptr;
+#elif defined(AETHERIS_HEADLESS_UI)
+        m_headless_open = other.m_headless_open;
+        other.m_headless_open = false;
 #endif
         
         other.m_is_visible = false;

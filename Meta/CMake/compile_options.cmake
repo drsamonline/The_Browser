@@ -31,8 +31,33 @@ macro(add_cxx_link_options)
     add_link_options($<$<LINK_LANGUAGE:C,CXX>:${args}>)
 endmacro()
 
+include(CheckCXXCompilerFlag)
 include(CheckLinkerFlag)
 include(CMakePushCheckState)
+
+# Adds a compile option only if the active compiler actually accepts it.
+# Some hardening flags (e.g. -fstrict-flex-arrays=2, added in GCC 13 /
+# Clang 16) are rejected outright by older toolchains, which used to break
+# CI runners whose system gcc was too old for the flag set. Gating every
+# non-universal flag through this helper keeps Debug/Release configurations
+# portable across runner images.
+function(add_cxx_compile_option_if_supported option)
+    if (MSVC)
+        string(PREPEND option "/clang:")
+    endif()
+    string(MAKE_C_IDENTIFIER "AETHERIS_HAS_FLAG${option}" flag_var)
+    cmake_push_check_state(RESET)
+    if (NOT MSVC)
+        set(CMAKE_REQUIRED_FLAGS "${option} -Werror")
+    else()
+        set(CMAKE_REQUIRED_FLAGS "${option} /WX")
+    endif()
+    check_cxx_compiler_flag("${option}" ${flag_var})
+    cmake_pop_check_state()
+    if (${flag_var})
+        add_cxx_compile_options(${option})
+    endif()
+endfunction()
 function(add_cxx_link_option_if_supported option)
     cmake_push_check_state()
     if (MSVC)
@@ -96,10 +121,13 @@ if (NOT MSVC)
     add_cxx_compile_options(-Wall -Wextra)
     add_cxx_compile_options(-fno-exceptions)
     add_cxx_compile_options(-ffp-contract=off)
-    add_cxx_compile_options(-fstrict-flex-arrays=2)
+    # GCC >= 13 / Clang >= 16 only; older system compilers on CI runners
+    # reject the flag outright, so probe before adding it.
+    add_cxx_compile_option_if_supported(-fstrict-flex-arrays=2)
     add_cxx_compile_options(-fstack-protector-strong)
     add_cxx_compile_options(-fsigned-char)
-    add_cxx_compile_options(-ftrivial-auto-var-init=zero)
+    # GCC >= 12 / Clang >= 12 only.
+    add_cxx_compile_option_if_supported(-ftrivial-auto-var-init=zero)
     add_cxx_compile_options(-ggnu-pubnames)
     add_cxx_link_options(-fstack-protector-strong)
     if (UNIX AND NOT APPLE AND NOT ENABLE_FUZZERS)
