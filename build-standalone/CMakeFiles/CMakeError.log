@@ -1,42 +1,59 @@
-Performing C++ SOURCE FILE Test LAGOM_LINKER_SUPPORTS_LINKER:--gdb-index failed with the following output:
-Change Dir: /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-QHPGgO
+Performing C++ SOURCE FILE Test AETHERIS_HAS_FLAG_fstrict_flex_arrays_2 failed with the following output:
+Change Dir: /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-PUbDUa
 
-Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_60af9/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_60af9.dir/build.make CMakeFiles/cmTC_60af9.dir/build
-gmake[1]: Entering directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-QHPGgO'
-Building CXX object CMakeFiles/cmTC_60af9.dir/src.cxx.o
-/usr/bin/c++   -fPIE   -DLAGOM_LINKER_SUPPORTS_LINKER:--gdb-index -std=c++23 -o CMakeFiles/cmTC_60af9.dir/src.cxx.o -c /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-QHPGgO/src.cxx
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_6f799/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_6f799.dir/build.make CMakeFiles/cmTC_6f799.dir/build
+gmake[1]: Entering directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-PUbDUa'
+Building CXX object CMakeFiles/cmTC_6f799.dir/src.cxx.o
+/usr/bin/c++ -DAETHERIS_HAS_FLAG_fstrict_flex_arrays_2  -fstrict-flex-arrays=2 -Werror   -fstrict-flex-arrays=2 -std=c++23 -o CMakeFiles/cmTC_6f799.dir/src.cxx.o -c /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-PUbDUa/src.cxx
+c++: error: unrecognized command-line option '-fstrict-flex-arrays=2'
+c++: error: unrecognized command-line option '-fstrict-flex-arrays=2'
+gmake[1]: *** [CMakeFiles/cmTC_6f799.dir/build.make:78: CMakeFiles/cmTC_6f799.dir/src.cxx.o] Error 1
+gmake[1]: Leaving directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-PUbDUa'
+gmake: *** [Makefile:127: cmTC_6f799/fast] Error 2
+
+
+Source file was:
+int main() { return 0; }
+
+Performing C++ SOURCE FILE Test LAGOM_LINKER_SUPPORTS_LINKER:--gdb-index failed with the following output:
+Change Dir: /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-IO4Nr4
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_7660f/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_7660f.dir/build.make CMakeFiles/cmTC_7660f.dir/build
+gmake[1]: Entering directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-IO4Nr4'
+Building CXX object CMakeFiles/cmTC_7660f.dir/src.cxx.o
+/usr/bin/c++   -fPIE   -DLAGOM_LINKER_SUPPORTS_LINKER:--gdb-index -std=c++23 -o CMakeFiles/cmTC_7660f.dir/src.cxx.o -c /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-IO4Nr4/src.cxx
 <command-line>: warning: ISO C++11 requires whitespace after the macro name
-Linking CXX executable cmTC_60af9
-/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_60af9.dir/link.txt --verbose=1
-/usr/bin/c++ -Wl,--gdb-index CMakeFiles/cmTC_60af9.dir/src.cxx.o -o cmTC_60af9 
+Linking CXX executable cmTC_7660f
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_7660f.dir/link.txt --verbose=1
+/usr/bin/c++ -Wl,--gdb-index CMakeFiles/cmTC_7660f.dir/src.cxx.o -o cmTC_7660f 
 /usr/bin/ld: unrecognized option '--gdb-index'
 /usr/bin/ld: use the --help option for usage information
 collect2: error: ld returned 1 exit status
-gmake[1]: *** [CMakeFiles/cmTC_60af9.dir/build.make:99: cmTC_60af9] Error 1
-gmake[1]: Leaving directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-QHPGgO'
-gmake: *** [Makefile:127: cmTC_60af9/fast] Error 2
+gmake[1]: *** [CMakeFiles/cmTC_7660f.dir/build.make:99: cmTC_7660f] Error 1
+gmake[1]: Leaving directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-IO4Nr4'
+gmake: *** [Makefile:127: cmTC_7660f/fast] Error 2
 
 
 Source file was:
 int main() { return 0; }
 
 Performing C++ SOURCE FILE Test LAGOM_LINKER_SUPPORTS_LINKER:-Bsymbolic-non-weak-functions failed with the following output:
-Change Dir: /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-mO1vXO
+Change Dir: /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-0rph9p
 
-Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_d8a46/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_d8a46.dir/build.make CMakeFiles/cmTC_d8a46.dir/build
-gmake[1]: Entering directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-mO1vXO'
-Building CXX object CMakeFiles/cmTC_d8a46.dir/src.cxx.o
-/usr/bin/c++   -fPIE   -DLAGOM_LINKER_SUPPORTS_LINKER:-Bsymbolic-non-weak-functions -std=c++23 -o CMakeFiles/cmTC_d8a46.dir/src.cxx.o -c /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-mO1vXO/src.cxx
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_87802/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_87802.dir/build.make CMakeFiles/cmTC_87802.dir/build
+gmake[1]: Entering directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-0rph9p'
+Building CXX object CMakeFiles/cmTC_87802.dir/src.cxx.o
+/usr/bin/c++   -fPIE   -DLAGOM_LINKER_SUPPORTS_LINKER:-Bsymbolic-non-weak-functions -std=c++23 -o CMakeFiles/cmTC_87802.dir/src.cxx.o -c /workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-0rph9p/src.cxx
 <command-line>: warning: ISO C++11 requires whitespace after the macro name
-Linking CXX executable cmTC_d8a46
-/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_d8a46.dir/link.txt --verbose=1
-/usr/bin/c++ -Wl,-Bsymbolic-non-weak-functions CMakeFiles/cmTC_d8a46.dir/src.cxx.o -o cmTC_d8a46 
+Linking CXX executable cmTC_87802
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_87802.dir/link.txt --verbose=1
+/usr/bin/c++ -Wl,-Bsymbolic-non-weak-functions CMakeFiles/cmTC_87802.dir/src.cxx.o -o cmTC_87802 
 /usr/bin/ld: unrecognized option '-Bsymbolic-non-weak-functions'
 /usr/bin/ld: use the --help option for usage information
 collect2: error: ld returned 1 exit status
-gmake[1]: *** [CMakeFiles/cmTC_d8a46.dir/build.make:99: cmTC_d8a46] Error 1
-gmake[1]: Leaving directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-mO1vXO'
-gmake: *** [Makefile:127: cmTC_d8a46/fast] Error 2
+gmake[1]: *** [CMakeFiles/cmTC_87802.dir/build.make:99: cmTC_87802] Error 1
+gmake[1]: Leaving directory '/workspace/build-standalone/CMakeFiles/CMakeScratch/TryCompile-0rph9p'
+gmake: *** [Makefile:127: cmTC_87802/fast] Error 2
 
 
 Source file was:

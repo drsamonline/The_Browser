@@ -93,8 +93,8 @@ aetheris_EXTERNAL_OBJECTS =
 bin/aetheris: src/CMakeFiles/aetheris.dir/main.cpp.o
 bin/aetheris: src/CMakeFiles/aetheris.dir/build.make
 bin/aetheris: lib/libAetherisRuntime.a
-bin/aetheris: /usr/lib/x86_64-linux-gnu/libX11.so
 bin/aetheris: /usr/lib/x86_64-linux-gnu/liblz4.so
+bin/aetheris: /usr/lib/x86_64-linux-gnu/libX11.so
 bin/aetheris: src/CMakeFiles/aetheris.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/workspace/build-standalone/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX executable ../bin/aetheris"
 	cd /workspace/build-standalone/src && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/aetheris.dir/link.txt --verbose=$(VERBOSE)

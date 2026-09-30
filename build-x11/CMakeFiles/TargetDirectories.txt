@@ -1,0 +1,7 @@
+/workspace/build-x11/CMakeFiles/edit_cache.dir
+/workspace/build-x11/CMakeFiles/rebuild_cache.dir
+/workspace/build-x11/src/CMakeFiles/AetherisRendering.dir
+/workspace/build-x11/src/CMakeFiles/AetherisRuntime.dir
+/workspace/build-x11/src/CMakeFiles/aetheris.dir
+/workspace/build-x11/src/CMakeFiles/edit_cache.dir
+/workspace/build-x11/src/CMakeFiles/rebuild_cache.dir

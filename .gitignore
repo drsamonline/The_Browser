@@ -1,11 +1,7 @@
 # Build directories
-build/
-build-x11/
+build-standalone/
 
-# Compiled object files and binaries
+# Compiled object files and dependencies
 *.o
-*.a
-*.so
-*.dll
-*.exe
-*.out
+*.obj
+*.d
