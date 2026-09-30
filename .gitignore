@@ -1,1 +1,11 @@
-(empty)
+# Build directories
+build/
+build-x11/
+
+# Compiled object files and binaries
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.out

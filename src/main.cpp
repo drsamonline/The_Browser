@@ -158,6 +158,7 @@ int main(int argc, char* argv[]) {
     // Event handler
     bool should_close = false;
     window.set_event_callback([&](ui::EventType type, const ui::KeyEvent& key, const ui::MouseEvent& mouse) {
+        (void)mouse;
         switch (type) {
             case ui::EventType::Close:
                 should_close = true;
@@ -179,7 +180,7 @@ int main(int argc, char* argv[]) {
     window.show();
     
     // Main loop timing
-    auto last_time = steady_clock::now();
+    [[maybe_unused]] auto last_time = steady_clock::now();
     double fps = 0.0;
     int frame_count = 0;
     auto fps_start = steady_clock::now();

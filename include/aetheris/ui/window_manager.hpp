@@ -32,13 +32,30 @@
     #else
         // NOTE: X11 headers are macro-polluted legacy C headers. `None`
         // (#define None 0L from <X.h>) collides with enumerators elsewhere
-        // in this file, and function-like macros such as KeyPress or
-        // DestroyWindow shadow our own identifiers. Include them first, then
-        // neutralize the offenders; the code below only uses real Xlib types
-        // (Display, Window, GC, XEvent, ...) and prefixed X* functions.
+        // in this file, and object-like macros such as DestroyWindow shadow
+        // our own identifiers. Include them first, capture the handful of
+        // event-type constants we need into constexpr values, then
+        // neutralize every offender so the rest of this header can use clean
+        // C++ identifiers. The X backend refers to events via the captured
+        // kX11* constants below (the macros expand at capture time).
         #include <X11/Xlib.h>
         #include <X11/Xutil.h>
+        #include <X11/Xatom.h>
         #include <X11/keysym.h>
+
+        namespace aetheris::ui::x11detail {
+            // Captured before the #undef block below removes the macros.
+            inline constexpr int kKeyPress = KeyPress;
+            inline constexpr int kKeyRelease = KeyRelease;
+            inline constexpr int kButtonPress = ButtonPress;
+            inline constexpr int kButtonRelease = ButtonRelease;
+            inline constexpr int kClientMessage = ClientMessage;
+            inline constexpr int kConfigureNotify = ConfigureNotify;
+            inline constexpr int kExpose = Expose;
+            inline constexpr int kDestroyNotify = DestroyNotify;
+            inline constexpr int kFocusIn = FocusIn;
+            inline constexpr int kFocusOut = FocusOut;
+        }
 
         #undef None
         #undef Bool
@@ -48,14 +65,55 @@
         #undef KeyRelease
         #undef ButtonPress
         #undef ButtonRelease
+        #undef ClientMessage
+        #undef ConfigureNotify
         #undef Expose
+        #undef DestroyNotify
         #undef FocusIn
         #undef FocusOut
         #undef VisibilityHint
         #undef NoExpose
+        #undef ReparentNotify
+        #undef UnmapNotify
+        #undef MapNotify
+        #undef MappingNotify
+        #undef CirculateNotify
+        #undef GravityNotify
+        #undef ColormapNotify
+        #undef PropertyNotify
+        #undef SelectionClear
+        #undef SelectionRequest
+        #undef SelectionNotify
+        #undef VisibilityNotify
+        #undef NoImage
+        #undef MinSize
+        #undef MaxSize
+        #undef MinAspect
+        #undef MaxAspect
+        #undef AspectRatio
+        #undef NormalHints
+        #undef IsUnmapped
+        #undef IsUnviewable
+        #undef IsViewable
         #undef DestroyWindow
         #undef UnmapWindow
         #undef MapWindow
+        #undef RaiseWindow
+        #undef LowerWindow
+        #undef MoveWindow
+        #undef ResizeWindow
+        #undef ConfigureWindow
+        #undef ChangeProperty
+        #undef DeleteProperty
+        #undef GetProperty
+        #undef ListProperties
+        #undef SetSelectionOwner
+        #undef GetSelectionOwner
+        #undef ConvertSelection
+        #undef SendEvent
+        #undef IntersectRegion
+        #undef UnionRegion
+        #undef SubtractRegion
         #undef CopyArea
         #undef DrawLine
         #undef DrawString
@@ -633,10 +691,10 @@ inline bool WindowManager::process_events_platform() noexcept {
         XNextEvent(m_display, &event);
         
         switch (event.type) {
-            case ClientMessage:
+            case x11detail::kClientMessage:
                 return false;  // Window close requested
                 
-            case ConfigureNotify:
+            case x11detail::kConfigureNotify:
                 m_config.width = event.xconfigure.width;
                 m_config.height = event.xconfigure.height;
                 if (m_event_callback) {
@@ -644,12 +702,12 @@ inline bool WindowManager::process_events_platform() noexcept {
                 }
                 break;
                 
-            case KeyPress:
-            case KeyRelease:
+            case x11detail::kKeyPress:
+            case x11detail::kKeyRelease:
                 if (m_event_callback) {
                     KeyEvent key{};
                     key.keycode = event.xkey.keycode;
-                    key.is_pressed = (event.type == KeyPress);
+                    key.is_pressed = (event.type == x11detail::kKeyPress);
                     m_event_callback(EventType::KeyPress, key, {});
                 }
                 break;
