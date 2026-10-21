@@ -36,7 +36,6 @@
 
 ---
 
-# Aetheris Browser
 
 <p align="center">
   <strong>An experimental C++ browser project built on a Ladybird/SerenityOS-derived codebase.</strong><br/>
