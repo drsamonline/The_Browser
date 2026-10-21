@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>404 — Page not found · Aetheris Browser</title>
+<meta name="description" content="The requested page could not be found on the Aetheris Browser project site." />
+<meta name="robots" content="noindex, follow" />
+<meta name="theme-color" content="#101418" />
+<link rel="icon" type="image/svg+xml" href="/The_Browser/assets/favicon.svg" />
+<style>
+  :root{--bg:#101418;--panel:#151a20;--line:#232c37;--line-2:#2e3a48;--accent:#3b82f6;--accent-2:#60a5fa;--ink:#e8edf3;--ink-soft:#aab6c4;--ink-dim:#7c8899;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;--sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;
+    background:radial-gradient(900px 500px at 70% -10%,rgba(59,130,246,.14),transparent 60%),linear-gradient(180deg,var(--bg),#0b0e12);
+    color:var(--ink);font-family:var(--sans);line-height:1.6}
+  .card{max-width:560px;width:100%;border:1px solid var(--line-2);border-radius:16px;overflow:hidden;
+    background:linear-gradient(180deg,#171d24,#11161c);box-shadow:0 30px 70px -34px rgba(0,0,0,.95)}
+  .bar{display:flex;align-items:center;gap:10px;padding:11px 13px;background:linear-gradient(180deg,#242c36,#1b222b);border-bottom:1px solid var(--line)}
+  .dots{display:flex;gap:7px}
+  .dots i{width:11px;height:11px;border-radius:50%;display:block}
+  .dots i:nth-child(1){background:#5c6673}.dots i:nth-child(2){background:#6f7a88}.dots i:nth-child(3){background:var(--accent)}
+  .tab{font-family:var(--mono);font-size:.72rem;color:var(--ink-soft);background:linear-gradient(180deg,#2a333e,#20272f);
+    border:1px solid var(--line-2);border-radius:8px 8px 0 0;padding:5px 12px;margin-left:6px}
+  .body{padding:34px 30px 32px}
+  .code404{font-family:var(--mono);font-size:clamp(3.2rem,12vw,5rem);font-weight:800;letter-spacing:-.03em;margin:0 0 4px;
+    background:linear-gradient(92deg,#c9d3df,var(--accent-2) 60%,var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+  h1{font-size:1.3rem;margin:0 0 8px;font-weight:750}
+  p{color:var(--ink-soft);margin:0 0 20px;font-size:.96rem}
+  code{font-family:var(--mono);background:#0c1014;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--accent-2);font-size:.86em}
+  .actions{display:flex;flex-wrap:wrap;gap:11px}
+  a.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 17px;border-radius:10px;text-decoration:none;font-weight:650;font-size:.92rem;
+    border:1px solid var(--line-2);color:var(--ink);background:linear-gradient(180deg,#20272f,#171d24)}
+  a.btn:hover{border-color:var(--accent)}
+  a.btn.primary{background:linear-gradient(180deg,var(--accent),#1d4ed8);border-color:#2563eb;color:#fff}
+  a.btn.primary:hover{filter:brightness(1.07)}
+  .foot{margin-top:26px;padding-top:16px;border-top:1px solid var(--line);font-family:var(--mono);font-size:.78rem;color:var(--ink-dim)}
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="bar">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <span class="tab">aetheris://404</span>
+    </div>
+    <div class="body">
+      <p class="code404">404</p>
+      <h1>This resource failed to resolve</h1>
+      <p>The page you asked for isn't here. The route returned <code>404 Not Found</code> — much like a navigation failure the engine reports instead of silently succeeding.</p>
+      <div class="actions">
+        <a class="btn primary" href="/The_Browser/">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11l8-7 8 7M6 10v9h12v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Back to home
+        </a>
+        <a class="btn" href="https://github.com/drsamonline/The_Browser">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 19c-4 1.2-4-2-6-2.4M15 21v-3.6c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.2s-1-.3-3.4 1.3a11.6 11.6 0 0 0-6 0C6.3 2.7 5.3 3 5.3 3a4.3 4.3 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.4c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Repository
+        </a>
+      </div>
+      <div class="foot">Aetheris Browser · Built by Dr. Sohil Momin</div>
+    </div>
+  </main>
+</body>
+</html>

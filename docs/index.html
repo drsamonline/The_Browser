@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script>document.documentElement.className+=' js';</script>
+<title>Aetheris Browser — Experimental C++ Browser Engine</title>
+<meta name="description" content="Aetheris Browser is an experimental C++ browser project built on a Ladybird/SerenityOS-derived codebase, with a dependency-free rendering foundation in src/rendering and a CTest regression suite. Not production-ready." />
+<meta name="keywords" content="Aetheris Browser, The_Browser, C++ browser engine, experimental browser, rendering engine, HTML tokenizer, CSS parser, layout engine, paint executor, software surface, Ladybird, SerenityOS, CMake, CTest, C++20, Dr. Sohil Momin" />
+<meta name="author" content="Dr. Sohil Momin" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<meta name="theme-color" content="#101418" />
+<link rel="canonical" href="https://drsamonline.github.io/The_Browser/" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Aetheris Browser" />
+<meta property="og:title" content="Aetheris Browser — Experimental C++ Browser Engine" />
+<meta property="og:description" content="An experimental C++ browser project built on a Ladybird/SerenityOS-derived codebase, with a dependency-free rendering foundation and a CTest regression suite." />
+<meta property="og:url" content="https://drsamonline.github.io/The_Browser/" />
+<meta property="og:image" content="https://socialify.git.ci/drsamonline/The_Browser/image?name=1&amp;owner=1&amp;description=1&amp;language=1&amp;theme=Dark&amp;font=Inter" />
+<meta property="og:image:alt" content="Aetheris Browser social preview card" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Aetheris Browser — Experimental C++ Browser Engine" />
+<meta name="twitter:description" content="An experimental C++ browser project built on a Ladybird/SerenityOS-derived codebase, with a dependency-free rendering foundation and a CTest regression suite." />
+<meta name="twitter:image" content="https://socialify.git.ci/drsamonline/The_Browser/image?name=1&amp;owner=1&amp;description=1&amp;language=1&amp;theme=Dark&amp;font=Inter" />
+
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareSourceCode",
+      "name": "Aetheris Browser",
+      "alternateName": "The_Browser",
+      "description": "An experimental C++ browser project built on a Ladybird/SerenityOS-derived codebase, with a dependency-free AetherisRendering foundation and a CTest regression suite.",
+      "codeRepository": "https://github.com/drsamonline/The_Browser",
+      "url": "https://drsamonline.github.io/The_Browser/",
+      "programmingLanguage": ["C++", "C++20", "CMake"],
+      "runtimePlatform": "Windows, Linux",
+      "license": "https://github.com/drsamonline/The_Browser/blob/main/LICENSE",
+      "author": {
+        "@type": "Person",
+        "name": "Dr. Sohil Momin",
+        "url": "https://github.com/drsamonline"
+      },
+      "keywords": "browser engine, C++, rendering, HTML, CSS, layout, Ladybird, SerenityOS"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is Aetheris a complete browser?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Aetheris is an experimental rendering foundation plus an upstream-derived tree. It is not a production-ready, standards-complete replacement for established browsers."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What is Aetheris-specific in this repository?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The AetherisRendering foundation in src/rendering and its regression suite in Tests/AetherisRendering. The AK, Libraries, Services, UI, Meta and Base trees are upstream-derived from the Ladybird/SerenityOS ecosystem."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I build and test it?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Configure with cmake -S . -B build, build with cmake --build build --config Debug, and run ctest --test-dir build --output-on-failure. A dependency-light standalone profile is available for the Aetheris-specific targets."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+
+<style>
+  :root{
+    --bg:#101418;
+    --bg-2:#0b0e12;
+    --panel:#151a20;
+    --panel-2:#1a212a;
+    --line:#232c37;
+    --line-2:#2e3a48;
+    --chrome-1:#c9d3df;
+    --chrome-2:#8b97a6;
+    --chrome-3:#5c6673;
+    --accent:#3b82f6;
+    --accent-2:#60a5fa;
+    --accent-dim:#1d4ed8;
+    --ink:#e8edf3;
+    --ink-soft:#aab6c4;
+    --ink-dim:#7c8899;
+    --ok:#3fb950;
+    --warn:#d29922;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --radius:12px;
+    --maxw:1120px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1200px 600px at 78% -8%, rgba(59,130,246,.13), transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, rgba(139,151,166,.08), transparent 55%),
+      linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 100%);
+    background-attachment:fixed;
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:16px;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent-2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  h1,h2,h3{line-height:1.2;letter-spacing:-.01em;margin:0 0 .5em}
+  h1{font-size:clamp(2rem,5vw,3.35rem);font-weight:800}
+  h2{font-size:clamp(1.5rem,3vw,2.1rem);font-weight:750}
+  h3{font-size:1.12rem;font-weight:700}
+  p{margin:0 0 1em;color:var(--ink-soft)}
+  code,kbd,pre{font-family:var(--mono)}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
+  .section{padding:76px 0;position:relative}
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-size:.74rem;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent-2);background:rgba(59,130,246,.09);
+    border:1px solid rgba(59,130,246,.28);border-radius:999px;padding:6px 13px;margin-bottom:18px;
+  }
+  .muted{color:var(--ink-dim)}
+
+  /* ---------- sticky nav ---------- */
+  header.nav{
+    position:sticky;top:0;z-index:50;
+    backdrop-filter:blur(12px);
+    background:linear-gradient(180deg,rgba(16,20,24,.92),rgba(16,20,24,.72));
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{display:flex;align-items:center;gap:18px;height:62px}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:750;color:var(--ink);letter-spacing:-.01em}
+  .brand:hover{text-decoration:none}
+  .brand svg{display:block}
+  .brand small{display:block;font-family:var(--mono);font-weight:500;font-size:.66rem;color:var(--ink-dim);letter-spacing:.06em}
+  nav.links{margin-left:auto;display:flex;gap:4px;align-items:center}
+  nav.links a{
+    color:var(--ink-soft);font-size:.9rem;padding:8px 12px;border-radius:8px;border:1px solid transparent;
+  }
+  nav.links a:hover{color:var(--ink);background:var(--panel-2);border-color:var(--line);text-decoration:none}
+  .nav-cta{
+    margin-left:6px;background:linear-gradient(180deg,var(--accent),var(--accent-dim));
+    color:#fff !important;border:1px solid #2563eb;font-weight:650;font-size:.88rem;
+    padding:8px 15px;border-radius:9px;box-shadow:0 6px 18px -8px rgba(59,130,246,.9);
+  }
+  .nav-cta:hover{text-decoration:none;filter:brightness(1.06)}
+  .burger{display:none;margin-left:auto;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:7px 10px;cursor:pointer}
+  @media (max-width:860px){
+    nav.links{position:absolute;top:62px;left:0;right:0;flex-direction:column;align-items:stretch;gap:2px;
+      background:var(--bg-2);border-bottom:1px solid var(--line);padding:10px 14px;display:none}
+    nav.links.open{display:flex}
+    nav.links a{padding:11px 12px}
+    .nav-cta{margin:4px 0 0;text-align:center}
+    .burger{display:inline-flex}
+  }
+
+  /* ---------- hero ---------- */
+  .hero{padding:66px 0 54px}
+  .hero-grid{display:grid;grid-template-columns:1.06fr .94fr;gap:44px;align-items:center}
+  @media (max-width:940px){.hero-grid{grid-template-columns:1fr;gap:34px}}
+  .hero h1 .accent{
+    background:linear-gradient(92deg,var(--chrome-1),var(--accent-2) 60%,var(--accent));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .hero .lede{font-size:1.09rem;max-width:56ch}
+  .hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px}
+  .btn{
+    display:inline-flex;align-items:center;gap:9px;font-weight:650;font-size:.94rem;
+    padding:12px 19px;border-radius:10px;border:1px solid var(--line-2);color:var(--ink);
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));cursor:pointer;
+  }
+  .btn:hover{text-decoration:none;border-color:var(--accent);color:#fff}
+  .btn.primary{background:linear-gradient(180deg,var(--accent),var(--accent-dim));border-color:#2563eb;color:#fff;
+    box-shadow:0 10px 26px -12px rgba(59,130,246,1)}
+  .btn.primary:hover{filter:brightness(1.07)}
+  .btn svg{flex:none}
+
+  /* window mock (SVG container) */
+  .window{
+    border:1px solid var(--line-2);border-radius:14px;overflow:hidden;
+    background:linear-gradient(180deg,#171d24,#12171d);
+    box-shadow:0 30px 70px -34px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .window-bar{
+    display:flex;align-items:center;gap:10px;padding:11px 13px;
+    background:linear-gradient(180deg,#242c36,#1b222b);border-bottom:1px solid var(--line);
+  }
+  .dots{display:flex;gap:7px}
+  .dots i{width:11px;height:11px;border-radius:50%;display:block;background:var(--chrome-3)}
+  .dots i:nth-child(1){background:#5c6673}
+  .dots i:nth-child(2){background:#6f7a88}
+  .dots i:nth-child(3){background:var(--accent)}
+  .tabstrip{display:flex;gap:6px;margin-left:8px;flex:1;min-width:0}
+  .tab{
+    font-family:var(--mono);font-size:.72rem;color:var(--ink-soft);
+    background:linear-gradient(180deg,#2a333e,#20272f);border:1px solid var(--line-2);
+    border-bottom-color:transparent;border-radius:8px 8px 0 0;padding:5px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .tab.active{color:var(--ink);background:linear-gradient(180deg,#313b47,#242c36)}
+  .addr{
+    font-family:var(--mono);font-size:.72rem;color:var(--ink-dim);
+    background:#0e1217;border:1px solid var(--line);border-radius:7px;padding:5px 10px;margin:10px 12px 0;
+    display:flex;align-items:center;gap:8px;
+  }
+  .addr b{color:var(--ink-soft);font-weight:500}
+  .window-body{padding:12px}
+
+  /* ---------- cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media (max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:620px){.cards{grid-template-columns:1fr}}
+  .card{
+    background:linear-gradient(180deg,var(--panel),#12171d);
+    border:1px solid var(--line);border-radius:var(--radius);padding:22px;
+    position:relative;overflow:hidden;transition:border-color .18s ease,transform .18s ease;
+  }
+  .card::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;
+    background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.55}
+  .card:hover{border-color:var(--line-2);transform:translateY(-3px)}
+  .card .ico{
+    width:44px;height:44px;border-radius:11px;display:grid;place-items:center;margin-bottom:14px;
+    background:linear-gradient(180deg,#20272f,#171d24);border:1px solid var(--line-2);color:var(--accent-2);
+  }
+  .card h3{margin-bottom:6px}
+  .card p{font-size:.94rem;margin:0}
+
+  /* ---------- steps ---------- */
+  .steps{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+  @media (max-width:900px){.steps{grid-template-columns:1fr}}
+  .step{display:flex;gap:15px;margin-bottom:20px}
+  .step .num{
+    flex:none;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+    font-family:var(--mono);font-weight:700;font-size:.9rem;color:#fff;
+    background:linear-gradient(180deg,var(--accent),var(--accent-dim));border:1px solid #2563eb;
+  }
+  .step h3{margin-bottom:3px}
+  .step p{font-size:.93rem;margin:0}
+  pre.code{
+    margin:0;background:#0c1014;border:1px solid var(--line-2);border-radius:11px;overflow:auto;
+    padding:16px 18px;font-size:.83rem;line-height:1.62;color:#cdd9e6;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  pre.code .c{color:#6b7785}
+  pre.code .k{color:var(--accent-2)}
+  pre.code .s{color:#7ee787}
+  pre.code .f{color:#d2a8ff}
+  .code-head{
+    display:flex;align-items:center;gap:9px;background:linear-gradient(180deg,#1b222b,#161c23);
+    border:1px solid var(--line-2);border-bottom:none;border-radius:11px 11px 0 0;padding:8px 14px;
+    font-family:var(--mono);font-size:.74rem;color:var(--ink-dim);
+  }
+  .code-head + pre.code{border-radius:0 0 11px 11px}
+  .code-head .dots i{width:9px;height:9px}
+
+  /* ---------- demo tabs ---------- */
+  .demo-shell{border:1px solid var(--line-2);border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#141a21,#10151a)}
+  .demo-tabs{display:flex;gap:0;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#1c242e,#161d25);overflow-x:auto}
+  .demo-tab{
+    appearance:none;background:transparent;border:none;border-right:1px solid var(--line);
+    color:var(--ink-dim);font-family:var(--mono);font-size:.79rem;padding:13px 18px;cursor:pointer;white-space:nowrap;
+    border-bottom:2px solid transparent;
+  }
+  .demo-tab[aria-selected="true"]{color:var(--ink);background:linear-gradient(180deg,#20293400,#202934);border-bottom-color:var(--accent)}
+  .demo-tab:hover{color:var(--ink-soft)}
+  .demo-panel{padding:22px;display:none;grid-template-columns:1fr 1fr;gap:24px;align-items:center}
+  .demo-panel.active{display:grid}
+  @media (max-width:820px){.demo-panel.active{grid-template-columns:1fr}}
+  .demo-panel h3{margin-bottom:6px}
+  .demo-panel p{font-size:.93rem}
+  .demo-panel ul{margin:8px 0 0;padding-left:18px;color:var(--ink-soft);font-size:.9rem}
+  .demo-panel li{margin-bottom:5px}
+  .stage-note{font-family:var(--mono);font-size:.74rem;color:var(--ink-dim);margin-top:12px}
+
+  /* ---------- badges ---------- */
+  .badges{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin:6px 0 4px}
+  .badges img{height:22px;display:block}
+  .cbadge{
+    display:inline-flex;align-items:center;gap:7px;height:22px;padding:0 10px;border-radius:5px;
+    font-family:var(--mono);font-size:.71rem;font-weight:600;letter-spacing:.02em;
+    border:1px solid var(--line-2);background:linear-gradient(180deg,#20272f,#171d24);color:var(--ink-soft);
+  }
+  .cbadge .d{width:7px;height:7px;border-radius:50%;display:block}
+  .cbadge.b-blue{color:var(--accent-2);border-color:rgba(59,130,246,.4);background:linear-gradient(180deg,rgba(59,130,246,.16),rgba(59,130,246,.05))}
+  .cbadge.b-blue .d{background:var(--accent)}
+  .cbadge.b-green{color:#7ee787;border-color:rgba(63,185,80,.35)}
+  .cbadge.b-green .d{background:var(--ok)}
+  .cbadge.b-amber{color:#e3b341;border-color:rgba(210,153,34,.35)}
+  .cbadge.b-amber .d{background:var(--warn)}
+  .cbadge.b-grey{color:var(--ink-soft)}
+  .cbadge.b-grey .d{background:var(--chrome-2)}
+
+  /* ---------- faq ---------- */
+  .faq{max-width:860px;margin:0 auto}
+  details.q{
+    border:1px solid var(--line);border-radius:11px;background:linear-gradient(180deg,var(--panel),#12171d);
+    margin-bottom:11px;overflow:hidden;
+  }
+  details.q[open]{border-color:var(--line-2)}
+  details.q summary{
+    cursor:pointer;padding:16px 18px;font-weight:650;color:var(--ink);list-style:none;
+    display:flex;align-items:center;gap:12px;
+  }
+  details.q summary::-webkit-details-marker{display:none}
+  details.q summary .chev{margin-left:auto;transition:transform .2s ease;color:var(--ink-dim)}
+  details.q[open] summary .chev{transform:rotate(90deg)}
+  details.q .ans{padding:0 18px 17px 18px;color:var(--ink-soft);font-size:.95rem}
+  details.q .ans code{background:#0c1014;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:.85em;color:var(--accent-2)}
+
+  /* ---------- get started ---------- */
+  .cta-band{
+    border:1px solid var(--line-2);border-radius:16px;padding:34px;
+    background:
+      radial-gradient(700px 300px at 88% 0%, rgba(59,130,246,.16), transparent 60%),
+      linear-gradient(180deg,#161d25,#11161c);
+    display:grid;grid-template-columns:1.2fr .8fr;gap:30px;align-items:center;
+  }
+  @media (max-width:820px){.cta-band{grid-template-columns:1fr;padding:26px}}
+  .cta-band h2{margin-bottom:8px}
+  .dl-list{list-style:none;margin:0;padding:0}
+  .dl-list li{margin-bottom:12px}
+  .dl-list a{display:flex;align-items:center;gap:11px;padding:13px 15px;border:1px solid var(--line);
+    border-radius:10px;background:linear-gradient(180deg,var(--panel),#12171d);color:var(--ink);font-weight:600;font-size:.92rem}
+  .dl-list a:hover{border-color:var(--accent);text-decoration:none}
+  .dl-list a span{display:block;font-weight:400;font-size:.78rem;color:var(--ink-dim);font-family:var(--mono)}
+  .dl-list a .grow{margin-left:auto;color:var(--accent-2)}
+
+  /* ---------- footer ---------- */
+  footer{border-top:1px solid var(--line);background:linear-gradient(180deg,#0d1116,#0a0d11);padding:44px 0 34px;margin-top:20px}
+  .foot-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:28px}
+  @media (max-width:780px){.foot-grid{grid-template-columns:1fr;gap:22px}}
+  footer h4{margin:0 0 12px;font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);font-weight:700}
+  footer ul{list-style:none;margin:0;padding:0}
+  footer li{margin-bottom:8px}
+  footer a{color:var(--ink-soft);font-size:.9rem}
+  footer a:hover{color:var(--accent-2)}
+  .foot-bottom{margin-top:30px;padding-top:20px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px;
+    justify-content:space-between;align-items:center;font-size:.84rem;color:var(--ink-dim)}
+  .foot-bottom .built{font-family:var(--mono);color:var(--ink-soft)}
+
+  /* ---------- animation ---------- */
+  .reveal{opacity:1;transform:none}
+  html.js .reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s ease}
+  html.js .reveal.in{opacity:1;transform:none}
+  .float{animation:float 7s ease-in-out infinite}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+  .dash{stroke-dasharray:5 6;animation:march 1.6s linear infinite}
+  @keyframes march{to{stroke-dashoffset:-22}}
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important;transition:none !important;scroll-behavior:auto !important}
+    .reveal{opacity:1;transform:none}
+  }
+  .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Aetheris Browser home">
+      <svg width="30" height="30" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="2.5" y="4.5" width="27" height="23" rx="4" stroke="#8b97a6" stroke-width="1.5"/>
+        <path d="M2.5 11.5h27" stroke="#8b97a6" stroke-width="1.5"/>
+        <circle cx="7" cy="8" r="1.3" fill="#3b82f6"/>
+        <circle cx="11" cy="8" r="1.3" fill="#5c6673"/>
+        <circle cx="15" cy="8" r="1.3" fill="#5c6673"/>
+        <path d="M7 16h9M7 20h13M7 24h6" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <span>Aetheris Browser<small>experimental · C++20</small></span>
+    </a>
+    <button class="burger" id="burger" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navlinks">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <nav class="links" id="navlinks" aria-label="Primary">
+      <a href="#features">Features</a>
+      <a href="#build">Build</a>
+      <a href="#demo">Pipeline</a>
+      <a href="#start">Get started</a>
+      <a href="#faq">FAQ</a>
+      <a class="nav-cta" href="https://github.com/drsamonline/The_Browser">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ============ HERO ============ -->
+<section class="hero wrap">
+  <div class="hero-grid">
+    <div>
+      <span class="eyebrow">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Status: experimental
+      </span>
+      <h1>An experimental C++ browser,<br><span class="accent">engineered and honest.</span></h1>
+      <p class="lede">
+        Aetheris Browser is an experimental C++ browser project built on a
+        Ladybird/SerenityOS-derived codebase. Its own core is a dependency-free
+        rendering foundation &mdash; HTML and CSS parsing, style resolution, layout,
+        paint and software rasterization &mdash; validated by a CTest regression suite.
+      </p>
+      <div class="hero-actions">
+        <a class="btn primary" href="#start">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 20h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Get started
+        </a>
+        <a class="btn" href="https://github.com/drsamonline/The_Browser">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 19c-4 1.2-4-2-6-2.4M15 21v-3.6c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.2s-1-.3-3.4 1.3a11.6 11.6 0 0 0-6 0C6.3 2.7 5.3 3 5.3 3a4.3 4.3 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.4c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          View source
+        </a>
+        <a class="btn" href="https://github.com/drsamonline/The_Browser/releases">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Releases
+        </a>
+      </div>
+      <div class="badges" aria-label="Project badges">
+        <img src="https://img.shields.io/badge/status-experimental-orange" alt="Status: experimental" onerror="this.style.display='none'" />
+        <img src="https://img.shields.io/badge/language-C%2B%2B20-blue" alt="Language: C++20" onerror="this.style.display='none'" />
+        <img src="https://img.shields.io/badge/build-CMake%20%2B%20vcpkg-informational" alt="Build: CMake + vcpkg" onerror="this.style.display='none'" />
+        <img src="https://img.shields.io/badge/tests-CTest%20(Aetheris%20suite)-brightgreen" alt="Tests: CTest" onerror="this.style.display='none'" />
+        <img src="https://img.shields.io/badge/upstream-Ladybird%2FSerenityOS-lightgrey" alt="Upstream: Ladybird/SerenityOS" onerror="this.style.display='none'" />
+        <span class="cbadge b-blue"><span class="d"></span>core: AetherisRendering</span>
+        <span class="cbadge b-green"><span class="d"></span>CTest suite</span>
+        <span class="cbadge b-amber"><span class="d"></span>not production-ready</span>
+      </div>
+    </div>
+
+    <!-- window / tab motif -->
+    <div class="float">
+      <div class="window" role="img" aria-label="Stylized browser window showing the Aetheris rendering pipeline">
+        <div class="window-bar">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="tabstrip">
+            <span class="tab active">aetheris://render</span>
+            <span class="tab">pipeline.cpp</span>
+          </div>
+        </div>
+        <div class="addr">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" stroke="#7c8899" stroke-width="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="#7c8899" stroke-width="2"/></svg>
+          <b>aetheris://</b>render-foundation
+        </div>
+        <div class="window-body">
+          <svg viewBox="0 0 520 320" width="100%" role="img" aria-label="Diagram: HTML and CSS inputs flow through tokenizers, style resolution and layout to paint commands and a software surface">
+            <defs>
+              <linearGradient id="gChrome" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#313b47"/><stop offset="1" stop-color="#1a212a"/>
+              </linearGradient>
+              <linearGradient id="gBlue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/>
+              </linearGradient>
+              <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0 0l7 3-7 3z" fill="#5c6673"/>
+              </marker>
+            </defs>
+            <g font-family="SFMono-Regular,Consolas,monospace" font-size="11" fill="#aab6c4">
+              <!-- inputs -->
+              <rect x="8" y="24" width="104" height="34" rx="7" fill="url(#gChrome)" stroke="#2e3a48"/>
+              <text x="60" y="45" text-anchor="middle" fill="#e8edf3">HTML bytes</text>
+              <rect x="8" y="112" width="104" height="34" rx="7" fill="url(#gChrome)" stroke="#2e3a48"/>
+              <text x="60" y="133" text-anchor="middle" fill="#e8edf3">CSS text</text>
+
+              <!-- html chain -->
+              <rect x="150" y="24" width="118" height="34" rx="7" fill="url(#gChrome)" stroke="#2e3a48"/>
+              <text x="209" y="45" text-anchor="middle">html_tokenizer</text>
+              <rect x="150" y="70" width="118" height="34" rx="7" fill="url(#gChrome)" stroke="#2e3a48"/>
+              <text x="209" y="91" text-anchor="middle">tree_builder</text>
+              <rect x="150" y="116" width="118" height="34" rx="7" fill="url(#gChrome)" stroke="#2e3a48"/>
+              <text x="209" y="137" text-anchor="middle">dom / document</text>
+
+              <!-- css chain -->
+              <rect x="150" y="170" width="118" height="34" rx="7" fill="url(#gChrome)" stroke="#2e3a48"/>
+              <text x="209" y="191" text-anchor="middle">css_parser</text>
+              <rect x="150" y="216" width="118" height="34" rx="7" fill="url(#gChrome)" stroke="#2e3a48"/>
+              <text x="209" y="237" text-anchor="middle">stylesheet</text>
+
+              <!-- style -->
+              <rect x="308" y="140" width="120" height="40" rx="8" fill="url(#gBlue)" stroke="#2563eb"/>
+              <text x="368" y="165" text-anchor="middle" fill="#fff">StyleResolver</text>
+
+              <!-- layout -->
+              <rect x="308" y="60" width="120" height="34" rx="7" fill="url(#gChrome)" stroke="#2e3a48"/>
+              <text x="368" y="81" text-anchor="middle">layout engine</text>
+
+              <!-- paint -->
+              <rect x="308" y="200" width="120" height="34" rx="7" fill="url(#gChrome)" stroke="#2e3a48"/>
+              <text x="368" y="221" text-anchor="middle">paint_executor</text>
+              <rect x="308" y="246" width="120" height="34" rx="7" fill="url(#gChrome)" stroke="#2e3a48"/>
+              <text x="368" y="267" text-anchor="middle">software_surface</text>
+
+              <!-- edges -->
+              <path d="M112 41h38" stroke="#5c6673" stroke-width="1.4" marker-end="url(#arrow)"/>
+              <path d="M112 129h38" stroke="#5c6673" stroke-width="1.4" marker-end="url(#arrow)"/>
+              <path d="M209 58v12" stroke="#5c6673" stroke-width="1.4" marker-end="url(#arrow)"/>
+              <path d="M209 104v12" stroke="#5c6673" stroke-width="1.4" marker-end="url(#arrow)"/>
+              <path d="M209 187v29" stroke="#5c6673" stroke-width="1.4" marker-end="url(#arrow)"/>
+              <path d="M268 133q22 20 40 22" class="dash" stroke="#3b82f6" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+              <path d="M268 227q22-20 40-22" class="dash" stroke="#3b82f6" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+              <path d="M368 140V94" stroke="#5c6673" stroke-width="1.4" marker-end="url(#arrow)"/>
+              <path d="M428 78h30q8 0 8 8v108q0 8-8 8h-30" stroke="#5c6673" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>
+              <path d="M368 234v12" stroke="#5c6673" stroke-width="1.4" marker-end="url(#arrow)"/>
+            </g>
+          </svg>
+          <div class="stage-note">AetherisRendering &mdash; src/rendering/ · standalone, zero third-party deps</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section class="section wrap" id="features">
+  <div class="reveal">
+    <span class="eyebrow">What's inside</span>
+    <h2>Subsystems, not slogans</h2>
+    <p style="max-width:62ch">Every item below maps to code in the repository. The Aetheris-specific half lives in <code style="font-family:var(--mono);color:var(--accent-2)">src/rendering/</code>; the rest is upstream-derived Ladybird/SerenityOS infrastructure, kept with its original licences.</p>
+  </div>
+  <div class="cards" style="margin-top:26px">
+
+    <div class="card reveal">
+      <div class="ico">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6M13 4l-2 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h3>Dependency-free rendering core</h3>
+      <p>The <strong>AetherisRendering</strong> static library is standalone C++20 with zero third-party dependencies, so it builds, tests and reasons independently of the upstream tree.</p>
+    </div>
+
+    <div class="card reveal">
+      <div class="ico">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h10M4 20h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+      <h3>HTML &amp; CSS pipeline</h3>
+      <p>An HTML tokenizer and tree builder feeding a DOM/document, plus a CSS tokenizer and parser producing stylesheets &mdash; composed into a style-resolution and cascade pass.</p>
+    </div>
+
+    <div class="card reveal">
+      <div class="ico">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="3" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="13" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/></svg>
+      </div>
+      <h3>Layout foundations</h3>
+      <p>Block and inline layout with Flex and Grid foundations, positioning, sizing constraints, geometry, viewport handling and text layout.</p>
+    </div>
+
+    <div class="card reveal">
+      <div class="ico">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20l7-7M14 4l6 6-8 8-6-6 8-8z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.5" cy="8.5" r="1.4" fill="currentColor"/></svg>
+      </div>
+      <h3>Paint &amp; software rasterization</h3>
+      <p>A paint executor with clipping and visual state emits paint commands that are executed onto a software surface, covering backgrounds, images, fonts and paint ordering.</p>
+    </div>
+
+    <div class="card reveal">
+      <div class="ico">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 9h18" stroke="currentColor" stroke-width="1.8"/><path d="M7 14h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+      <h3>Tabs, sessions &amp; chrome</h3>
+      <p><strong>BrowserSession</strong> covers navigation, history, scroll and hit-testing; <strong>BrowserChrome</strong> holds multi-tab address-bar state and back/forward capability.</p>
+    </div>
+
+    <div class="card reveal">
+      <div class="ico">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6l7-3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      </div>
+      <h3>Test-driven, honestly scoped</h3>
+      <p>The Aetheris suite is 40+ regression test executables wired into CTest. The project states plainly that it is not production-ready and avoids unsupported performance claims.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ BUILD / HOW IT WORKS ============ -->
+<section class="section wrap" id="build" style="border-top:1px solid var(--line)">
+  <div class="reveal">
+    <span class="eyebrow">How it works</span>
+    <h2>From source to smoke test</h2>
+    <p style="max-width:64ch">Aetheris uses CMake. The full tree pulls vcpkg dependencies; the Aetheris-specific targets build through a dependency-light standalone profile that skips the upstream tree.</p>
+  </div>
+
+  <div class="steps" style="margin-top:28px">
+    <div class="reveal">
+      <div class="step">
+        <div class="num">1</div>
+        <div><h3>Configure</h3><p>Point CMake at the repository and a build directory. Reconfigure whenever CMake files or build-registered sources change.</p></div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div><h3>Build</h3><p>Compile in Debug for a development workflow. The Windows path uses MSVC or clang-cl; see the Windows build doc.</p></div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div><h3>Test</h3><p>Run the registered CTest suite. The Aetheris suite covers tokenizer, DOM, CSS, cascade, box model, layout, text, painting, resource, security and chrome behaviour.</p></div>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <div><h3>Smoke-run</h3><p>In the standalone profile, the <code style="font-family:var(--mono);color:var(--accent-2)">aetheris</code> executable initializes every subsystem, runs a bounded frame loop and exits zero.</p></div>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <div class="code-head">
+        <span class="dots"><i></i><i></i><i></i></span> build &amp; test — general
+      </div>
+      <pre class="code"><span class="c"># configure, build, test</span>
+<span class="k">cmake</span> -S . -B build
+<span class="k">cmake</span> --build build --config Debug
+<span class="k">ctest</span> --test-dir build --output-on-failure
+
+<span class="c"># Aetheris suite only</span>
+<span class="k">ctest</span> --test-dir build -R Aetheris --output-on-failure</pre>
+
+      <div class="code-head" style="margin-top:18px">
+        <span class="dots"><i></i><i></i><i></i></span> standalone profile — no third-party deps
+      </div>
+      <pre class="code"><span class="k">cmake</span> -S . -B build-standalone -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DAETHERIS_STANDALONE_BUILD=ON \
+  -DAETHERIS_ENABLE_TESTING=ON -DBUILD_TESTING=ON
+<span class="k">cmake</span> --build build-standalone --parallel
+<span class="k">ctest</span> --test-dir build-standalone --output-on-failure --no-tests=error
+<span class="c"># headless smoke run (X11 optional)</span>
+./build-standalone/bin/aetheris --smoke-test</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DEMO / PIPELINE ============ -->
+<section class="section wrap" id="demo" style="border-top:1px solid var(--line)">
+  <div class="reveal">
+    <span class="eyebrow">Rendering pipeline</span>
+    <h2>A document, stage by stage</h2>
+    <p style="max-width:64ch">This is an interactive diagram of the shipped pipeline in <code style="font-family:var(--mono);color:var(--accent-2)">src/rendering/</code> &mdash; not a screenshot. Select a stage to see what each subsystem is responsible for.</p>
+  </div>
+
+  <div class="demo-shell reveal" style="margin-top:24px">
+    <div class="demo-tabs" role="tablist" aria-label="Rendering pipeline stages">
+      <button class="demo-tab" role="tab" id="t1" aria-controls="p1" aria-selected="true">HTML input</button>
+      <button class="demo-tab" role="tab" id="t2" aria-controls="p2" aria-selected="false">CSS &amp; style</button>
+      <button class="demo-tab" role="tab" id="t3" aria-controls="p3" aria-selected="false">Layout</button>
+      <button class="demo-tab" role="tab" id="t4" aria-controls="p4" aria-selected="false">Paint</button>
+      <button class="demo-tab" role="tab" id="t5" aria-controls="p5" aria-selected="false">Surface</button>
+    </div>
+
+    <div class="demo-panel active" role="tabpanel" id="p1" aria-labelledby="t1">
+      <div>
+        <h3>HTML &rarr; DOM</h3>
+        <p>Raw HTML bytes are tokenized and assembled into a tree, producing a DOM document object.</p>
+        <ul>
+          <li><code>html_tokenizer</code> — bytes to tokens</li>
+          <li><code>html_tree_builder</code> — tokens to nodes</li>
+          <li><code>dom</code> / <code>document</code> — <code>Document::parse_html</code></li>
+        </ul>
+      </div>
+      <div class="code-head" style="border-radius:11px 11px 0 0"><span class="dots"><i></i><i></i><i></i></span> src/rendering/</div>
+    </div>
+
+    <div class="demo-panel" role="tabpanel" id="p2" aria-labelledby="t2" hidden>
+      <div>
+        <h3>CSS &rarr; computed style</h3>
+        <p>CSS text becomes a stylesheet; the <code>StyleResolver</code> matches selectors and applies the cascade to produce per-element computed styles.</p>
+        <ul>
+          <li><code>css_tokenizer</code> / <code>css_parser</code></li>
+          <li><code>stylesheet</code> model</li>
+          <li><code>StyleResolver</code> — match &amp; cascade</li>
+        </ul>
+      </div>
+      <div class="code-head" style="border-radius:11px 11px 0 0"><span class="dots"><i></i><i></i><i></i></span> src/rendering/</div>
+    </div>
+
+    <div class="demo-panel" role="tabpanel" id="p3" aria-labelledby="t3" hidden>
+      <div>
+        <h3>Layout</h3>
+        <p>Computed styles plus the viewport produce a layout tree with resolved geometry, covering block and inline flow with Flex and Grid foundations.</p>
+        <ul>
+          <li><code>layout</code> — block / flex / grid</li>
+          <li><code>geometry</code>, <code>viewport</code>, <code>clip</code></li>
+          <li><code>text_layout</code> &amp; <code>font</code></li>
+        </ul>
+      </div>
+      <div class="code-head" style="border-radius:11px 11px 0 0"><span class="dots"><i></i><i></i><i></i></span> src/rendering/</div>
+    </div>
+
+    <div class="demo-panel" role="tabpanel" id="p4" aria-labelledby="t4" hidden>
+      <div>
+        <h3>Paint</h3>
+        <p>The layout tree is walked to emit ordered paint commands, with clipping and visual state applied.</p>
+        <ul>
+          <li><code>paint_executor</code> — command generation</li>
+          <li><code>render_tree</code>, <code>render_document</code></li>
+          <li>backgrounds, images, fonts, ordering</li>
+        </ul>
+      </div>
+      <div class="code-head" style="border-radius:11px 11px 0 0"><span class="dots"><i></i><i></i><i></i></span> src/rendering/</div>
+    </div>
+
+    <div class="demo-panel" role="tabpanel" id="p5" aria-labelledby="t5" hidden>
+      <div>
+        <h3>Software surface</h3>
+        <p>Paint commands are executed onto a software rasterization surface — the final pixels, produced without a GPU dependency.</p>
+        <ul>
+          <li><code>software_surface</code> — rasterization target</li>
+          <li><code>color</code>, <code>image</code>, <code>image_output</code></li>
+          <li>round-trip: sessions &amp; chrome on top</li>
+        </ul>
+      </div>
+      <div class="code-head" style="border-radius:11px 11px 0 0"><span class="dots"><i></i><i></i><i></i></span> src/rendering/</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GET STARTED ============ -->
+<section class="section wrap" id="start" style="border-top:1px solid var(--line)">
+  <div class="cta-band reveal">
+    <div>
+      <span class="eyebrow">Get started</span>
+      <h2>Clone it, build it, run the suite</h2>
+      <p>No installer and no hosted download is promised by the project. Clone the repository and build from source — the Aetheris-specific targets need only a C++20 compiler.</p>
+      <div class="code-head" style="border-radius:11px 11px 0 0;margin-top:14px"><span class="dots"><i></i><i></i><i></i></span> shell</div>
+      <pre class="code" style="font-size:.8rem"><span class="k">git</span> clone https://github.com/drsamonline/The_Browser.git
+<span class="k">cd</span> The_Browser
+<span class="k">cmake</span> -S . -B build &amp;&amp; <span class="k">cmake</span> --build build --config Debug
+<span class="k">ctest</span> --test-dir build --output-on-failure</pre>
+      <div class="badges" style="margin-top:16px">
+        <span class="cbadge b-blue"><span class="d"></span>C++20</span>
+        <span class="cbadge b-grey"><span class="d"></span>CMake &ge; 3.25</span>
+        <span class="cbadge b-grey"><span class="d"></span>Windows · Linux</span>
+      </div>
+    </div>
+    <div>
+      <ul class="dl-list">
+        <li><a href="https://github.com/drsamonline/The_Browser">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 19c-4 1.2-4-2-6-2.4M15 21v-3.6c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.2s-1-.3-3.4 1.3a11.6 11.6 0 0 0-6 0C6.3 2.7 5.3 3 5.3 3a4.3 4.3 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.4c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="grow-wrap">Repository<span>github.com/drsamonline/The_Browser</span></span>
+          <span class="grow">&rarr;</span>
+        </a></li>
+        <li><a href="https://github.com/drsamonline/The_Browser/blob/main/BUILD_GUIDE.md">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" stroke="currentColor" stroke-width="1.7"/><path d="M14 3v6h6" stroke="currentColor" stroke-width="1.7"/></svg>
+          <span class="grow-wrap">Build guide<span>BUILD_GUIDE.md</span></span>
+          <span class="grow">&rarr;</span>
+        </a></li>
+        <li><a href="https://github.com/drsamonline/The_Browser/blob/main/docs/WINDOWS_BUILD.md">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h7v7H4zM13 6h7v7h-7zM4 15h7v3H4zM13 15h7v3h-7z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <span class="grow-wrap">Windows build<span>docs/WINDOWS_BUILD.md</span></span>
+          <span class="grow">&rarr;</span>
+        </a></li>
+        <li><a href="https://github.com/drsamonline/The_Browser/blob/main/docs/USER_GUIDE.md">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 1-2-2zM13 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5z" stroke="currentColor" stroke-width="1.7"/></svg>
+          <span class="grow-wrap">User guide<span>docs/USER_GUIDE.md</span></span>
+          <span class="grow">&rarr;</span>
+        </a></li>
+        <li><a href="https://github.com/drsamonline/The_Browser/blob/main/docs/ARCHITECTURE.md">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="5" r="2.2" stroke="currentColor" stroke-width="1.7"/><circle cx="5" cy="19" r="2.2" stroke="currentColor" stroke-width="1.7"/><circle cx="19" cy="19" r="2.2" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.2v4M12 11.2L6.5 17M12 11.2L17.5 17" stroke="currentColor" stroke-width="1.7"/></svg>
+          <span class="grow-wrap">Architecture<span>docs/ARCHITECTURE.md</span></span>
+          <span class="grow">&rarr;</span>
+        </a></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section class="section wrap" id="faq" style="border-top:1px solid var(--line)">
+  <div class="reveal" style="text-align:center">
+    <span class="eyebrow">FAQ</span>
+    <h2>Straight answers</h2>
+  </div>
+  <div class="faq" style="margin-top:22px">
+    <details class="q" open>
+      <summary>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 16v-4M12 8h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Is Aetheris a complete browser?
+        <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </summary>
+      <div class="ans">No. It is an experimental rendering foundation plus an upstream-derived tree. The project does not claim complete HTML, CSS, DOM, JavaScript or browser-API compliance, and it is not a production-ready replacement for established browsers.</div>
+    </details>
+    <details class="q">
+      <summary>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6l7-3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        What is actually Aetheris-specific here?
+        <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </summary>
+      <div class="ans">The <code>AetherisRendering</code> foundation in <code>src/rendering/</code> and its regression suite in <code>Tests/AetherisRendering/</code>. The <code>AK</code>, <code>Libraries</code>, <code>Services</code>, <code>UI</code>, <code>Meta</code> and <code>Base</code> trees are upstream-derived from the Ladybird/SerenityOS ecosystem and retain their original notices.</div>
+    </details>
+    <details class="q">
+      <summary>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        How do I build and test it?
+        <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </summary>
+      <div class="ans">Configure with <code>cmake -S . -B build</code>, build with <code>cmake --build build --config Debug</code>, and test with <code>ctest --test-dir build --output-on-failure</code>. The Aetheris-specific targets also build through a dependency-light standalone profile with <code>-DAETHERIS_STANDALONE_BUILD=ON</code>.</div>
+    </details>
+    <details class="q">
+      <summary>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Why do some prototype files not build?
+        <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </summary>
+      <div class="ans">Early experiments in <code>src/main.cpp</code>, <code>src/cache/</code>, <code>src/network/</code>, <code>src/ui/</code> and <code>include/aetheris/</code> are dormant: their external dependencies (LZ4, X11) are not declared, so they are not part of any build target. They are kept as design reference.</div>
+    </details>
+    <details class="q">
+      <summary>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Can I relicense the repository?
+        <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </summary>
+      <div class="ans">Not without a file-level provenance and licensing audit. Upstream copyright notices and licence texts must be preserved, and upstream-derived code must not be presented as entirely Aetheris-authored.</div>
+    </details>
+    <details class="q">
+      <summary>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2L4 14h6l-1 8 9-12h-6z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        Does it claim specific performance numbers?
+        <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </summary>
+      <div class="ans">No. The project explicitly does not claim fixed limits for binary size, idle memory or startup time. Performance work is framed as measurable engineering, and future public claims are expected to be reproducible with recorded environment details.</div>
+    </details>
+  </div>
+</section>
+
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <div class="brand" style="margin-bottom:12px">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <rect x="2.5" y="4.5" width="27" height="23" rx="4" stroke="#8b97a6" stroke-width="1.5"/>
+            <path d="M2.5 11.5h27" stroke="#8b97a6" stroke-width="1.5"/>
+            <circle cx="7" cy="8" r="1.3" fill="#3b82f6"/>
+            <path d="M7 16h9M7 20h13" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span>Aetheris Browser<small>experimental · C++20</small></span>
+        </div>
+        <p style="max-width:44ch;font-size:.9rem">An experimental C++ browser project built on a Ladybird/SerenityOS-derived codebase, with a dependency-free rendering foundation.</p>
+        <div class="badges" style="margin-top:14px">
+          <img src="https://img.shields.io/badge/status-experimental-orange" alt="Status: experimental" onerror="this.style.display='none'" />
+          <img src="https://img.shields.io/badge/license-see%20LICENSE-blue" alt="License" onerror="this.style.display='none'" />
+        </div>
+      </div>
+      <div>
+        <h4>Project</h4>
+        <ul>
+          <li><a href="https://github.com/drsamonline/The_Browser">Repository</a></li>
+          <li><a href="https://github.com/drsamonline/The_Browser/releases">Releases</a></li>
+          <li><a href="https://github.com/drsamonline/The_Browser/blob/main/CHANGELOG.md">Changelog</a></li>
+          <li><a href="https://github.com/drsamonline/The_Browser/blob/main/ISSUES.md">Report an issue</a></li>
+          <li><a href="https://github.com/drsamonline/The_Browser/blob/main/CONTRIBUTING.md">Contributing</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Docs</h4>
+        <ul>
+          <li><a href="https://github.com/drsamonline/The_Browser/blob/main/docs/USER_GUIDE.md">User guide</a></li>
+          <li><a href="https://github.com/drsamonline/The_Browser/blob/main/docs/ARCHITECTURE.md">Architecture</a></li>
+          <li><a href="https://github.com/drsamonline/The_Browser/blob/main/docs/UPSTREAM_ATTRIBUTION.md">Provenance policy</a></li>
+          <li><a href="https://github.com/drsamonline/The_Browser/blob/main/docs/V0.1_ACCEPTANCE.md">Acceptance criteria</a></li>
+          <li><a href="https://github.com/drsamonline/The_Browser/blob/main/SECURITY.md">Security</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span class="built">Built by Dr. Sohil Momin</span>
+      <span>Experimental project · not production-ready · upstream-derived from Ladybird/SerenityOS</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* mobile nav */
+  var burger = document.getElementById('burger');
+  var links = document.getElementById('navlinks');
+  if (burger && links){
+    burger.addEventListener('click', function(){
+      var open = links.classList.toggle('open');
+      burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    links.addEventListener('click', function(e){
+      if (e.target.tagName === 'A'){ links.classList.remove('open'); burger.setAttribute('aria-expanded','false'); }
+    });
+  }
+
+  /* demo tabs */
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.demo-tab'));
+  function select(tab){
+    tabs.forEach(function(t){
+      var on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      var panel = document.getElementById(t.getAttribute('aria-controls'));
+      if (panel){ panel.classList.toggle('active', on); if (on){ panel.removeAttribute('hidden'); } else { panel.setAttribute('hidden',''); } }
+    });
+  }
+  tabs.forEach(function(t, i){
+    t.addEventListener('click', function(){ select(t); });
+    t.addEventListener('keydown', function(e){
+      var k = e.key, n = null;
+      if (k === 'ArrowRight'){ n = tabs[(i+1) % tabs.length]; }
+      else if (k === 'ArrowLeft'){ n = tabs[(i-1+tabs.length) % tabs.length]; }
+      if (n){ e.preventDefault(); n.focus(); select(n); }
+    });
+  });
+
+  /* reveal on scroll */
+  var items = document.querySelectorAll('.reveal');
+  if (reduce || !('IntersectionObserver' in window)){
+    items.forEach(function(el){ el.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if (en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    items.forEach(function(el){ io.observe(el); });
+  }
+})();
+</script>
+</body>
+</html>
