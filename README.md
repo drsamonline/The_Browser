@@ -1,3 +1,41 @@
+<p align="center">
+  <img src="docs/assets/favicon.svg" width="72" height="72" alt="Aetheris Browser logo" />
+</p>
+
+<h1 align="center">Aetheris Browser</h1>
+
+<p align="center">
+  <strong>An experimental C++ browser engine with a dependency-free rendering foundation.</strong><br/>
+  <em>Built on a Ladybird/SerenityOS-derived codebase · <strong>not production-ready</strong> · authored by Dr.&nbsp;Sohil&nbsp;Momin.</em>
+</p>
+
+<p align="center">
+  <a href="https://drsamonline.github.io/The_Browser/"><strong>Landing page</strong></a> ·
+  <a href="https://drsamonline.github.io/The_Browser/#start">Get started</a> ·
+  <a href="https://drsamonline.github.io/The_Browser/#demo">Rendering pipeline</a> ·
+  <a href="https://drsamonline.github.io/The_Browser/#faq">FAQ</a> ·
+  <a href="https://github.com/drsamonline/The_Browser/releases">Downloads</a> ·
+  <a href="docs/USER_GUIDE.md">User guide</a> ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a>
+</p>
+
+<p align="center">
+  <a href="https://drsamonline.github.io/The_Browser/"><img alt="Landing page" src="https://img.shields.io/badge/landing%20page-live-3b82f6?logo=githubpages&logoColor=white"/></a>
+  <img alt="Status" src="https://img.shields.io/badge/status-experimental-orange"/>
+  <img alt="Language" src="https://img.shields.io/badge/language-C%2B%2B20-blue"/>
+  <img alt="Build" src="https://img.shields.io/badge/build-CMake%20%2B%20vcpkg-informational"/>
+  <img alt="Tests" src="https://img.shields.io/badge/tests-CTest%20(Aetheris%20suite)-brightgreen"/>
+  <img alt="Upstream" src="https://img.shields.io/badge/upstream-Ladybird%2FSerenityOS-lightgrey"/>
+  <img alt="Author" src="https://img.shields.io/badge/author-Dr.%20Sohil%20Momin-6f42c1"/>
+</p>
+
+<p align="center">
+  <a href="https://drsamonline.github.io/The_Browser/"><strong>Visit the project landing page →</strong></a><br/>
+  <sub>Features · build steps · interactive rendering-pipeline walkthrough · get-started · FAQ</sub>
+</p>
+
+---
+
 # Aetheris Browser
 
 <p align="center">
