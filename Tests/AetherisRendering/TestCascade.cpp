@@ -44,5 +44,12 @@ int main()
     require(paragraph_style.get("color") && *paragraph_style.get("color") == "purple", "ID specificity wins");
     require(paragraph_style.get("margin-left") && *paragraph_style.get("margin-left") == "8px", "margin shorthand expansion");
     require(paragraph_style.get("padding-top") && *paragraph_style.get("padding-top") == "2px", "child selector matches");
+
+    // The inline `style` attribute wins over the stylesheet.
+    DomNode styled(DomNodeType::Element, "p");
+    styled.attributes["style"] = "color: teal; margin-left: 12px;";
+    auto styled_style = resolver.resolve(styled, sheet);
+    require(styled_style.get("color") && *styled_style.get("color") == "teal", "inline style wins over the stylesheet");
+    require(styled_style.get("margin-left") && *styled_style.get("margin-left") == "12px", "inline style declaration applied");
     return 0;
 }

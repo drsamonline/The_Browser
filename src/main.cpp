@@ -16,6 +16,8 @@
 #include "url.hpp"
 
 #include "js.hpp"
+#include "document_interaction.hpp"
+#include "viewport.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -141,15 +143,7 @@ static int run_fetch(std::string const& url) {
     return response.ok() ? 0 : 2;
 }
 
-// DOM helpers for the JavaScript host bindings.
-static void collect_elements(rendering::DomNode& node, std::map<std::string, rendering::DomNode*>& out)
-{
-    if (node.type == rendering::DomNodeType::Element)
-        if (auto* id = node.attribute("id"))
-            out[*id] = &node;
-    for (auto& child : node.children)
-        collect_elements(*child, out);
-}
+
 
 static rendering::DomNode* find_element(rendering::DomNode& node, std::string const& name)
 {
@@ -304,6 +298,14 @@ std::shared_ptr<aetheris::js::Object> DomHost::handle_for(rendering::DomNode* no
 
 } // namespace
 
+static void build_handles(rendering::DomNode& node, DomHost& dom, std::vector<std::shared_ptr<aetheris::js::Object>>& handles)
+{
+    if (node.type == rendering::DomNodeType::Element)
+        handles.push_back(dom.handle_for(&node));
+    for (auto& child : node.children)
+        build_handles(*child, dom, handles);
+}
+
 // Collects the bodies of inline <script> elements.
 static std::vector<std::string> extract_scripts(std::string const& html)
 {
@@ -342,7 +344,7 @@ static int run_eval(std::string const& source)
 // Headless render mode: fetch a URL, run the rendering pipeline and write the
 // resulting surface to a PPM file. Exercises the full fetch -> parse -> style
 // -> layout -> paint path without a display server.
-static int run_render(std::string const& url, std::string const& output_path, std::string const& dispatch_id = {}, std::string const& dispatch_type = {}) {
+static int run_render(std::string const& url, std::string const& output_path, std::string const& dispatch_id = {}, std::string const& dispatch_type = {}, float click_x = -1, float click_y = -1) {
     if (network::Socket::initialize() != network::SocketError::None) {
         std::cerr << "Failed to initialize network subsystem" << std::endl;
         return 1;
@@ -399,63 +401,57 @@ static int run_render(std::string const& url, std::string const& output_path, st
     DomHost dom;
     dom.collect(document.root());
 
-    std::map<std::string, rendering::DomNode*> elements;
-    collect_elements(document.root(), elements);
-
+    // Handles are built for every element so a hit-test can find any of them.
     std::vector<std::shared_ptr<aetheris::js::Object>> handles;
-    std::map<std::string, std::shared_ptr<aetheris::js::Object>> handle_by_id;
-    for (auto& [id, node] : elements) {
-        auto handle = dom.handle_for(node);
-        handle_by_id[id] = handle;
-        handles.push_back(handle);
-    }
+    build_handles(document.root(), dom, handles);
 
     std::string script_output;
-    {
-        aetheris::js::Interpreter js;
-        js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
-        js.write_handler = [&script_output](std::string const& text) { script_output += text; };
-        js.element_lookup = [&handle_by_id](std::string const& id) -> aetheris::js::Value {
-            auto it = handle_by_id.find(id);
-            return it == handle_by_id.end() ? aetheris::js::Value::undefined() : aetheris::js::Value::from_object(it->second);
-        };
-        js.create_element = [&dom, &handles](std::string const& tag) -> aetheris::js::Value {
-            auto node = std::make_unique<rendering::DomNode>(rendering::DomNodeType::Element, tag, "");
-            auto* raw = node.get();
-            dom.pending[raw] = std::move(node);
-            auto handle = dom.handle_for(raw);
-            handles.push_back(handle);
-            return aetheris::js::Value::from_object(handle);
-        };
-        for (auto const& script : extract_scripts(html)) {
-            js.run(script);
-            if (js.has_error()) {
-                std::cerr << "  [js] " << js.error() << std::endl;
-                break;
-            }
+    aetheris::js::Interpreter js;
+    js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
+    js.write_handler = [&script_output](std::string const& text) { script_output += text; };
+    js.element_lookup = [&dom](std::string const& id) -> aetheris::js::Value {
+        auto it = dom.handle_by_id.find(id);
+        return it == dom.handle_by_id.end() ? aetheris::js::Value::undefined() : aetheris::js::Value::from_object(it->second);
+    };
+    js.create_element = [&dom, &handles](std::string const& tag) -> aetheris::js::Value {
+        auto node = std::make_unique<rendering::DomNode>(rendering::DomNodeType::Element, tag, "");
+        auto* raw = node.get();
+        dom.pending[raw] = std::move(node);
+        auto handle = dom.handle_for(raw);
+        handles.push_back(handle);
+        return aetheris::js::Value::from_object(handle);
+    };
+    for (auto const& script : extract_scripts(html)) {
+        js.run(script);
+        if (js.has_error()) {
+            std::cerr << "  [js] " << js.error() << std::endl;
+            break;
         }
-        if (!js.has_error()) {
-            js.dispatch_event("DOMContentLoaded");
-            js.dispatch_event("load");
-        }
-        if (!js.has_error() && !dispatch_id.empty() && !dispatch_type.empty()) {
-            auto it = dom.handle_by_id.find(dispatch_id);
-            if (it != dom.handle_by_id.end())
-                js.dispatch_event_to(aetheris::js::Value::from_object(it->second), dispatch_type);
-            else
-                std::cerr << "  [js] no element with id '" << dispatch_id << "'" << std::endl;
-        }
+    }
+    if (!js.has_error()) {
+        js.dispatch_event("DOMContentLoaded");
+        js.dispatch_event("load");
+    }
+    if (!js.has_error() && !dispatch_id.empty() && !dispatch_type.empty()) {
+        auto it = dom.handle_by_id.find(dispatch_id);
+        if (it != dom.handle_by_id.end())
+            js.dispatch_event_to(aetheris::js::Value::from_object(it->second), dispatch_type);
+        else
+            std::cerr << "  [js] no element with id '" << dispatch_id << "'" << std::endl;
     }
 
     // Apply textContent changes the scripts made back onto the DOM.
-    for (auto& [handle, node] : dom.node_by_handle) {
-        auto it = handle->properties.find("textContent");
-        if (it == handle->properties.end())
-            continue;
-        std::string updated = it->second.to_string();
-        if (updated != node_text(*node))
-            set_node_text(*node, updated);
-    }
+    auto apply_text_content = [&dom]() {
+        for (auto& [handle, node] : dom.node_by_handle) {
+            auto it = handle->properties.find("textContent");
+            if (it == handle->properties.end())
+                continue;
+            std::string updated = it->second.to_string();
+            if (updated != node_text(*node))
+                set_node_text(*node, updated);
+        }
+    };
+    apply_text_content();
 
     // document.write output is appended to the body.
     if (!script_output.empty()) {
@@ -465,6 +461,33 @@ static int run_render(std::string const& url, std::string const& output_path, st
     }
 
     auto rendered = rendering::RenderDocument::create_from_document(std::move(document), css, 1024.0f, &resources, url);
+
+    // Geometry-based dispatch: hit-test the point and fire a click on the
+    // element there, then re-layout so the change is reflected.
+    if (click_x >= 0 && click_y >= 0 && !js.has_error()) {
+        rendering::DocumentInteraction interaction;
+        rendering::Viewport viewport(1024.0f, 768.0f);
+        viewport.set_document_size(1024.0f, 768.0f);
+        auto hit = interaction.hit_test(rendered, viewport, click_x, click_y);
+        auto* node = hit.dom_node ? const_cast<rendering::DomNode*>(hit.dom_node) : nullptr;
+        std::shared_ptr<aetheris::js::Object> target;
+        while (node && !target) {
+            auto it = dom.handle_by_node.find(node);
+            if (it != dom.handle_by_node.end()) {
+                target = it->second;
+            } else {
+                auto parent = dom.parent_of.find(node);
+                node = parent != dom.parent_of.end() ? parent->second : nullptr;
+            }
+        }
+        if (target) {
+            js.dispatch_event_to(aetheris::js::Value::from_object(target), "click");
+            apply_text_content();
+            rendered.relayout();
+        } else {
+            std::cerr << "  [js] no element handle at the click point" << std::endl;
+        }
+    }
     // A PPM has no alpha channel, so render onto an opaque white background to
     // keep the output viewable.
     auto surface = rendered.render_to_surface(1024, 768, rendering::Color { 255, 255, 255, 255 });
@@ -485,10 +508,20 @@ int main(int argc, char* argv[]) {
     // Optional element event to fire after a --render load.
     std::string dispatch_id;
     std::string dispatch_type;
-    for (int i = 1; i + 2 < argc; ++i) {
-        if (std::string(argv[i]) == "--dispatch") {
+    float click_x = -1;
+    float click_y = -1;
+    for (int i = 1; i < argc; ++i) {
+        std::string option(argv[i]);
+        if (option == "--dispatch" && i + 2 < argc) {
             dispatch_id = argv[i + 1];
             dispatch_type = argv[i + 2];
+        } else if (option == "--click" && i + 1 < argc) {
+            std::string value(argv[i + 1]);
+            auto comma = value.find(',');
+            if (comma != std::string::npos) {
+                click_x = std::stof(value.substr(0, comma));
+                click_y = std::stof(value.substr(comma + 1));
+            }
         }
     }
 
@@ -505,6 +538,8 @@ int main(int argc, char* argv[]) {
                       << "  --eval <script>  Run a JavaScript snippet and print its output.\n"
                       << "  --dispatch <id> <type>\n"
                       << "                 With --render, fire an event on the element with this id.\n"
+                      << "  --click <x>,<y>\n"
+                      << "                 With --render, hit-test the point and fire a click there.\n"
                       << "  --version      Print version information.\n"
                       << "  -h, --help     Print this help.\n";
             return 0;
@@ -528,7 +563,7 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 output_path = argv[++i];
             }
-            return run_render(url, output_path, dispatch_id, dispatch_type);
+            return run_render(url, output_path, dispatch_id, dispatch_type, click_x, click_y);
         }
     }
 

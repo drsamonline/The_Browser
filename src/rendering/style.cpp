@@ -62,6 +62,33 @@ StyleProperties StyleResolver::resolve(DomNode const& node, CssStyleSheet const&
     for (auto const& match : matching_declarations)
         apply_declaration(properties, *match.declaration);
 
+    // The inline `style` attribute is applied last, so it wins over the
+    // stylesheet (as an author-origin declaration with highest priority).
+    if (node.type == DomNodeType::Element) {
+        if (auto* inline_style = node.attribute("style")) {
+            auto trim = [](std::string& text) {
+                auto begin = text.find_first_not_of(" \t\r\n");
+                auto end = text.find_last_not_of(" \t\r\n");
+                text = begin == std::string::npos ? std::string() : text.substr(begin, end - begin + 1);
+            };
+            std::istringstream declarations(*inline_style);
+            std::string declaration;
+            while (std::getline(declarations, declaration, ';')) {
+                auto colon = declaration.find(':');
+                if (colon == std::string::npos)
+                    continue;
+                std::string property = declaration.substr(0, colon);
+                std::string value = declaration.substr(colon + 1);
+                trim(property);
+                trim(value);
+                if (property.empty() || value.empty())
+                    continue;
+                CssDeclaration parsed { property, value };
+                apply_declaration(properties, parsed);
+            }
+        }
+    }
+
     // Inheritance runs before initial values so inherited properties
     // (color, font, text-decoration, ...) reach descendants such as text
     // nodes; initial values then fill in only what is still unset.

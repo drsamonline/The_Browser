@@ -28,11 +28,20 @@ RenderDocument RenderDocument::create_from_document(Document document, std::stri
 
     auto render_tree = RenderTree::from_layout(*layout_root);
     RenderDocument result(std::move(document), std::move(layout_root), std::move(render_tree), std::move(sheet));
+    result.m_viewport_width = viewport_width;
     if (resources) result.m_resources = *resources;
     result.m_source_url = std::string(source_url);
     result.resolve_images(*result.m_layout_root);
     result.m_render_tree = RenderTree::from_layout(*result.m_layout_root);
     return result;
+}
+
+void RenderDocument::relayout()
+{
+    m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet);
+    LayoutEngine {}.layout(*m_layout_root, m_viewport_width);
+    resolve_images(*m_layout_root);
+    m_render_tree = RenderTree::from_layout(*m_layout_root);
 }
 
 std::optional<RenderDocument> RenderDocument::create_from_resources(std::string_view document_url, std::string_view stylesheet_url, float viewport_width, ResourceCache& resources)
