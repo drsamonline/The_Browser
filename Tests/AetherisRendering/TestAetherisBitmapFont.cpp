@@ -58,5 +58,17 @@ int main()
     i_surface.draw_text({ 0, 0, 64, 16 }, "i", 16, Color { 255, 255, 255, 255 });
     require(marked_pixels(i_surface) > 0 && marked_pixels(i_surface) < marked_pixels(surface), "distinct glyphs differ");
 
+    // Anti-aliasing: white text on black produces intermediate grey coverage.
+    SoftwareSurface aa(64, 32, Color { 0, 0, 0, 255 });
+    aa.draw_text({ 0, 0, 64, 16 }, "A", 16, Color { 255, 255, 255, 255 });
+    bool partial = false;
+    for (int y = 0; y < 32 && !partial; ++y)
+        for (int x = 0; x < 64 && !partial; ++x) {
+            auto pixel = aa.pixel(x, y);
+            if (pixel.red > 10 && pixel.red < 245)
+                partial = true;
+        }
+    require(partial, "anti-aliased coverage pixels");
+
     return 0;
 }

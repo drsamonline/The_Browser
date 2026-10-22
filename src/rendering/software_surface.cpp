@@ -161,27 +161,37 @@ void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, f
     int pen_x = static_cast<int>(std::lround(rect.x));
     int pen_y = static_cast<int>(std::lround(rect.y));
 
+    // 4x4 sub-samples per destination pixel give grayscale edge coverage.
+    constexpr int kSubSamples = 4;
+    constexpr int kSamplesPerCell = kSubSamples * kSubSamples;
+
     for (char character : text) {
         auto const& glyph = bitmap_glyph_for(character);
-        for (int row = 0; row < 8; ++row) {
-            auto bits = glyph.rows[row];
-            if (!bits)
-                continue;
-            int y0 = pen_y + row * cell_height / 8;
-            int y1 = pen_y + (row + 1) * cell_height / 8;
-            if (y1 <= y0)
-                y1 = y0 + 1;
-            for (int col = 0; col < 8; ++col) {
-                if (!(bits & (0x80 >> col)))
+        for (int dy = 0; dy < cell_height; ++dy) {
+            int pixel_y = pen_y + dy;
+            for (int dx = 0; dx < cell_width; ++dx) {
+                int pixel_x = pen_x + dx;
+                int hits = 0;
+                for (int sy = 0; sy < kSubSamples; ++sy) {
+                    int glyph_row = (dy * kSubSamples + sy) * 8 / (cell_height * kSubSamples);
+                    if (glyph_row > 7)
+                        glyph_row = 7;
+                    auto bits = glyph.rows[glyph_row];
+                    for (int sx = 0; sx < kSubSamples; ++sx) {
+                        int glyph_col = (dx * kSubSamples + sx) * 8 / (cell_width * kSubSamples);
+                        if (glyph_col > 7)
+                            glyph_col = 7;
+                        if (bits & (0x80 >> glyph_col))
+                            ++hits;
+                    }
+                }
+                if (hits == 0)
                     continue;
-                int x0 = pen_x + col * cell_width / 8;
-                int x1 = pen_x + (col + 1) * cell_width / 8;
-                if (x1 <= x0)
-                    x1 = x0 + 1;
-                for (int y = y0; y < y1; ++y)
-                    for (int x = x0; x < x1; ++x)
-                        if (accepts(x, y, clip))
-                            blend_pixel(x, y, color);
+                if (!accepts(pixel_x, pixel_y, clip))
+                    continue;
+                Color shaded = color;
+                shaded.alpha = static_cast<uint8_t>(static_cast<unsigned>(color.alpha) * static_cast<unsigned>(hits) / static_cast<unsigned>(kSamplesPerCell));
+                blend_pixel(pixel_x, pixel_y, shaded);
             }
         }
         pen_x += cell_width;
