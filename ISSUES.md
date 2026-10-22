@@ -71,6 +71,8 @@ non-goals list.
   (`HttpClient`). DNS resolution is still synchronous (it can block), TLS is not
   implemented, so only `http://` URLs are reachable, and the window manager is a
   headless/X11 prototype with a stub Cocoa (macOS) backend.
+- **Image decoding is limited.** Only PNG (non-interlaced, 8/16-bit) and ASCII
+  PPM are decoded; JPEG, GIF, WebP, interlaced PNG and SVG are not supported.
 - **Text rendering is a single bitmap font.** Text is rasterised from one
   embedded 8x8 bitmap font; there is no vector font, font selection, kerning,
   shaping or anti-aliased rendering.

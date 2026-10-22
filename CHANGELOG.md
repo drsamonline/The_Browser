@@ -23,6 +23,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - `TestAetherisHttpClient`: a loopback-server regression test covering DNS + HTTP round-tripping.
 - A dependency-free 8x8 bitmap font (`bitmap_font.{hpp,cpp}`, public-domain font8x8 data) with real glyph rasterisation: `DrawText` now paints actual glyphs instead of a solid cell, and text measurement and rasterisation share one advance so glyphs line up with layout.
 - `TestAetherisBitmapFont`: regression coverage for glyph lookup, metrics and rasterisation.
+- A dependency-free PNG decoder (`png.{hpp,cpp}`, colour types 0/2/3/4/6, 8/16-bit, non-interlaced) with its own DEFLATE inflater; the image cache now decodes PNG as well as PPM, and relative `src`/`href` references are resolved against the document URL so fetched pages' images load. `TestAetherisPng` covers RGB/RGBA/grey/palette inputs.
 
 ### Fixed
 

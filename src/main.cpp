@@ -190,7 +190,7 @@ static int run_render(std::string const& url, std::string const& output_path) {
     }
     network::Socket::cleanup();
 
-    auto rendered = rendering::RenderDocument::create(response.body, css, 1024.0f, &resources);
+    auto rendered = rendering::RenderDocument::create(response.body, css, 1024.0f, &resources, url);
     // A PPM has no alpha channel, so render onto an opaque white background to
     // keep the output viewable.
     auto surface = rendered.render_to_surface(1024, 768, rendering::Color { 255, 255, 255, 255 });

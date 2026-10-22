@@ -193,3 +193,7 @@ add_test(NAME AetherisHttpClient COMMAND TestAetherisHttpClient)
 add_executable(TestAetherisBitmapFont TestAetherisBitmapFont.cpp)
 target_link_libraries(TestAetherisBitmapFont PRIVATE AetherisRendering)
 add_test(NAME AetherisBitmapFont COMMAND TestAetherisBitmapFont)
+
+add_executable(TestAetherisPng TestAetherisPng.cpp)
+target_link_libraries(TestAetherisPng PRIVATE AetherisRendering)
+add_test(NAME AetherisPng COMMAND TestAetherisPng)
