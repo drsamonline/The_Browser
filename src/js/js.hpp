@@ -66,7 +66,7 @@ enum class NodeType : uint8_t {
     Unary, Binary, Logical, Assignment, Conditional, Call, Member, New,
     // statements
     Program, ExpressionStatement, VariableDeclaration, Block,
-    IfStatement, WhileStatement, ForStatement, ReturnStatement,
+    IfStatement, WhileStatement, ForStatement, ForOfStatement, SwitchStatement, ReturnStatement,
     BreakStatement, ContinueStatement, FunctionDeclaration, ClassDeclaration,
 };
 

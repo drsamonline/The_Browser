@@ -117,7 +117,7 @@ bool is_keyword(std::string const& text)
 {
     static const char* keywords[] = {
         "var", "let", "const", "function", "return", "if", "else", "while", "for",
-        "break", "continue", "true", "false", "null", "undefined", "new", "typeof", "else", "instanceof", "class"
+        "break", "continue", "true", "false", "null", "undefined", "new", "typeof", "else", "instanceof", "class", "switch", "case", "default", "of"
     };
     for (auto* keyword : keywords)
         if (text == keyword)
@@ -376,8 +376,27 @@ std::unique_ptr<Node> Parser::parse_statement()
     }
 
     if (match("for")) {
-        auto statement = make_node(NodeType::ForStatement);
         expect("(");
+        // for (var x of iterable) { ... }
+        if (check("var") || check("let") || check("const")) {
+            size_t saved = m_position;
+            advance();
+            if (peek().type == TokenType::Identifier) {
+                std::string name = peek().text;
+                advance();
+                if (check("of")) {
+                    advance();
+                    auto for_of = make_node(NodeType::ForOfStatement);
+                    for_of->string = name;
+                    for_of->right = parse_expression();
+                    expect(")");
+                    for_of->body = parse_statement();
+                    return for_of;
+                }
+            }
+            m_position = saved;
+        }
+        auto statement = make_node(NodeType::ForStatement);
         if (check("var") || check("let")) {
             statement->init = parse_statement();
         } else if (!check(";")) {
@@ -408,6 +427,27 @@ std::unique_ptr<Node> Parser::parse_statement()
 
     if (match("break")) { match(";"); return make_node(NodeType::BreakStatement); }
     if (match("continue")) { match(";"); return make_node(NodeType::ContinueStatement); }
+
+    if (match("switch")) {
+        auto statement = make_node(NodeType::SwitchStatement);
+        expect("(");
+        statement->test = parse_expression();
+        expect(")");
+        expect("{");
+        while (!check("}") && peek().type != TokenType::EndOfInput && !failed()) {
+            std::unique_ptr<Node> case_expression;
+            if (match("case")) { case_expression = parse_expression(); expect(":"); }
+            else if (match("default")) { expect(":"); }
+            else { set_error("expected 'case' or 'default'"); break; }
+            auto block = make_node(NodeType::Block);
+            while (!check("case") && !check("default") && !check("}") && peek().type != TokenType::EndOfInput)
+                block->children.push_back(parse_statement());
+            statement->initializers.push_back(std::move(case_expression));
+            statement->children.push_back(std::move(block));
+        }
+        expect("}");
+        return statement;
+    }
 
     auto statement = make_node(NodeType::ExpressionStatement);
     statement->left = parse_expression();
@@ -1560,6 +1600,40 @@ Interpreter::Completion Interpreter::execute(Node const& node, std::shared_ptr<E
                 if (result.type == Completion::Type::Break) break;
             }
             if (node.update) evaluate(*node.update, loop_env);
+        }
+        return completion;
+    }
+    case NodeType::ForOfStatement: {
+        auto iterable = evaluate(*node.right, env);
+        std::vector<Value> items;
+        if (iterable.is_object() && iterable.object && iterable.object->is_array)
+            items = iterable.object->elements;
+        else if (iterable.is_string())
+            for (char c : iterable.string) items.push_back(Value::from_string(std::string(1, c)));
+        else { error("value is not iterable"); return completion; }
+        for (auto& item : items) {
+            env->variables[node.string] = item;
+            auto result = execute(*node.body, env);
+            if (result.type == Completion::Type::Return) return result;
+            if (result.type == Completion::Type::Break) break;
+        }
+        return completion;
+    }
+    case NodeType::SwitchStatement: {
+        auto discriminant = evaluate(*node.test, env);
+        auto switch_env = std::make_shared<Environment>();
+        switch_env->parent = env;
+        int start = -1;
+        for (size_t i = 0; i < node.children.size(); ++i)
+            if (node.initializers[i] && evaluate(*node.initializers[i], env).strict_equals(discriminant)) { start = static_cast<int>(i); break; }
+        if (start < 0)
+            for (size_t i = 0; i < node.children.size(); ++i)
+                if (!node.initializers[i]) { start = static_cast<int>(i); break; }
+        if (start < 0) return completion;
+        for (size_t i = start; i < node.children.size(); ++i) {
+            auto result = execute(*node.children[i], switch_env);
+            if (result.type == Completion::Type::Return) return result;
+            if (result.type == Completion::Type::Break) return completion;
         }
         return completion;
     }

@@ -222,6 +222,24 @@ int main()
         require(h.output == "derived\ntrue\n", "class prototype inheritance");
     }
 
+    // for...of over arrays and strings.
+    {
+        Harness h;
+        h.run("var sum = 0; for (var x of [10, 20, 30]) { sum = sum + x; } console.log(sum);"
+              "var s = ''; for (var ch of 'abc') { s = s + ch + '-'; } console.log(s);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "60\na-b-c-\n", "for...of");
+    }
+
+    // switch statement (with fall-through and default).
+    {
+        Harness h;
+        h.run("function label(n) { switch (n) { case 1: return 'one'; case 2: return 'two'; default: return 'many'; } }"
+              "console.log(label(1)); console.log(label(2)); console.log(label(9));");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "one\ntwo\nmany\n", "switch");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;
