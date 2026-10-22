@@ -63,7 +63,7 @@ struct Value {
 enum class NodeType : uint8_t {
     NumberLiteral, StringLiteral, BooleanLiteral, NullLiteral, Identifier,
     ArrayLiteral, ObjectLiteral, FunctionExpression,
-    Unary, Binary, Logical, Assignment, Conditional, Call, Member,
+    Unary, Binary, Logical, Assignment, Conditional, Call, Member, New,
     // statements
     Program, ExpressionStatement, VariableDeclaration, Block,
     IfStatement, WhileStatement, ForStatement, ReturnStatement,
@@ -212,8 +212,8 @@ private:
     Completion execute(Node const& node, std::shared_ptr<Environment> const& env);
 
     Value evaluate_binary(std::string const& op, Value const& left, Value const& right);
-    Value call(Value const& callee, std::vector<Value> const& arguments);
-    Value call_function(std::shared_ptr<Object> const& function, std::vector<Value> const& arguments);
+    Value call(Value const& callee, std::vector<Value> const& arguments, Value const& this_value = {});
+    Value call_function(std::shared_ptr<Object> const& function, std::vector<Value> const& arguments, Value const& this_value = {});
     Value get_property(Value const& object, std::string const& name);
     void set_property(Value const& object, std::string const& name, Value value);
     std::shared_ptr<Object> make_array(std::vector<Value> elements);

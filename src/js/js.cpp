@@ -499,6 +499,12 @@ std::unique_ptr<Node> Parser::parse_binary(int min_precedence)
 
 std::unique_ptr<Node> Parser::parse_unary()
 {
+    if (check("new")) {
+        advance();
+        auto node = make_node(NodeType::New);
+        node->left = parse_postfix();
+        return node;
+    }
     if (check("!") || check("-") || check("+") || check("typeof")) {
         std::string op = advance().text;
         auto node = make_node(NodeType::Unary);
@@ -673,6 +679,161 @@ static std::shared_ptr<Object> make_native(NativeFunction function)
     return object;
 }
 
+// ---------------------------------------------------------------------------
+// JSON (stringify + parse), following the ECMAScript JSON object semantics.
+// ---------------------------------------------------------------------------
+
+void json_escape(std::string const& value, std::string& out)
+{
+    out += '"';
+    for (char c : value) {
+        switch (c) {
+        case '"': out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\n': out += "\\n"; break;
+        case '\t': out += "\\t"; break;
+        case '\r': out += "\\r"; break;
+        default: out += c; break;
+        }
+    }
+    out += '"';
+}
+
+void json_write(Value const& value, std::string& out)
+{
+    switch (value.type) {
+    case Value::Type::Undefined:
+    case Value::Type::Null:
+        out += "null";
+        break;
+    case Value::Type::Boolean:
+        out += value.boolean ? "true" : "false";
+        break;
+    case Value::Type::Number:
+        out += number_to_string(value.number);
+        break;
+    case Value::Type::String:
+        json_escape(value.string, out);
+        break;
+    case Value::Type::Object:
+        if (!value.object || value.object->is_function) {
+            out += "null";
+            break;
+        }
+        if (value.object->is_array) {
+            out += '[';
+            for (size_t i = 0; i < value.object->elements.size(); ++i) {
+                if (i) out += ',';
+                json_write(value.object->elements[i], out);
+            }
+            out += ']';
+        } else {
+            out += '{';
+            bool first = true;
+            for (auto const& [key, property] : value.object->properties) {
+                if (property.is_object() && property.object && property.object->is_function)
+                    continue;
+                if (!first) out += ',';
+                first = false;
+                json_escape(key, out);
+                out += ':';
+                json_write(property, out);
+            }
+            out += '}';
+        }
+        break;
+    }
+}
+
+struct JsonParser {
+    std::string const& text;
+    size_t pos { 0 };
+    bool ok { true };
+
+    void skip() { while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos]))) ++pos; }
+
+    Value parse()
+    {
+        skip();
+        if (pos >= text.size()) { ok = false; return {}; }
+        char c = text[pos];
+        if (c == '{') return parse_object();
+        if (c == '[') return parse_array();
+        if (c == '"') return Value::from_string(parse_string());
+        if (c == 't') { if (text.compare(pos, 4, "true") == 0) { pos += 4; return Value::from_boolean(true); } ok = false; return {}; }
+        if (c == 'f') { if (text.compare(pos, 5, "false") == 0) { pos += 5; return Value::from_boolean(false); } ok = false; return {}; }
+        if (c == 'n') { if (text.compare(pos, 4, "null") == 0) { pos += 4; return Value::null(); } ok = false; return {}; }
+        char* end = nullptr;
+        double number = std::strtod(text.c_str() + pos, &end);
+        if (end == text.c_str() + pos) { ok = false; return {}; }
+        pos = static_cast<size_t>(end - text.c_str());
+        return Value::from_number(number);
+    }
+
+    std::string parse_string()
+    {
+        std::string result;
+        ++pos; // opening quote
+        while (pos < text.size() && text[pos] != '"') {
+            if (text[pos] == '\\' && pos + 1 < text.size()) {
+                ++pos;
+                switch (text[pos]) {
+                case 'n': result += '\n'; break;
+                case 't': result += '\t'; break;
+                case 'r': result += '\r'; break;
+                default: result += text[pos]; break;
+                }
+            } else {
+                result += text[pos];
+            }
+            ++pos;
+        }
+        ++pos; // closing quote
+        return result;
+    }
+
+    Value parse_object()
+    {
+        auto object = std::make_shared<Object>();
+        ++pos;
+        skip();
+        if (pos < text.size() && text[pos] == '}') { ++pos; return Value::from_object(object); }
+        while (pos < text.size()) {
+            skip();
+            if (text[pos] != '"') { ok = false; break; }
+            std::string key = parse_string();
+            skip();
+            if (pos >= text.size() || text[pos] != ':') { ok = false; break; }
+            ++pos;
+            object->properties[key] = parse();
+            skip();
+            if (pos < text.size() && text[pos] == ',') { ++pos; continue; }
+            if (pos < text.size() && text[pos] == '}') { ++pos; break; }
+            ok = false;
+            break;
+        }
+        return Value::from_object(object);
+    }
+
+    Value parse_array()
+    {
+        auto array = std::make_shared<Object>();
+        array->is_array = true;
+        ++pos;
+        skip();
+        if (pos < text.size() && text[pos] == ']') { ++pos; return Value::from_object(array); }
+        while (pos < text.size()) {
+            array->elements.push_back(parse());
+            skip();
+            if (pos < text.size() && text[pos] == ',') { ++pos; continue; }
+            if (pos < text.size() && text[pos] == ']') { ++pos; break; }
+            ok = false;
+            break;
+        }
+        return Value::from_object(array);
+    }
+};
+
 void Interpreter::setup_globals()
 {
     // console.log
@@ -715,6 +876,8 @@ void Interpreter::setup_globals()
     math->properties["random"] = Value::from_object(make_native([](std::vector<Value> const&) {
         return Value::from_number(static_cast<double>(std::rand()) / RAND_MAX);
     }));
+    math->properties["trunc"] = Value::from_object(math_unary([](double x) { return std::trunc(x); }));
+    math->properties["sign"] = Value::from_object(math_unary([](double x) { return x > 0 ? 1.0 : (x < 0 ? -1.0 : 0.0); }));
     math->properties["PI"] = Value::from_number(3.141592653589793);
     m_globals->variables["Math"] = Value::from_object(math);
 
@@ -758,6 +921,22 @@ void Interpreter::setup_globals()
         return Value::from_boolean(!args.empty() && args[0].is_object() && args[0].object && args[0].object->is_array);
     }));
     m_globals->variables["Array"] = Value::from_object(array_constructor);
+
+    // JSON
+    auto json = std::make_shared<Object>();
+    json->properties["stringify"] = Value::from_object(make_native([](std::vector<Value> const& args) {
+        std::string out;
+        json_write(args.empty() ? Value::undefined() : args[0], out);
+        return Value::from_string(out);
+    }));
+    json->properties["parse"] = Value::from_object(make_native([](std::vector<Value> const& args) {
+        if (args.empty()) return Value::undefined();
+        std::string text = args[0].to_string();
+        JsonParser parser { text, 0 };
+        auto value = parser.parse();
+        return parser.ok ? value : Value::undefined();
+    }));
+    m_globals->variables["JSON"] = Value::from_object(json);
 
     // document.write
     auto document = std::make_shared<Object>();
@@ -1078,13 +1257,14 @@ Value Interpreter::evaluate_binary(std::string const& op, Value const& left, Val
     return Value::undefined();
 }
 
-Value Interpreter::call_function(std::shared_ptr<Object> const& function, std::vector<Value> const& arguments)
+Value Interpreter::call_function(std::shared_ptr<Object> const& function, std::vector<Value> const& arguments, Value const& this_value)
 {
     if (function->is_native)
         return function->native(arguments);
 
     auto env = std::make_shared<Environment>();
     env->parent = function->closure ? function->closure : m_globals;
+    env->variables["this"] = this_value;
     for (size_t i = 0; i < function->parameters.size(); ++i)
         env->variables[function->parameters[i]] = i < arguments.size() ? arguments[i] : Value::undefined();
 
@@ -1096,10 +1276,10 @@ Value Interpreter::call_function(std::shared_ptr<Object> const& function, std::v
     return Value::undefined();
 }
 
-Value Interpreter::call(Value const& callee, std::vector<Value> const& arguments)
+Value Interpreter::call(Value const& callee, std::vector<Value> const& arguments, Value const& this_value)
 {
     if (callee.is_object() && callee.object && callee.object->is_function)
-        return call_function(callee.object, arguments);
+        return call_function(callee.object, arguments, this_value);
     error("value is not a function");
     return Value::undefined();
 }
@@ -1212,11 +1392,36 @@ Value Interpreter::evaluate(Node const& node, std::shared_ptr<Environment> const
         return get_property(object, name);
     }
     case NodeType::Call: {
-        auto callee = evaluate(*node.left, env);
+        Value this_value;
+        Value callee;
+        if (node.left->type == NodeType::Member) {
+            this_value = evaluate(*node.left->left, env);
+            std::string name = node.left->right ? evaluate(*node.left->right, env).to_string() : node.left->string;
+            callee = get_property(this_value, name);
+        } else {
+            callee = evaluate(*node.left, env);
+        }
         std::vector<Value> arguments;
         for (auto const& child : node.children)
             arguments.push_back(evaluate(*child, env));
-        return call(callee, arguments);
+        return call(callee, arguments, this_value);
+    }
+    case NodeType::New: {
+        Value constructor;
+        std::vector<Value> arguments;
+        if (node.left && node.left->type == NodeType::Call) {
+            constructor = evaluate(*node.left->left, env);
+            for (auto const& child : node.left->children)
+                arguments.push_back(evaluate(*child, env));
+        } else {
+            constructor = evaluate(*node.left, env);
+        }
+        auto instance = std::make_shared<Object>();
+        Value this_value = Value::from_object(instance);
+        auto result = call(constructor, arguments, this_value);
+        if (result.is_object() && result.object)
+            return result;
+        return this_value;
     }
     default:
         return Value::undefined();

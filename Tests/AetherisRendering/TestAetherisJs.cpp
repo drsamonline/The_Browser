@@ -145,6 +145,33 @@ int main()
         require(h.output == "a,b\ntrue\nfalse\n", "Object.keys / Array.isArray");
     }
 
+    // Closures.
+    {
+        Harness h;
+        h.run("function counter() { var n = 0; return function () { n = n + 1; return n; }; }"
+              "var c = counter(); c(); c(); console.log(c());");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "3\n", "closures");
+    }
+
+    // Constructors, `new` and `this`.
+    {
+        Harness h;
+        h.run("function Point(x, y) { this.x = x; this.y = y; this.sum = function () { return this.x + this.y; }; }"
+              "var p = new Point(3, 4); console.log(p.x); console.log(p.y); console.log(p.sum());");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "3\n4\n7\n", "new + this");
+    }
+
+    // JSON round-trip.
+    {
+        Harness h;
+        h.run("var o = { a: 1, b: [true, null, 'x'] }; var s = JSON.stringify(o); console.log(s);"
+              "var back = JSON.parse(s); console.log(back.b[2]); console.log(back.a);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "{\"a\":1,\"b\":[true,null,\"x\"]}\nx\n1\n", "JSON");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;
