@@ -73,9 +73,9 @@ non-goals list.
   only `http://` URLs are reachable. DNS resolution is still synchronous (it can
   block), and the window manager is a headless/X11 prototype with a stub Cocoa
   (macOS) backend.
-- **Image decoding is limited.** PNG (non-interlaced, 8/16-bit), baseline
-  JPEG, GIF (first frame only) and ASCII PPM are decoded; progressive JPEG,
-  WebP, interlaced PNG and SVG are not supported.
+- **Image decoding is limited.** PNG (8/16-bit, interlaced and
+  non-interlaced), baseline and progressive JPEG, GIF (first frame only) and
+  ASCII PPM are decoded; WebP and SVG are not supported.
 - **Text rendering is a single bitmap font.** Text is rasterised from one
   embedded 8x8 bitmap font with 4x4-coverage anti-aliasing; there is no vector
   font, font selection, kerning or shaping.

@@ -33,9 +33,12 @@ struct Component {
     int quant_id { 0 };
     int dc_table { 0 };
     int ac_table { 0 };
+    int blocks_w { 0 };
+    int blocks_h { 0 };
     int plane_width { 0 };
     int plane_height { 0 };
     int dc_pred { 0 };
+    std::vector<short> coefficients; // blocks_w * blocks_h * 64, de-zig-zagged
     std::vector<unsigned char> plane;
 };
 
@@ -49,10 +52,21 @@ struct Decoder {
     int restart_interval { 0 };
     int max_h { 1 };
     int max_v { 1 };
+    int mcus_x { 0 };
+    int mcus_y { 0 };
+    bool progressive { false };
     unsigned short quant[4][64] {};
     HuffTable dc_tables[4];
     HuffTable ac_tables[4];
     Component comp[4];
+
+    // Current scan state.
+    std::vector<int> scan_components;
+    int spec_start { 0 };
+    int spec_end { 0 };
+    int succ_high { 0 };
+    int succ_low { 0 };
+    int eob_run { 0 };
 
     uint32_t bit_buffer { 0 };
     int bit_count { 0 };
@@ -178,93 +192,195 @@ struct Decoder {
             }
     }
 
-    bool decode_block(Component& component, int* coefficients)
+    bool decode_dc(Component& component, short* block)
     {
-        for (int i = 0; i < 64; ++i)
-            coefficients[i] = 0;
-
-        int dc_bits = decode_huffman(dc_tables[component.dc_table]);
-        if (dc_bits < 0)
-            return false;
-        int dc_value = dc_bits == 0 ? 0 : read_bits(dc_bits);
-        if (dc_bits != 0 && dc_value < 0)
-            return false;
-        component.dc_pred += extend(dc_value, dc_bits);
-        coefficients[0] = component.dc_pred;
-
-        for (int k = 1; k < 64;) {
-            int rs = decode_huffman(ac_tables[component.ac_table]);
-            if (rs < 0)
+        if (succ_high == 0) {
+            int bits = decode_huffman(dc_tables[component.dc_table]);
+            if (bits < 0)
                 return false;
-            int run = rs >> 4;
-            int size = rs & 15;
-            if (size == 0) {
-                if (run == 15) { k += 16; continue; }
-                break;
+            int value = bits == 0 ? 0 : read_bits(bits);
+            if (bits != 0 && value < 0)
+                return false;
+            component.dc_pred += extend(value, bits);
+            block[0] = static_cast<short>(component.dc_pred << succ_low);
+        } else {
+            int bit = read_bit();
+            if (bit < 0)
+                return false;
+            if (bit)
+                block[0] |= static_cast<short>(1 << succ_low);
+        }
+        return true;
+    }
+
+    bool decode_ac(Component& component, short* block)
+    {
+        if (succ_high == 0) {
+            if (eob_run > 0) {
+                --eob_run;
+                return true;
             }
-            k += run;
-            if (k > 63)
-                break;
-            int value = read_bits(size);
-            if (value < 0)
-                return false;
-            coefficients[kZigZag[k]] = extend(value, size);
-            ++k;
+            int k = spec_start > 0 ? spec_start : 1;
+            do {
+                int rs = decode_huffman(ac_tables[component.ac_table]);
+                if (rs < 0)
+                    return false;
+                int run = rs >> 4;
+                int size = rs & 15;
+                if (size == 0) {
+                    if (run < 15) {
+                        eob_run = 1 << run;
+                        if (run)
+                            eob_run += read_bits(run);
+                        --eob_run;
+                        break;
+                    }
+                    k += 16;
+                } else {
+                    k += run;
+                    if (k > spec_end)
+                        return false;
+                    int value = read_bits(size);
+                    if (value < 0)
+                        return false;
+                    block[kZigZag[k++]] = static_cast<short>(extend(value, size) << succ_low);
+                }
+            } while (k <= spec_end);
+        } else {
+            int bit = 1 << succ_low;
+            if (eob_run > 0) {
+                --eob_run;
+                for (int k = spec_start; k <= spec_end; ++k) {
+                    short* p = &block[kZigZag[k]];
+                    if (*p != 0) {
+                        int correction = read_bit();
+                        if (correction < 0)
+                            return false;
+                        if (correction && (*p & bit) == 0)
+                            *p = static_cast<short>(*p > 0 ? *p + bit : *p - bit);
+                    }
+                }
+            } else {
+                int k = spec_start > 0 ? spec_start : 1;
+                do {
+                    int rs = decode_huffman(ac_tables[component.ac_table]);
+                    if (rs < 0)
+                        return false;
+                    int run = rs >> 4;
+                    int size = rs & 15;
+                    int new_value = 0;
+                    if (size == 0) {
+                        if (run < 15) {
+                            eob_run = 1 << run;
+                            if (run)
+                                eob_run += read_bits(run);
+                            break;
+                        }
+                        // ZRL: skip 16 zero-history coefficients.
+                        run = 15;
+                    } else {
+                        if (size != 1)
+                            return false;
+                        int sign = read_bit();
+                        if (sign < 0)
+                            return false;
+                        new_value = sign ? bit : -bit;
+                    }
+                    while (k <= spec_end) {
+                        short* p = &block[kZigZag[k++]];
+                        if (*p != 0) {
+                            int correction = read_bit();
+                            if (correction < 0)
+                                return false;
+                            if (correction && (*p & bit) == 0)
+                                *p = static_cast<short>(*p > 0 ? *p + bit : *p - bit);
+                        } else {
+                            if (run == 0) {
+                                *p = static_cast<short>(new_value);
+                                break;
+                            }
+                            --run;
+                        }
+                    }
+                } while (k <= spec_end);
+            }
         }
         return true;
     }
 
     bool decode_scan()
     {
-        int mcu_width = 8 * max_h;
-        int mcu_height = 8 * max_v;
-        int mcus_x = (width + mcu_width - 1) / mcu_width;
-        int mcus_y = (height + mcu_height - 1) / mcu_height;
+        int scan_h = 1;
+        int scan_v = 1;
+        for (int index : scan_components) {
+            if (comp[index].h > scan_h) scan_h = comp[index].h;
+            if (comp[index].v > scan_v) scan_v = comp[index].v;
+        }
+        int mcu_width = 8 * scan_h;
+        int mcu_height = 8 * scan_v;
+        int scan_mcus_x = (width + mcu_width - 1) / mcu_width;
+        int scan_mcus_y = (height + mcu_height - 1) / mcu_height;
+
+        eob_run = 0;
+        bit_count = 0;
+        bit_buffer = 0;
 
         int mcu_index = 0;
-        for (int my = 0; my < mcus_y; ++my) {
-            for (int mx = 0; mx < mcus_x; ++mx) {
+        for (int my = 0; my < scan_mcus_y; ++my) {
+            for (int mx = 0; mx < scan_mcus_x; ++mx) {
                 if (restart_interval && mcu_index > 0 && mcu_index % restart_interval == 0) {
                     bit_count = 0;
                     if (pos + 1 < data.size() && data[pos] == 0xFF && data[pos + 1] >= 0xD0 && data[pos + 1] <= 0xD7)
                         pos += 2;
                     for (int c = 0; c < num_components; ++c)
                         comp[c].dc_pred = 0;
+                    eob_run = 0;
                 }
                 ++mcu_index;
 
-                for (int c = 0; c < num_components; ++c) {
-                    Component& component = comp[c];
+                for (int index : scan_components) {
+                    Component& component = comp[index];
                     for (int by = 0; by < component.v; ++by) {
                         for (int bx = 0; bx < component.h; ++bx) {
-                            int coefficients[64];
-                            if (!decode_block(component, coefficients))
+                            int block_x = mx * component.h + bx;
+                            int block_y = my * component.v + by;
+                            if (block_x >= component.blocks_w || block_y >= component.blocks_h)
+                                continue;
+                            short* block = &component.coefficients[(static_cast<size_t>(block_y) * component.blocks_w + block_x) * 64];
+                            if (spec_start == 0 && !decode_dc(component, block))
                                 return false;
-                            float block[64];
-                            for (int i = 0; i < 64; ++i)
-                                block[i] = static_cast<float>(coefficients[i]) * static_cast<float>(quant[component.quant_id][i]);
-                            idct(block);
-                            int origin_x = (mx * component.h + bx) * 8;
-                            int origin_y = (my * component.v + by) * 8;
-                            for (int y = 0; y < 8; ++y) {
-                                int py = origin_y + y;
-                                if (py >= component.plane_height)
-                                    break;
-                                for (int x = 0; x < 8; ++x) {
-                                    int px = origin_x + x;
-                                    if (px >= component.plane_width)
-                                        break;
-                                    int sample = static_cast<int>(std::lround(block[y * 8 + x])) + 128;
-                                    component.plane[static_cast<size_t>(py) * component.plane_width + px]
-                                        = static_cast<unsigned char>(sample < 0 ? 0 : (sample > 255 ? 255 : sample));
-                                }
-                            }
+                            if (spec_end > 0 && !decode_ac(component, block))
+                                return false;
                         }
                     }
                 }
             }
         }
         return true;
+    }
+
+    void reconstruct()
+    {
+        for (int c = 0; c < num_components; ++c) {
+            Component& component = comp[c];
+            component.plane.assign(static_cast<size_t>(component.plane_width) * component.plane_height, 0);
+            for (int by = 0; by < component.blocks_h; ++by) {
+                for (int bx = 0; bx < component.blocks_w; ++bx) {
+                    short* coefficients = &component.coefficients[(static_cast<size_t>(by) * component.blocks_w + bx) * 64];
+                    float block[64];
+                    for (int i = 0; i < 64; ++i)
+                        block[i] = static_cast<float>(coefficients[i]) * static_cast<float>(quant[component.quant_id][i]);
+                    idct(block);
+                    for (int y = 0; y < 8; ++y) {
+                        for (int x = 0; x < 8; ++x) {
+                            int sample = static_cast<int>(std::lround(block[y * 8 + x])) + 128;
+                            component.plane[static_cast<size_t>(by * 8 + y) * component.plane_width + (bx * 8 + x)]
+                                = static_cast<unsigned char>(sample < 0 ? 0 : (sample > 255 ? 255 : sample));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     unsigned char sample(Component const& component, int x, int y) const
@@ -293,6 +409,7 @@ bool decode_jpeg(std::vector<unsigned char> const& bytes, Image& out)
     decoder.pos = 2;
 
     bool saw_scan = false;
+    bool tables_ready = false;
 
     while (decoder.pos + 1 < bytes.size()) {
         if (bytes[decoder.pos] != 0xFF) { ++decoder.pos; continue; }
@@ -327,12 +444,12 @@ bool decode_jpeg(std::vector<unsigned char> const& bytes, Image& out)
                     decoder.quant[tq][kZigZag[i]] = static_cast<unsigned short>(value);
                 }
             }
-        } else if (marker == 0xC0 || marker == 0xC1) { // SOF0/SOF1 baseline
+        } else if (marker == 0xC0 || marker == 0xC1 || marker == 0xC2) { // SOF0/1/2
             if (segment_length < 6)
                 return false;
-            int precision = segment[0];
-            if (precision != 8)
+            if (segment[0] != 8)
                 return false;
+            decoder.progressive = marker == 0xC2;
             decoder.height = (segment[1] << 8) | segment[2];
             decoder.width = (segment[3] << 8) | segment[4];
             decoder.num_components = segment[5];
@@ -351,6 +468,19 @@ bool decode_jpeg(std::vector<unsigned char> const& bytes, Image& out)
                 if (decoder.comp[c].h > decoder.max_h) decoder.max_h = decoder.comp[c].h;
                 if (decoder.comp[c].v > decoder.max_v) decoder.max_v = decoder.comp[c].v;
             }
+            int mcu_width = 8 * decoder.max_h;
+            int mcu_height = 8 * decoder.max_v;
+            decoder.mcus_x = (decoder.width + mcu_width - 1) / mcu_width;
+            decoder.mcus_y = (decoder.height + mcu_height - 1) / mcu_height;
+            for (int c = 0; c < decoder.num_components; ++c) {
+                decoder.comp[c].blocks_w = decoder.mcus_x * decoder.comp[c].h;
+                decoder.comp[c].blocks_h = decoder.mcus_y * decoder.comp[c].v;
+                decoder.comp[c].plane_width = decoder.comp[c].blocks_w * 8;
+                decoder.comp[c].plane_height = decoder.comp[c].blocks_h * 8;
+                decoder.comp[c].coefficients.assign(static_cast<size_t>(decoder.comp[c].blocks_w) * decoder.comp[c].blocks_h * 64, 0);
+                decoder.comp[c].dc_pred = 0;
+            }
+            tables_ready = true;
         } else if (marker == 0xC4) { // DHT
             int offset = 0;
             while (offset < segment_length) {
@@ -379,9 +509,10 @@ bool decode_jpeg(std::vector<unsigned char> const& bytes, Image& out)
                 return false;
             decoder.restart_interval = (segment[0] << 8) | segment[1];
         } else if (marker == 0xDA) { // SOS
-            if (segment_length < 1)
+            if (!tables_ready || segment_length < 1)
                 return false;
             int scan_components = segment[0];
+            decoder.scan_components.clear();
             for (int i = 0; i < scan_components; ++i) {
                 int base = 1 + i * 2;
                 if (base + 1 >= segment_length)
@@ -392,22 +523,24 @@ bool decode_jpeg(std::vector<unsigned char> const& bytes, Image& out)
                     if (decoder.comp[c].id == id) {
                         decoder.comp[c].dc_table = tables >> 4;
                         decoder.comp[c].ac_table = tables & 15;
+                        decoder.scan_components.push_back(c);
                     }
                 }
             }
-
-            // Allocate component planes.
-            int mcu_width = 8 * decoder.max_h;
-            int mcu_height = 8 * decoder.max_v;
-            int mcus_x = (decoder.width + mcu_width - 1) / mcu_width;
-            int mcus_y = (decoder.height + mcu_height - 1) / mcu_height;
-            for (int c = 0; c < decoder.num_components; ++c) {
-                decoder.comp[c].plane_width = mcus_x * decoder.comp[c].h * 8;
-                decoder.comp[c].plane_height = mcus_y * decoder.comp[c].v * 8;
-                decoder.comp[c].plane.assign(
-                    static_cast<size_t>(decoder.comp[c].plane_width) * decoder.comp[c].plane_height, 0);
-                decoder.comp[c].dc_pred = 0;
+            int tail = 1 + scan_components * 2;
+            if (tail + 2 < segment_length) {
+                decoder.spec_start = segment[tail];
+                decoder.spec_end = segment[tail + 1];
+                decoder.succ_high = segment[tail + 2] >> 4;
+                decoder.succ_low = segment[tail + 2] & 15;
+            } else {
+                decoder.spec_start = 0;
+                decoder.spec_end = 63;
+                decoder.succ_high = 0;
+                decoder.succ_low = 0;
             }
+            if (decoder.scan_components.empty())
+                return false;
 
             decoder.pos += length; // move past the scan header into the entropy data
             if (!decoder.decode_scan())
@@ -421,6 +554,8 @@ bool decode_jpeg(std::vector<unsigned char> const& bytes, Image& out)
 
     if (!saw_scan)
         return false;
+
+    decoder.reconstruct();
 
     out = Image {};
     out.width = decoder.width;

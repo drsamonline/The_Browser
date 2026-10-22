@@ -48,6 +48,18 @@ int main()
     require(image.pixel(1, 1).red > 200, "grey bright side");
     require(image.pixel(6, 1).red < 60, "grey dark side");
 
+    // Progressive JPEG must decode to the same quadrants as the baseline one.
+    require(decode_jpeg(bytes(kJpegProgressive, kJpegProgressive_len), image), "decode progressive JPEG");
+    require(image.width == 8 && image.height == 8, "progressive JPEG size");
+    auto p_red = image.pixel(1, 1);
+    require(near(p_red.red, 220) && near(p_red.green, 30) && near(p_red.blue, 30), "progressive red quadrant");
+    auto p_green = image.pixel(6, 1);
+    require(near(p_green.green, 200) && near(p_green.red, 30), "progressive green quadrant");
+    auto p_blue = image.pixel(1, 6);
+    require(near(p_blue.blue, 220) && near(p_blue.red, 30), "progressive blue quadrant");
+    auto p_white = image.pixel(6, 6);
+    require(near(p_white.red, 240) && near(p_white.green, 240) && near(p_white.blue, 240), "progressive white quadrant");
+
     std::vector<unsigned char> junk { 'x' };
     require(!decode_jpeg(junk, image), "reject non-JPEG");
 
