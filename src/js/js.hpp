@@ -222,6 +222,9 @@ public:
     // addEventListener) registered by the script.
     void dispatch_event(std::string const& type);
 
+    // Dispatches an event to a specific target object (e.g. an element handle).
+    void dispatch_event_to(Value const& target, std::string const& type);
+
     // Runs queued promise/microtask callbacks until the queue is empty.
     void drain_microtasks();
 

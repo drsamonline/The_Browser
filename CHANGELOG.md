@@ -45,6 +45,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - Added a compact backtracking regular-expression engine (`src/js/regex.{hpp,cpp}`) with literals, character classes, anchors, alternation, groups and the *, +, ?, {n,m} quantifiers and the `g`/`i` flags; wired to regex literals, `RegExp`, `test`/`exec`, and `String.match`/`search`/`replace`/`split`. Capture groups, back-references and look-around are not supported. Fixed `new` precedence so `new X(a).y()` parses as `(new X(a)).y()`.
 - Added async support to the mini JavaScript engine: a microtask queue, `Promise` (`then`/`catch`/`finally`, `resolve`/`reject`/`all`), `async` functions and `await`. There is no event loop, so `await` drains the microtask queue synchronously; the queue is also drained after each script and after events.
 - Added `Map` (get/set/has/delete/keys/values/size), `Set` (add/has/delete/size), `Date` (`Date.now`, `new Date(ms)`, getters, `toISOString`/`toString`, UTC) and `Array.prototype.includes` to the mini JavaScript engine.
+- Added element-level events: element handles expose `addEventListener` and `on<type>` handlers, and `--render ... --dispatch <id> <type>` fires an event on a named element after load (with `this` bound to the element).
 
 ### Fixed
 

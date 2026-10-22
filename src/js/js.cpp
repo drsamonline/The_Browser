@@ -2201,21 +2201,24 @@ Interpreter::Completion Interpreter::execute(Node const& node, std::shared_ptr<E
     }
 }
 
+void Interpreter::dispatch_event_to(Value const& target, std::string const& type)
+{
+    if (!target.is_object() || !target.object)
+        return;
+    auto object = target.object;
+    auto on_property = object->properties.find("on" + type);
+    if (on_property != object->properties.end())
+        call(on_property->second, {}, target);
+    auto handlers = object->properties.find("__handlers_" + type);
+    if (handlers != object->properties.end() && handlers->second.is_object() && handlers->second.object && handlers->second.object->is_array)
+        for (auto const& handler : handlers->second.object->elements)
+            call(handler, {}, target);
+}
+
 void Interpreter::dispatch_event(std::string const& type)
 {
-    auto invoke = [this](std::shared_ptr<Object> const& target, std::string const& event_type) {
-        if (!target)
-            return;
-        auto on_property = target->properties.find("on" + event_type);
-        if (on_property != target->properties.end())
-            call(on_property->second, {}, Value::from_object(target));
-        auto handlers = target->properties.find("__handlers_" + event_type);
-        if (handlers != target->properties.end() && handlers->second.is_object() && handlers->second.object && handlers->second.object->is_array)
-            for (auto const& handler : handlers->second.object->elements)
-                call(handler, {}, Value::from_object(target));
-    };
-    invoke(m_document, type);
-    invoke(m_window, type);
+    dispatch_event_to(Value::from_object(m_document), type);
+    dispatch_event_to(Value::from_object(m_window), type);
     drain_microtasks();
 }
 

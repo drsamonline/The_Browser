@@ -196,6 +196,8 @@ std::unique_ptr<rendering::DomNode> detach_child(rendering::DomNode& parent, ren
 
 struct DomHost {
     std::map<aetheris::js::Object*, rendering::DomNode*> node_by_handle;
+    std::map<rendering::DomNode*, std::shared_ptr<aetheris::js::Object>> handle_by_node;
+    std::map<std::string, std::shared_ptr<aetheris::js::Object>> handle_by_id;
     std::map<rendering::DomNode*, rendering::DomNode*> parent_of;
     std::map<rendering::DomNode*, std::unique_ptr<rendering::DomNode>> pending;
 
@@ -271,6 +273,32 @@ std::shared_ptr<aetheris::js::Object> DomHost::handle_for(rendering::DomNode* no
     };
     handle->properties["appendChild"] = aetheris::js::Value::from_object(append_child);
 
+    auto* raw_handle = handle.get();
+    auto add_listener = std::make_shared<aetheris::js::Object>();
+    add_listener->is_function = true;
+    add_listener->is_native = true;
+    add_listener->native = [raw_handle](std::vector<aetheris::js::Value> const& args) {
+        if (args.size() < 2)
+            return aetheris::js::Value::undefined();
+        std::string key = "__handlers_" + args[0].to_string();
+        auto it = raw_handle->properties.find(key);
+        std::shared_ptr<aetheris::js::Object> array;
+        if (it != raw_handle->properties.end() && it->second.is_object() && it->second.object) {
+            array = it->second.object;
+        } else {
+            array = std::make_shared<aetheris::js::Object>();
+            array->is_array = true;
+            raw_handle->properties[key] = aetheris::js::Value::from_object(array);
+        }
+        array->elements.push_back(args[1]);
+        return aetheris::js::Value::undefined();
+    };
+    handle->properties["addEventListener"] = aetheris::js::Value::from_object(add_listener);
+
+    handle_by_node[node] = handle;
+    if (id)
+        handle_by_id[*id] = handle;
+
     return handle;
 }
 
@@ -314,7 +342,7 @@ static int run_eval(std::string const& source)
 // Headless render mode: fetch a URL, run the rendering pipeline and write the
 // resulting surface to a PPM file. Exercises the full fetch -> parse -> style
 // -> layout -> paint path without a display server.
-static int run_render(std::string const& url, std::string const& output_path) {
+static int run_render(std::string const& url, std::string const& output_path, std::string const& dispatch_id = {}, std::string const& dispatch_type = {}) {
     if (network::Socket::initialize() != network::SocketError::None) {
         std::cerr << "Failed to initialize network subsystem" << std::endl;
         return 1;
@@ -410,6 +438,13 @@ static int run_render(std::string const& url, std::string const& output_path) {
             js.dispatch_event("DOMContentLoaded");
             js.dispatch_event("load");
         }
+        if (!js.has_error() && !dispatch_id.empty() && !dispatch_type.empty()) {
+            auto it = dom.handle_by_id.find(dispatch_id);
+            if (it != dom.handle_by_id.end())
+                js.dispatch_event_to(aetheris::js::Value::from_object(it->second), dispatch_type);
+            else
+                std::cerr << "  [js] no element with id '" << dispatch_id << "'" << std::endl;
+        }
     }
 
     // Apply textContent changes the scripts made back onto the DOM.
@@ -447,6 +482,16 @@ static int run_render(std::string const& url, std::string const& output_path) {
 int main(int argc, char* argv[]) {
     using namespace std::chrono;
 
+    // Optional element event to fire after a --render load.
+    std::string dispatch_id;
+    std::string dispatch_type;
+    for (int i = 1; i + 2 < argc; ++i) {
+        if (std::string(argv[i]) == "--dispatch") {
+            dispatch_id = argv[i + 1];
+            dispatch_type = argv[i + 2];
+        }
+    }
+
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
         if (arg == "--help" || arg == "-h") {
@@ -458,6 +503,8 @@ int main(int argc, char* argv[]) {
                       << "  --render <url> [out.ppm]\n"
                       << "                 Fetch a URL, render it and write a PPM image.\n"
                       << "  --eval <script>  Run a JavaScript snippet and print its output.\n"
+                      << "  --dispatch <id> <type>\n"
+                      << "                 With --render, fire an event on the element with this id.\n"
                       << "  --version      Print version information.\n"
                       << "  -h, --help     Print this help.\n";
             return 0;
@@ -481,7 +528,7 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 output_path = argv[++i];
             }
-            return run_render(url, output_path);
+            return run_render(url, output_path, dispatch_id, dispatch_type);
         }
     }
 

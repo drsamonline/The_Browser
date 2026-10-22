@@ -72,8 +72,9 @@ non-goals list.
   groups/back-references in the regex engine and no event loop (microtasks
   are drained synchronously). The DOM binding is minimal:
   `document.write`, `getElementById`, `createElement`/`appendChild`,
-  `setAttribute`/`getAttribute`, `textContent`, and `window`/`document`
-  `addEventListener`/`on<type>` events (`DOMContentLoaded`, `load`).
+  `setAttribute`/`getAttribute`, `textContent`, and `addEventListener`/`on<type>`
+  events on `window`, `document` and elements (`DOMContentLoaded`, `load`, and
+  host-dispatched element events).
   The full LibJS engine in the tree needs Rust, a clang GC plugin and ICU and
   is not built in the standalone profile.
 - **Prototype runtime cluster** (`src/cache`, `src/network`, `src/ui`,
