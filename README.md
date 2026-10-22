@@ -178,6 +178,7 @@ The `aetheris` executable exposes a small headless command surface:
 ./aetheris --smoke-test           # init all subsystems, bounded frame loop, exit 0
 ./aetheris --fetch <url>          # fetch a URL over HTTP, print status and size
 ./aetheris --render <url> [out]   # fetch a URL and render it to a PPM image
+./aetheris --eval <script>        # run a JavaScript snippet
 ```
 
 Networking supports `http://` and, when the build finds OpenSSL, `https://`

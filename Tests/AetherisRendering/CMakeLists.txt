@@ -214,6 +214,10 @@ add_executable(TestAetherisSvg TestAetherisSvg.cpp)
 target_link_libraries(TestAetherisSvg PRIVATE AetherisRendering)
 add_test(NAME AetherisSvg COMMAND TestAetherisSvg)
 
+add_executable(TestAetherisJs TestAetherisJs.cpp)
+target_link_libraries(TestAetherisJs PRIVATE AetherisJS)
+add_test(NAME AetherisJs COMMAND TestAetherisJs)
+
 if (NOT AETHERIS_WEBP_LIBRARY)
     find_library(AETHERIS_WEBP_LIBRARY NAMES webp)
 endif()

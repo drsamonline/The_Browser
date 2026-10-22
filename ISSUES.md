@@ -63,8 +63,13 @@ Aetheris is experimental. The following are known limitations rather than
 regressions — see [V0.1_ACCEPTANCE.md](V0.1_ACCEPTANCE.md) for the full
 non-goals list.
 
-- **No JavaScript engine.** Scripting is not implemented; only the
-  HTML/CSS/layout/paint pipeline is present.
+- **The JavaScript engine is a small subset.** `src/js/` is a self-contained
+  tree-walking interpreter (variables, operators, control flow, functions and
+  recursion, arrays, objects and a few built-ins). It is not a conforming
+  implementation: no prototypes or classes, no closures beyond function scope,
+  no async, no regular expressions, and only a minimal DOM (`document.write`).
+  The full LibJS engine in the tree needs Rust, a clang GC plugin and ICU and
+  is not built in the standalone profile.
 - **Prototype runtime cluster** (`src/cache`, `src/network`, `src/ui`,
   `include/aetheris/`): the socket layer resolves hostnames via `getaddrinfo`
   and connects with a bounded timeout, and there is a minimal HTTP/1.1 client

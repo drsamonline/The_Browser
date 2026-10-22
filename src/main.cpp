@@ -15,6 +15,8 @@
 #include "resource.hpp"
 #include "url.hpp"
 
+#include "js.hpp"
+
 #include <chrono>
 #include <cstdio>
 #include <iostream>
@@ -137,6 +139,41 @@ static int run_fetch(std::string const& url) {
     return response.ok() ? 0 : 2;
 }
 
+// Collects the bodies of inline <script> elements.
+static std::vector<std::string> extract_scripts(std::string const& html)
+{
+    std::vector<std::string> scripts;
+    std::size_t position = 0;
+    while (true) {
+        auto open = html.find("<script", position);
+        if (open == std::string::npos)
+            break;
+        auto tag_end = html.find('>', open);
+        if (tag_end == std::string::npos)
+            break;
+        auto close = html.find("</script", tag_end);
+        if (close == std::string::npos)
+            break;
+        scripts.push_back(html.substr(tag_end + 1, close - tag_end - 1));
+        position = close + 8;
+    }
+    return scripts;
+}
+
+// Headless script evaluation: run a snippet and print console output.
+static int run_eval(std::string const& source)
+{
+    aetheris::js::Interpreter js;
+    js.print_handler = [](std::string const& line) { std::cout << line << std::endl; };
+    js.write_handler = [](std::string const& text) { std::cout << text; };
+    js.run(source);
+    if (js.has_error()) {
+        std::cerr << "JavaScript error: " << js.error() << std::endl;
+        return 1;
+    }
+    return 0;
+}
+
 // Headless render mode: fetch a URL, run the rendering pipeline and write the
 // resulting surface to a PPM file. Exercises the full fetch -> parse -> style
 // -> layout -> paint path without a display server.
@@ -190,7 +227,31 @@ static int run_render(std::string const& url, std::string const& output_path) {
     }
     network::Socket::cleanup();
 
-    auto rendered = rendering::RenderDocument::create(response.body, css, 1024.0f, &resources, url);
+    // Run any inline scripts; document.write output is injected into the page
+    // before it is parsed and laid out.
+    std::string html = response.body;
+    std::string script_output;
+    {
+        aetheris::js::Interpreter js;
+        js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
+        js.write_handler = [&script_output](std::string const& text) { script_output += text; };
+        for (auto const& script : extract_scripts(html)) {
+            js.run(script);
+            if (js.has_error()) {
+                std::cerr << "  [js] " << js.error() << std::endl;
+                break;
+            }
+        }
+    }
+    if (!script_output.empty()) {
+        auto body_end = html.rfind("</body>");
+        if (body_end != std::string::npos)
+            html.insert(body_end, script_output);
+        else
+            html += script_output;
+    }
+
+    auto rendered = rendering::RenderDocument::create(html, css, 1024.0f, &resources, url);
     // A PPM has no alpha channel, so render onto an opaque white background to
     // keep the output viewable.
     auto surface = rendered.render_to_surface(1024, 768, rendering::Color { 255, 255, 255, 255 });
@@ -218,6 +279,7 @@ int main(int argc, char* argv[]) {
                       << "                 content type and body size.\n"
                       << "  --render <url> [out.ppm]\n"
                       << "                 Fetch a URL, render it and write a PPM image.\n"
+                      << "  --eval <script>  Run a JavaScript snippet and print its output.\n"
                       << "  --version      Print version information.\n"
                       << "  -h, --help     Print this help.\n";
             return 0;
@@ -231,6 +293,9 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--fetch" && i + 1 < argc) {
             return run_fetch(argv[++i]);
+        }
+        if (arg == "--eval" && i + 1 < argc) {
+            return run_eval(argv[++i]);
         }
         if (arg == "--render" && i + 1 < argc) {
             std::string url = argv[++i];

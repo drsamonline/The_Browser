@@ -124,13 +124,29 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# The Aetheris mini JavaScript engine: a self-contained interpreter for the
+# runtime (the full LibJS engine needs Rust + a clang GC plugin + ICU and is not
+# buildable in the standalone profile).
+# ---------------------------------------------------------------------------
+add_library(AetherisJS STATIC
+    js/js.cpp
+)
+
+target_include_directories(AetherisJS
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/js>
+)
+
+target_compile_features(AetherisJS PUBLIC cxx_std_20)
+
+# ---------------------------------------------------------------------------
 # The Aetheris browser executable: main entry point over the prototype runtime.
 # ---------------------------------------------------------------------------
 add_executable(aetheris
     main.cpp
 )
 
-target_link_libraries(aetheris PRIVATE AetherisRuntime AetherisRendering)
+target_link_libraries(aetheris PRIVATE AetherisRuntime AetherisRendering AetherisJS)
 
 set_target_properties(aetheris PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"

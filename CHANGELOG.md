@@ -33,6 +33,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - Progressive JPEG (SOF2) support: multiple scans with spectral selection and successive approximation, sharing one coefficient buffer and reconstructing after the last scan. `TestAetherisJpeg` decodes a progressive fixture.
 - A minimal SVG rasteriser (`svg.{hpp,cpp}`): rect, circle, ellipse, line, polyline, polygon and path (Béziers flattened), fill + stroke, viewBox and translate/scale/matrix transforms, rendered with 2x supersampling; the image cache renders SVG. `TestAetherisSvg` covers shapes, paths and paints.
 - WebP decoding via the system libwebp (lossy VP8 and lossless VP8L), wired into the image cache and compiled in only when libwebp is found (`AETHERIS_HAS_WEBP`). `TestAetherisWebp` decodes lossless (exact) and lossy (approximate) fixtures.
+- A self-contained mini JavaScript engine (`src/js/`, the `AetherisJS` library): lexer, recursive-descent parser and tree-walking interpreter covering variables, operators, control flow, functions/recursion, arrays, objects and built-ins (`console.log`, `Math`, `parseInt`/`parseFloat`, string and array methods, `document.write`). `aetheris --eval <script>` runs a snippet and `--render` executes inline `<script>` blocks, injecting `document.write` output before layout. `TestAetherisJs` covers the core. (The full LibJS engine in the tree is a bytecode VM needing Rust + a clang GC plugin + ICU and is not built in the standalone profile.)
 
 ### Fixed
 
