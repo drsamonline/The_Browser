@@ -13,10 +13,12 @@
 #define AETHERIS_HTTP_CLIENT_HPP
 
 #include "aetheris/network/socket_abstraction.hpp"
+#include "aetheris/network/tls.hpp"
 
 #include <cctype>
 #include <charconv>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -82,6 +84,7 @@ inline ParsedHttpUrl parse_http_url(std::string_view url)
     std::string_view authority = rest.substr(0, path_start);
     out.path = path_start == std::string_view::npos ? std::string("/") : std::string(rest.substr(path_start));
 
+    bool explicit_port = false;
     auto colon = authority.rfind(':');
     if (colon != std::string_view::npos) {
         out.host = std::string(authority.substr(0, colon));
@@ -89,17 +92,39 @@ inline ParsedHttpUrl parse_http_url(std::string_view url)
         auto first = authority.data() + colon + 1;
         auto last = authority.data() + authority.size();
         auto result = std::from_chars(first, last, parsed_port);
-        if (result.ec == std::errc {} && result.ptr != first)
+        if (result.ec == std::errc {} && result.ptr != first) {
             out.port = static_cast<uint16_t>(parsed_port);
+            explicit_port = true;
+        }
     } else {
         out.host = std::string(authority);
     }
 
-    if (out.scheme == "https")
-        out.port = 443;
+    if (!explicit_port)
+        out.port = out.scheme == "https" ? 443 : 80;
     out.valid = !out.host.empty();
     return out;
 }
+
+// A minimal send/recv transport over either a plain socket or a TLS stream.
+struct HttpTransport {
+    Socket* socket { nullptr };
+    TlsStream* tls { nullptr };
+
+    SocketError send(std::string_view data)
+    {
+        if (tls)
+            return tls->write(data) ? SocketError::None : SocketError::SendFailed;
+        return socket->send(data);
+    }
+
+    SocketError recv(std::span<char> buffer, size_t& bytes_read)
+    {
+        if (tls)
+            return tls->read(buffer.data(), buffer.size(), bytes_read) ? SocketError::None : SocketError::RecvFailed;
+        return socket->recv(buffer, bytes_read);
+    }
+};
 
 class HttpClient {
 public:
@@ -118,15 +143,28 @@ public:
             response.error = "Invalid or unsupported URL";
             return response;
         }
-        if (parsed.scheme == "https") {
-            response.error = "TLS is not implemented";
-            return response;
-        }
-
         Socket socket;
-        if (socket.connect(parsed.host, parsed.port, timeout_ms) != SocketError::None) {
-            response.error = "Could not connect to " + parsed.host;
-            return response;
+        TlsStream tls;
+        HttpTransport transport;
+        if (parsed.scheme == "https") {
+            if (!TlsStream::available()) {
+                response.error = "TLS support is not built in";
+                return response;
+            }
+            // AETHERIS_CA_FILE lets a test or a corporate proxy trust an
+            // explicit CA bundle; otherwise the system store is used.
+            auto const* ca_file = std::getenv("AETHERIS_CA_FILE");
+            if (!tls.connect(parsed.host, parsed.port, timeout_ms, ca_file ? ca_file : "")) {
+                response.error = tls.error();
+                return response;
+            }
+            transport.tls = &tls;
+        } else {
+            if (socket.connect(parsed.host, parsed.port, timeout_ms) != SocketError::None) {
+                response.error = "Could not connect to " + parsed.host;
+                return response;
+            }
+            transport.socket = &socket;
         }
 
         std::string request_text = method + " " + parsed.path + " HTTP/1.1\r\n";
@@ -141,13 +179,13 @@ public:
         request_text += "\r\n";
         request_text += body;
 
-        if (socket.send(request_text) != SocketError::None) {
+        if (transport.send(request_text) != SocketError::None) {
             response.error = "Failed to send request";
             return response;
         }
 
         std::string raw;
-        if (!read_headers(socket, raw, response.error))
+        if (!read_headers(transport, raw, response.error))
             return response;
 
         auto header_end = raw.find("\r\n\r\n");
@@ -173,16 +211,16 @@ public:
 
         std::string remainder = raw.substr(header_end + 4);
         if (lower_equals(response.header("Transfer-Encoding"), "chunked")) {
-            read_remaining(socket, remainder);
+            read_remaining(transport, remainder);
             response.body = decode_chunked(remainder);
         } else {
             auto content_length = response.header("Content-Length");
             if (!content_length.empty()) {
                 auto wanted = parse_size(content_length);
-                read_until(socket, remainder, wanted);
+                read_until(transport, remainder, wanted);
                 response.body = remainder.size() > wanted ? remainder.substr(0, wanted) : remainder;
             } else {
-                read_remaining(socket, remainder);
+                read_remaining(transport, remainder);
                 response.body = remainder;
             }
         }
@@ -211,12 +249,12 @@ private:
         return result.ec == std::errc {} ? static_cast<size_t>(value) : 0;
     }
 
-    static bool read_headers(Socket& socket, std::string& out, std::string& error)
+    static bool read_headers(HttpTransport& transport, std::string& out, std::string& error)
     {
         char buffer[4096];
         while (out.find("\r\n\r\n") == std::string::npos) {
             size_t bytes = 0;
-            if (socket.recv({ buffer, sizeof(buffer) }, bytes) != SocketError::None) {
+            if (transport.recv({ buffer, sizeof(buffer) }, bytes) != SocketError::None) {
                 error = "Failed while reading response";
                 return false;
             }
@@ -231,12 +269,12 @@ private:
         return true;
     }
 
-    static void read_until(Socket& socket, std::string& out, size_t wanted)
+    static void read_until(HttpTransport& transport, std::string& out, size_t wanted)
     {
         char buffer[4096];
         while (out.size() < wanted) {
             size_t bytes = 0;
-            if (socket.recv({ buffer, sizeof(buffer) }, bytes) != SocketError::None)
+            if (transport.recv({ buffer, sizeof(buffer) }, bytes) != SocketError::None)
                 break;
             if (bytes == 0)
                 break;
@@ -244,12 +282,12 @@ private:
         }
     }
 
-    static void read_remaining(Socket& socket, std::string& out)
+    static void read_remaining(HttpTransport& transport, std::string& out)
     {
         char buffer[4096];
         for (;;) {
             size_t bytes = 0;
-            if (socket.recv({ buffer, sizeof(buffer) }, bytes) != SocketError::None)
+            if (transport.recv({ buffer, sizeof(buffer) }, bytes) != SocketError::None)
                 break;
             if (bytes == 0)
                 break;

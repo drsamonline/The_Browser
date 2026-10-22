@@ -68,9 +68,11 @@ non-goals list.
 - **Prototype runtime cluster** (`src/cache`, `src/network`, `src/ui`,
   `include/aetheris/`): the socket layer resolves hostnames via `getaddrinfo`
   and connects with a bounded timeout, and there is a minimal HTTP/1.1 client
-  (`HttpClient`). DNS resolution is still synchronous (it can block), TLS is not
-  implemented, so only `http://` URLs are reachable, and the window manager is a
-  headless/X11 prototype with a stub Cocoa (macOS) backend.
+  (`HttpClient`). HTTPS is available when OpenSSL is found at configure time
+  (`AETHERIS_HAS_TLS`), with certificate + hostname verification; without it,
+  only `http://` URLs are reachable. DNS resolution is still synchronous (it can
+  block), and the window manager is a headless/X11 prototype with a stub Cocoa
+  (macOS) backend.
 - **Image decoding is limited.** PNG (non-interlaced, 8/16-bit), baseline
   JPEG, GIF (first frame only) and ASCII PPM are decoded; progressive JPEG,
   WebP, interlaced PNG and SVG are not supported.

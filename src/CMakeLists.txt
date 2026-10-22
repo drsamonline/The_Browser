@@ -68,6 +68,7 @@ target_compile_definitions(AetherisRendering
 # ---------------------------------------------------------------------------
 add_library(AetherisRuntime STATIC
     network/socket_abstraction.cpp
+    network/tls.cpp
     cache/ghost_cache.cpp
     ui/window_manager.cpp
 )
@@ -90,6 +91,19 @@ if (AETHERIS_X11_TARGET)
     target_link_libraries(AetherisRuntime PUBLIC ${AETHERIS_X11_TARGET})
 else()
     target_compile_definitions(AetherisRuntime PUBLIC AETHERIS_HEADLESS_UI=1)
+endif()
+
+# Optional TLS: when OpenSSL is available, the runtime gains real HTTPS with
+# certificate and hostname verification (vetted crypto). Without it, the TLS
+# stream compiles to a stub that reports TLS as unavailable.
+find_package(OpenSSL QUIET)
+if (OpenSSL_FOUND)
+    target_compile_definitions(AetherisRuntime PRIVATE AETHERIS_HAS_TLS=1)
+    target_link_libraries(AetherisRuntime PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    message(STATUS "Aetheris: OpenSSL found - HTTPS/TLS enabled")
+else()
+    target_compile_definitions(AetherisRuntime PRIVATE AETHERIS_HAS_TLS=0)
+    message(STATUS "Aetheris: OpenSSL not found - HTTPS/TLS disabled")
 endif()
 
 # ---------------------------------------------------------------------------

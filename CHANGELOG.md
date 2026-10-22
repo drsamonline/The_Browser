@@ -28,8 +28,11 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - A baseline JPEG decoder (`jpeg.{hpp,cpp}`, SOF0, 8-bit, 1/3 components, restart intervals); the image cache decodes JPEG as well as PNG/PPM. `TestAetherisJpeg` covers 4:4:4 colour and grayscale.
 - A GIF decoder (`gif.{hpp,cpp}`: LZW, global/local colour tables, interlacing, transparency); the image cache decodes GIF too. `TestAetherisGif` covers a palette fixture.
 - Anti-aliased text: `SoftwareSurface::draw_text` now supersamples each glyph cell (4x4 coverage) and blends by coverage, giving grayscale edges instead of hard pixels.
+- Optional HTTPS/TLS (`tls.{hpp,cpp}`, `AETHERIS_HAS_TLS`): a real OpenSSL handshake with certificate and hostname verification against the system trust store (or `AETHERIS_CA_FILE`); `HttpClient` now serves `https://`. `TestAetherisTls` performs a hermetic handshake against an in-process OpenSSL server (trusted connect + self-signed rejection).
 
 ### Fixed
+
+- `parse_http_url` no longer overrides an explicit port on `https://` URLs (it previously forced 443).
 
 - Browser chrome navigation now constructs `NavigationRequest` using the current rendering/navigation API.
 - Browser chrome navigation uses the active session viewport width when available.

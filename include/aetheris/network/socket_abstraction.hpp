@@ -275,6 +275,15 @@ public:
     }
     
     /**
+     * Detach the underlying handle, transferring ownership to the caller.
+     */
+    auto release() noexcept {
+        auto handle = m_socket;
+        m_socket = INVALID_SOCKET_VALUE;
+        return handle;
+    }
+    
+    /**
      * Check if socket is valid
      */
     bool is_valid() const noexcept {

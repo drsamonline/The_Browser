@@ -180,8 +180,10 @@ The `aetheris` executable exposes a small headless command surface:
 ./aetheris --render <url> [out]   # fetch a URL and render it to a PPM image
 ```
 
-Networking supports `http://` only: hostnames resolve through `getaddrinfo`
-and the connect is time-bounded, but TLS is not implemented.
+Networking supports `http://` and, when the build finds OpenSSL, `https://`
+(TLS with certificate and hostname verification; set `AETHERIS_CA_FILE` to use
+a custom CA bundle). Hostnames resolve through `getaddrinfo` and the connect is
+time-bounded.
 
 ## 🧭 Development principles
 
