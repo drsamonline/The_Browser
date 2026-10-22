@@ -69,7 +69,8 @@ non-goals list.
   implementation: closures, constructors/`new`/`this`, prototypes and
   `instanceof`, `class` syntax and `JSON` are supported, but there is no async
   and no regular expressions. The DOM binding is minimal:
-  `document.write` and `document.getElementById(...).textContent`.
+  `document.write`, `getElementById`, `createElement`/`appendChild`,
+  `setAttribute`/`getAttribute` and `textContent`.
   The full LibJS engine in the tree needs Rust, a clang GC plugin and ICU and
   is not built in the standalone profile.
 - **Prototype runtime cluster** (`src/cache`, `src/network`, `src/ui`,
