@@ -49,7 +49,7 @@ Supporting subsystems around the pipeline:
 | `secure_resource_loader`, `security_policy`, `content_type`, `cookie_jar`, `url` | Same-origin/mixed-content foundations, content typing, cookie state. |
 | `navigation`, `page_lifecycle`, `document_runtime`, `form_runtime`, `document_interaction`, `dynamic runtime` pieces | Navigation results, lifecycle states, interaction and form behavior. |
 | `browser_session`, `browser_application`, `browser_chrome`, `visual_state`, `viewport` | Tab/session state, multi-tab chrome, hit-testing and scrolling. |
-| `font`, `bitmap_font`, `text_layout`, `image`, `png`, `image_output`, `color`, `geometry`, `clip` | Typography (embedded 8x8 bitmap font + measurement), PNG/PPM image decoding, colour and geometry primitives. |
+| `font`, `bitmap_font`, `text_layout`, `image`, `png`, `jpeg`, `gif`, `svg`, `image_output`, `color`, `geometry`, `clip` | Typography (embedded 8x8 bitmap font + measurement), PNG/JPEG/GIF/SVG image decoding, colour and geometry primitives. |
 
 Every module above has regression coverage under `Tests/AetherisRendering/`
 (registered with CTest).

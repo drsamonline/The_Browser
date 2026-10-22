@@ -210,6 +210,10 @@ add_executable(TestAetherisGif TestAetherisGif.cpp)
 target_link_libraries(TestAetherisGif PRIVATE AetherisRendering)
 add_test(NAME AetherisGif COMMAND TestAetherisGif)
 
+add_executable(TestAetherisSvg TestAetherisSvg.cpp)
+target_link_libraries(TestAetherisSvg PRIVATE AetherisRendering)
+add_test(NAME AetherisSvg COMMAND TestAetherisSvg)
+
 # The TLS test needs OpenSSL on both sides (server + client).
 find_package(OpenSSL QUIET)
 if (OpenSSL_FOUND)

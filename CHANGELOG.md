@@ -31,6 +31,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - Optional HTTPS/TLS (`tls.{hpp,cpp}`, `AETHERIS_HAS_TLS`): a real OpenSSL handshake with certificate and hostname verification against the system trust store (or `AETHERIS_CA_FILE`); `HttpClient` now serves `https://`. `TestAetherisTls` performs a hermetic handshake against an in-process OpenSSL server (trusted connect + self-signed rejection).
 - Interlaced (Adam7) PNG support in the decoder; `TestAetherisPng` now checks an interlaced image decodes identically to the same non-interlaced image.
 - Progressive JPEG (SOF2) support: multiple scans with spectral selection and successive approximation, sharing one coefficient buffer and reconstructing after the last scan. `TestAetherisJpeg` decodes a progressive fixture.
+- A minimal SVG rasteriser (`svg.{hpp,cpp}`): rect, circle, ellipse, line, polyline, polygon and path (Béziers flattened), fill + stroke, viewBox and translate/scale/matrix transforms, rendered with 2x supersampling; the image cache renders SVG. `TestAetherisSvg` covers shapes, paths and paints.
 
 ### Fixed
 
