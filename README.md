@@ -187,6 +187,12 @@ Networking supports `http://` and, when the build finds OpenSSL, `https://`
 a custom CA bundle). Hostnames resolve through `getaddrinfo` and the connect is
 time-bounded.
 
+## Roadmap
+
+The remaining work is organised into phases with combined batches and a
+delivery workflow aimed at a high quality-to-time ratio. See
+[docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Credits
 
 Aetheris is derived from **Ladybird** and **SerenityOS** (BSD-2-Clause); a
