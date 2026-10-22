@@ -406,6 +406,10 @@ static int run_render(std::string const& url, std::string const& output_path) {
                 break;
             }
         }
+        if (!js.has_error()) {
+            js.dispatch_event("DOMContentLoaded");
+            js.dispatch_event("load");
+        }
     }
 
     // Apply textContent changes the scripts made back onto the DOM.

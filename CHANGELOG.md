@@ -41,6 +41,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - Added `class` syntax to the mini JavaScript engine: `constructor` and methods are desugared onto a prototype object, so `new`/`instanceof`/inheritance work with classes as well as constructor functions.
 - Added the `for...of` loop (over arrays and strings) and the `switch`/`case`/`default` statement to the mini JavaScript engine.
 - Extended the DOM bindings: `document.createElement`, `element.appendChild`, `element.setAttribute` and `element.getAttribute`, so scripts can build and insert new elements before layout.
+- Added events to the mini JavaScript engine: `window`/`document` `addEventListener` and `on<type>` handlers, dispatched by the host (`DOMContentLoaded`, `load`). Fixed a lifetime bug where function bodies aliased a parsed program that was freed when `run()` returned, so handlers invoked after the script (e.g. at load) could dangle; parsed programs are now retained.
 
 ### Fixed
 

@@ -197,6 +197,10 @@ public:
     bool has_error() const { return m_has_error; }
     std::string const& error() const { return m_error; }
 
+    // Dispatches an event to the window/document handlers (on<type> and
+    // addEventListener) registered by the script.
+    void dispatch_event(std::string const& type);
+
     // Host hooks.
     std::function<void(std::string const&)> print_handler; // console.log
     std::function<void(std::string const&)> write_handler; // document.write
@@ -229,6 +233,11 @@ private:
 
     std::shared_ptr<Environment> m_globals;
     std::shared_ptr<Object> m_object_prototype;
+    std::shared_ptr<Object> m_window;
+    std::shared_ptr<Object> m_document;
+    // Parsed programs are kept alive so function bodies (which alias the AST)
+    // stay valid after run() returns, e.g. for event handlers.
+    std::vector<std::shared_ptr<Node>> m_programs;
     bool m_has_error { false };
     std::string m_error;
 };

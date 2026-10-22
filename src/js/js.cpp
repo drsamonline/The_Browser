@@ -1006,6 +1006,30 @@ void Interpreter::setup_globals()
     }));
     m_globals->variables["JSON"] = Value::from_object(json);
 
+    auto make_listener_registrar = [this](std::shared_ptr<Object> const& target) {
+        return Value::from_object(make_native([target](std::vector<Value> const& args) {
+            if (args.size() < 2)
+                return Value::undefined();
+            std::string key = "__handlers_" + args[0].to_string();
+            auto it = target->properties.find(key);
+            std::shared_ptr<Object> array;
+            if (it != target->properties.end() && it->second.is_object() && it->second.object) {
+                array = it->second.object;
+            } else {
+                array = std::make_shared<Object>();
+                array->is_array = true;
+                target->properties[key] = Value::from_object(array);
+            }
+            array->elements.push_back(args[1]);
+            return Value::undefined();
+        }));
+    };
+
+    // window
+    m_window = std::make_shared<Object>();
+    m_window->properties["addEventListener"] = make_listener_registrar(m_window);
+    m_globals->variables["window"] = Value::from_object(m_window);
+
     // document.write
     auto document = std::make_shared<Object>();
     document->properties["write"] = Value::from_object(make_native([this](std::vector<Value> const& args) {
@@ -1025,6 +1049,8 @@ void Interpreter::setup_globals()
             return Value::undefined();
         return create_element(args[0].to_string());
     }));
+    m_document = document;
+    document->properties["addEventListener"] = make_listener_registrar(document);
     m_globals->variables["document"] = Value::from_object(document);
 }
 
@@ -1658,6 +1684,23 @@ Interpreter::Completion Interpreter::execute(Node const& node, std::shared_ptr<E
     }
 }
 
+void Interpreter::dispatch_event(std::string const& type)
+{
+    auto invoke = [this](std::shared_ptr<Object> const& target, std::string const& event_type) {
+        if (!target)
+            return;
+        auto on_property = target->properties.find("on" + event_type);
+        if (on_property != target->properties.end())
+            call(on_property->second, {}, Value::from_object(target));
+        auto handlers = target->properties.find("__handlers_" + event_type);
+        if (handlers != target->properties.end() && handlers->second.is_object() && handlers->second.object && handlers->second.object->is_array)
+            for (auto const& handler : handlers->second.object->elements)
+                call(handler, {}, Value::from_object(target));
+    };
+    invoke(m_document, type);
+    invoke(m_window, type);
+}
+
 Value Interpreter::run(std::string const& source)
 {
     m_has_error = false;
@@ -1665,11 +1708,12 @@ Value Interpreter::run(std::string const& source)
 
     Lexer lexer(source);
     Parser parser(lexer.tokenize());
-    auto program = parser.parse_program();
+    std::shared_ptr<Node> program(parser.parse_program());
     if (parser.failed()) {
         error("parse error: " + parser.error());
         return Value::undefined();
     }
+    m_programs.push_back(program);
     return execute(*program, m_globals).value;
 }
 

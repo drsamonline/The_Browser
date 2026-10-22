@@ -240,6 +240,18 @@ int main()
         require(h.output == "one\ntwo\nmany\n", "switch");
     }
 
+    // Events: handlers registered with onload / addEventListener fire on dispatch.
+    {
+        Harness h;
+        h.run("window.onload = function () { console.log('loaded'); };"
+              "document.addEventListener('DOMContentLoaded', function () { console.log('ready'); });");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output.empty(), "handlers do not run before dispatch");
+        h.interpreter.dispatch_event("DOMContentLoaded");
+        h.interpreter.dispatch_event("load");
+        require(h.output == "ready\nloaded\n", "event dispatch");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;
