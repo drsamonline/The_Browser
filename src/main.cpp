@@ -11,6 +11,9 @@
 
 #include "render_document.hpp"
 #include "image_output.hpp"
+#include "resource_loader.hpp"
+#include "resource.hpp"
+#include "url.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -144,27 +147,61 @@ static int run_render(std::string const& url, std::string const& output_path) {
     }
 
     auto response = network::HttpClient::get(url);
-    network::Socket::cleanup();
-
     if (!response.error.empty()) {
+        network::Socket::cleanup();
         std::cerr << "Fetch failed: " << response.error << std::endl;
         return 1;
     }
     if (!response.ok()) {
+        network::Socket::cleanup();
         std::cerr << "HTTP error: " << response.status_line << std::endl;
         return 2;
     }
 
-    rendering::RenderDocument document = rendering::RenderDocument::create(response.body, {}, 1024.0f);
+    // Discover and fetch the document's linked resources: stylesheets are
+    // concatenated into the cascade, images are cached for the engine to resolve.
+    rendering::ResourceCache resources;
+    rendering::ResourceLoader loader(resources);
+    rendering::Url base = rendering::Url::parse(url);
+    rendering::ResourceData document_resource {
+        rendering::ResourceType::Document,
+        url,
+        std::vector<unsigned char>(response.body.begin(), response.body.end()),
+    };
+
+    std::string css;
+    std::size_t fetched_count = 0;
+    for (auto const& dependency : loader.discover_dependencies(document_resource, base)) {
+        auto fetched = network::HttpClient::get(dependency.serialized());
+        if (!fetched.error.empty() || !fetched.ok())
+            continue;
+        ++fetched_count;
+        std::string path = dependency.path();
+        bool is_css = path.size() >= 4 && path.compare(path.size() - 4, 4, ".css") == 0;
+        std::vector<unsigned char> bytes(fetched.body.begin(), fetched.body.end());
+        if (is_css) {
+            if (!css.empty())
+                css.push_back('\n');
+            css += fetched.body;
+            resources.put({ rendering::ResourceType::Stylesheet, dependency.serialized(), std::move(bytes) });
+        } else {
+            resources.put({ rendering::ResourceType::Image, dependency.serialized(), std::move(bytes) });
+        }
+    }
+    network::Socket::cleanup();
+
+    auto rendered = rendering::RenderDocument::create(response.body, css, 1024.0f, &resources);
     // A PPM has no alpha channel, so render onto an opaque white background to
     // keep the output viewable.
-    auto surface = document.render_to_surface(1024, 768, rendering::Color { 255, 255, 255, 255 });
+    auto surface = rendered.render_to_surface(1024, 768, rendering::Color { 255, 255, 255, 255 });
     if (!rendering::ImageOutput::write_ppm(surface, output_path)) {
         std::cerr << "Failed to write " << output_path << std::endl;
         return 1;
     }
 
-    std::cout << "Rendered " << response.body.size() << " bytes of HTML to " << output_path << std::endl;
+    std::cout << "Rendered " << response.body.size() << " bytes of HTML and "
+              << css.size() << " bytes of CSS (" << fetched_count << " linked resources) to "
+              << output_path << std::endl;
     return 0;
 }
 
