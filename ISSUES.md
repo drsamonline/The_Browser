@@ -67,8 +67,8 @@ non-goals list.
   tree-walking interpreter (variables, operators, control flow, functions and
   recursion, arrays, objects and a few built-ins). It is not a conforming
   implementation: closures, constructors/`new`/`this`, prototypes and
-  `instanceof`, and `JSON` are supported, but there is no `class` syntax, no
-  async and no regular expressions. The DOM binding is minimal:
+  `instanceof`, `class` syntax and `JSON` are supported, but there is no async
+  and no regular expressions. The DOM binding is minimal:
   `document.write` and `document.getElementById(...).textContent`.
   The full LibJS engine in the tree needs Rust, a clang GC plugin and ICU and
   is not built in the standalone profile.

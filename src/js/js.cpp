@@ -117,7 +117,7 @@ bool is_keyword(std::string const& text)
 {
     static const char* keywords[] = {
         "var", "let", "const", "function", "return", "if", "else", "while", "for",
-        "break", "continue", "true", "false", "null", "undefined", "new", "typeof", "else", "instanceof"
+        "break", "continue", "true", "false", "null", "undefined", "new", "typeof", "else", "instanceof", "class"
     };
     for (auto* keyword : keywords)
         if (text == keyword)
@@ -345,6 +345,11 @@ std::unique_ptr<Node> Parser::parse_statement()
         return statement;
     }
 
+    if (check("class")) {
+        advance();
+        return parse_class();
+    }
+
     if (check("function")) {
         advance();
         return parse_function(true);
@@ -430,6 +435,26 @@ std::unique_ptr<Node> Parser::parse_function(bool is_declaration)
     expect(")");
     function->body = parse_block();
     return function;
+}
+
+std::unique_ptr<Node> Parser::parse_class()
+{
+    auto node = make_node(NodeType::ClassDeclaration);
+    if (peek().type != TokenType::Identifier) { set_error("expected class name"); return node; }
+    node->string = advance().text;
+    if (!expect("{"))
+        return node;
+    while (!check("}") && peek().type != TokenType::EndOfInput && !failed()) {
+        if (peek().type != TokenType::Identifier && peek().type != TokenType::Keyword) { set_error("expected method name"); break; }
+        std::string method_name = advance().text;
+        auto function = parse_function(false);
+        if (method_name == "constructor")
+            node->left = std::move(function);
+        else
+            node->properties.emplace_back(method_name, std::move(function));
+    }
+    expect("}");
+    return node;
 }
 
 std::unique_ptr<Node> Parser::parse_expression()
@@ -967,6 +992,20 @@ std::shared_ptr<Object> Interpreter::make_array(std::vector<Value> elements)
     return object;
 }
 
+std::shared_ptr<Object> Interpreter::make_function(Node const& node, std::shared_ptr<Environment> const& env)
+{
+    auto object = std::make_shared<Object>();
+    object->is_function = true;
+    object->prototype = m_object_prototype;
+    auto prototype = std::make_shared<Object>();
+    prototype->prototype = m_object_prototype;
+    object->properties["prototype"] = Value::from_object(prototype);
+    object->parameters = node.parameters;
+    object->function_body = std::shared_ptr<Node>(node.body.get(), [](Node*) {});
+    object->closure = env;
+    return object;
+}
+
 Value Interpreter::get_property_from_chain(std::shared_ptr<Object> const& object, std::string const& name)
 {
     for (auto current = object; current; current = current->prototype) {
@@ -1338,24 +1377,15 @@ Value Interpreter::evaluate(Node const& node, std::shared_ptr<Environment> const
         return Value::from_object(object);
     }
     case NodeType::FunctionExpression:
-    case NodeType::FunctionDeclaration: {
-        auto object = std::make_shared<Object>();
-        object->is_function = true;
-        object->prototype = m_object_prototype;
-        {
-            auto prototype = std::make_shared<Object>();
-            prototype->prototype = m_object_prototype;
-            object->properties["prototype"] = Value::from_object(prototype);
-        }
-        object->parameters = node.parameters;
-        object->function_body = std::make_shared<Node>();
-        if (node.body) {
-            // Deep-copy the body by sharing it; nodes outlive the call because
-            // the whole AST is owned by the caller of run().
-            object->function_body = std::shared_ptr<Node>(node.body.get(), [](Node*) {});
-        }
-        object->closure = env;
-        return Value::from_object(object);
+    case NodeType::FunctionDeclaration:
+        return Value::from_object(make_function(node, env));
+    case NodeType::ClassDeclaration: {
+        auto constructor = node.left ? make_function(*node.left, env) : make_function(Node {}, env);
+        auto prototype_value = constructor->properties["prototype"];
+        if (prototype_value.is_object() && prototype_value.object)
+            for (auto const& [name, function_node] : node.properties)
+                prototype_value.object->properties[name] = Value::from_object(make_function(*function_node, env));
+        return Value::from_object(constructor);
     }
     case NodeType::Unary: {
         if (node.string == "!") return Value::from_boolean(!evaluate(*node.left, env).to_boolean());
@@ -1493,6 +1523,11 @@ Interpreter::Completion Interpreter::execute(Node const& node, std::shared_ptr<E
     case NodeType::FunctionDeclaration: {
         auto function = evaluate(node, env);
         env->variables[node.string] = std::move(function);
+        return completion;
+    }
+    case NodeType::ClassDeclaration: {
+        auto klass = evaluate(node, env);
+        env->variables[node.string] = std::move(klass);
         return completion;
     }
     case NodeType::IfStatement: {

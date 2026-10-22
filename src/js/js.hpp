@@ -67,7 +67,7 @@ enum class NodeType : uint8_t {
     // statements
     Program, ExpressionStatement, VariableDeclaration, Block,
     IfStatement, WhileStatement, ForStatement, ReturnStatement,
-    BreakStatement, ContinueStatement, FunctionDeclaration,
+    BreakStatement, ContinueStatement, FunctionDeclaration, ClassDeclaration,
 };
 
 struct Node {
@@ -139,6 +139,7 @@ private:
     std::unique_ptr<Node> parse_postfix();
     std::unique_ptr<Node> parse_primary();
     std::unique_ptr<Node> parse_function(bool is_declaration);
+    std::unique_ptr<Node> parse_class();
 
     Token const& peek(int offset = 0) const;
     Token const& advance();
@@ -216,6 +217,7 @@ private:
     Value evaluate_binary(std::string const& op, Value const& left, Value const& right);
     Value call(Value const& callee, std::vector<Value> const& arguments, Value const& this_value = {});
     Value call_function(std::shared_ptr<Object> const& function, std::vector<Value> const& arguments, Value const& this_value = {});
+    std::shared_ptr<Object> make_function(Node const& function, std::shared_ptr<Environment> const& env);
     Value get_property(Value const& object, std::string const& name);
     Value get_property_from_chain(std::shared_ptr<Object> const& object, std::string const& name);
     void set_property(Value const& object, std::string const& name, Value value);

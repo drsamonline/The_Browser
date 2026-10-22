@@ -195,6 +195,33 @@ int main()
         require(h.output == "obj\n", "Object.prototype extension");
     }
 
+    // Classes (sugar over the prototype chain).
+    {
+        Harness h;
+        h.run("class Greeter {"
+              "  constructor(name) { this.name = name; }"
+              "  greet() { return 'Hi ' + this.name; }"
+              "}"
+              "var g = new Greeter('Aetheris');"
+              "console.log(g.greet());"
+              "console.log(g instanceof Greeter);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "Hi Aetheris\ntrue\n", "class syntax");
+    }
+
+    // Class inheritance via prototype assignment.
+    {
+        Harness h;
+        h.run("class Base { constructor() { this.kind = 'base'; } describe() { return this.kind; } }"
+              "class Derived { constructor() { this.kind = 'derived'; } }"
+              "Derived.prototype = new Base();"
+              "var d = new Derived();"
+              "console.log(d.describe());"
+              "console.log(d instanceof Base);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "derived\ntrue\n", "class prototype inheritance");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;
