@@ -267,6 +267,34 @@ int main()
         require(h.output == "true\ntrue\n1,2,3\nhell0 w0rld\na|b|c\n1\ntrue\ntrue\n", "regex");
     }
 
+    // Promises: microtasks are deferred until the synchronous script finishes.
+    {
+        Harness h;
+        h.run("var log = [];"
+              "Promise.resolve(1).then(function (v) { log.push('then' + v); });"
+              "log.push('sync');"
+              "Promise.reject('e').catch(function (e) { log.push('catch' + e); });"
+              "console.log(log.join(','));");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "sync\n", "microtasks are deferred");
+    }
+
+    // async/await and promise chaining.
+    {
+        Harness h;
+        h.run("var result = 0;"
+              "async function value() { return 7; }"
+              "async function run() {"
+              "  var a = await value();"
+              "  var b = await Promise.resolve(2).then(function (v) { return v * 10; });"
+              "  result = a + b;"
+              "}"
+              "run();"
+              "console.log(result);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "27\n", "async/await and chaining");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;

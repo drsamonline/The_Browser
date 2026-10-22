@@ -166,14 +166,24 @@ using NativeFunction = std::function<Value(std::vector<Value> const&)>;
 
 class Regex;
 
+// State of a Promise object: a settled value and the handlers waiting on it.
+struct PromiseData {
+    enum class Status : uint8_t { Pending, Fulfilled, Rejected };
+    Status status { Status::Pending };
+    Value value;
+    std::vector<std::pair<Value, Value>> handlers; // (on_fulfilled, on_rejected)
+};
+
 struct Object {
     std::map<std::string, Value> properties;
     std::vector<Value> elements;
     std::shared_ptr<Object> prototype; // [[Prototype]] chain link
     std::shared_ptr<Regex> regex;      // set for RegExp objects
+    std::shared_ptr<PromiseData> promise; // set for Promise objects
     bool is_array { false };
     bool is_function { false };
     bool is_native { false };
+    bool is_async { false }; // async function: results are wrapped in a Promise
 
     // User-defined function
     std::vector<std::string> parameters;
@@ -209,6 +219,9 @@ public:
     // addEventListener) registered by the script.
     void dispatch_event(std::string const& type);
 
+    // Runs queued promise/microtask callbacks until the queue is empty.
+    void drain_microtasks();
+
     // Host hooks.
     std::function<void(std::string const&)> print_handler; // console.log
     std::function<void(std::string const&)> write_handler; // document.write
@@ -231,6 +244,10 @@ private:
     Value call(Value const& callee, std::vector<Value> const& arguments, Value const& this_value = {});
     Value call_function(std::shared_ptr<Object> const& function, std::vector<Value> const& arguments, Value const& this_value = {});
     std::shared_ptr<Object> make_function(Node const& function, std::shared_ptr<Environment> const& env);
+    Value make_promise();
+    void settle_promise(std::shared_ptr<Object> const& promise, bool rejected, Value const& value);
+    void schedule_microtask(std::function<void()> task);
+    void run_promise_handler(std::shared_ptr<Object> const& derived, Value const& handler, bool rejected, Value const& value);
     Value get_property(Value const& object, std::string const& name);
     Value get_property_from_chain(std::shared_ptr<Object> const& object, std::string const& name);
     void set_property(Value const& object, std::string const& name, Value value);
@@ -243,6 +260,7 @@ private:
     std::shared_ptr<Object> m_object_prototype;
     std::shared_ptr<Object> m_window;
     std::shared_ptr<Object> m_document;
+    std::vector<std::function<void()>> m_microtasks;
     // Parsed programs are kept alive so function bodies (which alias the AST)
     // stay valid after run() returns, e.g. for event handlers.
     std::vector<std::shared_ptr<Node>> m_programs;

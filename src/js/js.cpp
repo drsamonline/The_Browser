@@ -118,7 +118,7 @@ bool is_keyword(std::string const& text)
 {
     static const char* keywords[] = {
         "var", "let", "const", "function", "return", "if", "else", "while", "for",
-        "break", "continue", "true", "false", "null", "undefined", "new", "typeof", "else", "instanceof", "class", "switch", "case", "default", "of"
+        "break", "continue", "true", "false", "null", "undefined", "new", "typeof", "else", "instanceof", "class", "switch", "case", "default", "of", "async", "await"
     };
     for (auto* keyword : keywords)
         if (text == keyword)
@@ -386,6 +386,14 @@ std::unique_ptr<Node> Parser::parse_statement()
         return parse_class();
     }
 
+    if (check("async") && peek(1).text == "function") {
+        advance();
+        advance();
+        auto function = parse_function(true);
+        function->boolean = true; // async
+        return function;
+    }
+
     if (check("function")) {
         advance();
         return parse_function(true);
@@ -637,6 +645,13 @@ std::unique_ptr<Node> Parser::parse_unary()
         }
         node->left = std::move(callee);
         return apply_postfix(std::move(node));
+    }
+    if (check("await")) {
+        advance();
+        auto node = make_node(NodeType::Unary);
+        node->string = "await";
+        node->left = parse_unary();
+        return node;
     }
     if (check("!") || check("-") || check("+") || check("typeof")) {
         std::string op = advance().text;
@@ -1006,6 +1021,108 @@ static Value make_regex_object(std::shared_ptr<Regex> const& regex)
     return Value::from_object(object);
 }
 
+Value Interpreter::make_promise()
+{
+    auto object = std::make_shared<Object>();
+    object->prototype = m_object_prototype;
+    object->promise = std::make_shared<PromiseData>();
+    auto self = object;
+    object->properties["then"] = Value::from_object(make_native([this, self](std::vector<Value> const& args) {
+        auto derived = make_promise();
+        Value on_fulfilled = args.size() >= 1 ? args[0] : Value::undefined();
+        Value on_rejected = args.size() >= 2 ? args[1] : Value::undefined();
+        if (self->promise->status == PromiseData::Status::Pending) {
+            self->promise->handlers.emplace_back(on_fulfilled, on_rejected);
+        } else {
+            bool rejected = self->promise->status == PromiseData::Status::Rejected;
+            Value value = self->promise->value;
+            schedule_microtask([this, derived, on_fulfilled, on_rejected, rejected, value]() {
+                run_promise_handler(derived.object, rejected ? on_rejected : on_fulfilled, rejected, value);
+            });
+        }
+        return derived;
+    }));
+    object->properties["catch"] = Value::from_object(make_native([this, self](std::vector<Value> const& args) {
+        auto derived = make_promise();
+        Value on_rejected = args.empty() ? Value::undefined() : args[0];
+        if (self->promise->status == PromiseData::Status::Pending) {
+            self->promise->handlers.emplace_back(Value::undefined(), on_rejected);
+        } else if (self->promise->status == PromiseData::Status::Rejected) {
+            Value value = self->promise->value;
+            schedule_microtask([this, derived, on_rejected, value]() {
+                run_promise_handler(derived.object, on_rejected, true, value);
+            });
+        } else {
+            settle_promise(derived.object, false, self->promise->value);
+        }
+        return derived;
+    }));
+    object->properties["finally"] = Value::from_object(make_native([this, self](std::vector<Value> const& args) {
+        if (!args.empty() && args[0].is_object() && args[0].object && args[0].object->is_function)
+            call(args[0], {});
+        return Value::from_object(self);
+    }));
+    return Value::from_object(object);
+}
+
+void Interpreter::schedule_microtask(std::function<void()> task)
+{
+    m_microtasks.push_back(std::move(task));
+}
+
+void Interpreter::settle_promise(std::shared_ptr<Object> const& promise, bool rejected, Value const& value)
+{
+    if (!promise || !promise->promise || promise->promise->status != PromiseData::Status::Pending)
+        return;
+    promise->promise->status = rejected ? PromiseData::Status::Rejected : PromiseData::Status::Fulfilled;
+    promise->promise->value = value;
+    auto handlers = std::move(promise->promise->handlers);
+    promise->promise->handlers.clear();
+    for (auto const& [on_fulfilled, on_rejected] : handlers) {
+        schedule_microtask([this, promise, on_fulfilled, on_rejected, rejected, value]() {
+            run_promise_handler(promise, rejected ? on_rejected : on_fulfilled, rejected, value);
+        });
+    }
+}
+
+void Interpreter::run_promise_handler(std::shared_ptr<Object> const& derived, Value const& handler, bool rejected, Value const& value)
+{
+    if (!derived)
+        return;
+    if (!handler.is_object() || !handler.object || !handler.object->is_function) {
+        settle_promise(derived, rejected, value);
+        return;
+    }
+    auto result = call(handler, { value });
+    if (result.is_object() && result.object && result.object->promise) {
+        auto returned = result.object;
+        if (returned->promise->status == PromiseData::Status::Pending) {
+            auto fulfill = make_native([this, derived](std::vector<Value> const& args) {
+                settle_promise(derived, false, args.empty() ? Value::undefined() : args[0]);
+                return Value::undefined();
+            });
+            auto reject = make_native([this, derived](std::vector<Value> const& args) {
+                settle_promise(derived, true, args.empty() ? Value::undefined() : args[0]);
+                return Value::undefined();
+            });
+            returned->promise->handlers.emplace_back(Value::from_object(fulfill), Value::from_object(reject));
+        } else {
+            settle_promise(derived, returned->promise->status == PromiseData::Status::Rejected, returned->promise->value);
+        }
+    } else {
+        settle_promise(derived, false, result);
+    }
+}
+
+void Interpreter::drain_microtasks()
+{
+    for (int guard = 0; guard < 1000000 && !m_microtasks.empty(); ++guard) {
+        auto task = std::move(m_microtasks.front());
+        m_microtasks.erase(m_microtasks.begin());
+        task();
+    }
+}
+
 void Interpreter::setup_globals()
 {
     m_object_prototype = std::make_shared<Object>();
@@ -1121,6 +1238,47 @@ void Interpreter::setup_globals()
         return make_regex_object(Regex::compile(pattern, flags, regex_error));
     }));
 
+    // Promise
+    auto promise_constructor = make_native([this](std::vector<Value> const& args) {
+        auto promise = make_promise();
+        if (!args.empty() && args[0].is_object() && args[0].object && args[0].object->is_function) {
+            auto resolve = make_native([this, p = promise.object](std::vector<Value> const& a) {
+                settle_promise(p, false, a.empty() ? Value::undefined() : a[0]);
+                return Value::undefined();
+            });
+            auto reject = make_native([this, p = promise.object](std::vector<Value> const& a) {
+                settle_promise(p, true, a.empty() ? Value::undefined() : a[0]);
+                return Value::undefined();
+            });
+            call(args[0], { Value::from_object(resolve), Value::from_object(reject) });
+        }
+        return promise;
+    });
+    promise_constructor->properties["resolve"] = Value::from_object(make_native([this](std::vector<Value> const& args) {
+        Value value = args.empty() ? Value::undefined() : args[0];
+        if (value.is_object() && value.object && value.object->promise)
+            return value;
+        auto promise = make_promise();
+        settle_promise(promise.object, false, value);
+        return promise;
+    }));
+    promise_constructor->properties["reject"] = Value::from_object(make_native([this](std::vector<Value> const& args) {
+        auto promise = make_promise();
+        settle_promise(promise.object, true, args.empty() ? Value::undefined() : args[0]);
+        return promise;
+    }));
+    promise_constructor->properties["all"] = Value::from_object(make_native([this](std::vector<Value> const& args) {
+        auto result = make_promise();
+        auto array = std::make_shared<Object>();
+        array->is_array = true;
+        if (!args.empty() && args[0].is_object() && args[0].object && args[0].object->is_array)
+            for (auto const& item : args[0].object->elements)
+                array->elements.push_back((item.is_object() && item.object && item.object->promise) ? item.object->promise->value : item);
+        settle_promise(result.object, false, Value::from_object(array));
+        return result;
+    }));
+    m_globals->variables["Promise"] = Value::from_object(promise_constructor);
+
     auto make_listener_registrar = [this](std::shared_ptr<Object> const& target) {
         return Value::from_object(make_native([target](std::vector<Value> const& args) {
             if (args.size() < 2)
@@ -1187,6 +1345,7 @@ std::shared_ptr<Object> Interpreter::make_function(Node const& node, std::shared
     prototype->prototype = m_object_prototype;
     object->properties["prototype"] = Value::from_object(prototype);
     object->parameters = node.parameters;
+    object->is_async = node.boolean;
     object->function_body = std::shared_ptr<Node>(node.body.get(), [](Node*) {});
     object->closure = env;
     return object;
@@ -1568,8 +1727,18 @@ Value Interpreter::call_function(std::shared_ptr<Object> const& function, std::v
 
     if (function->function_body) {
         auto completion = execute(*function->function_body, env);
+        if (function->is_async) {
+            auto promise = make_promise();
+            settle_promise(promise.object, false, completion.type == Completion::Type::Return ? completion.value : Value::undefined());
+            return promise;
+        }
         if (completion.type == Completion::Type::Return)
             return completion.value;
+    }
+    if (function->is_async) {
+        auto promise = make_promise();
+        settle_promise(promise.object, false, Value::undefined());
+        return promise;
     }
     return Value::undefined();
 }
@@ -1623,6 +1792,16 @@ Value Interpreter::evaluate(Node const& node, std::shared_ptr<Environment> const
         return Value::from_object(constructor);
     }
     case NodeType::Unary: {
+        if (node.string == "await") {
+            auto value = evaluate(*node.left, env);
+            drain_microtasks();
+            if (value.is_object() && value.object && value.object->promise) {
+                if (value.object->promise->status == PromiseData::Status::Rejected)
+                    error("unhandled promise rejection");
+                return value.object->promise->value;
+            }
+            return value;
+        }
         if (node.string == "!") return Value::from_boolean(!evaluate(*node.left, env).to_boolean());
         if (node.string == "-") return Value::from_number(-evaluate(*node.left, env).to_number());
         if (node.string == "+") return Value::from_number(evaluate(*node.left, env).to_number());
@@ -1860,6 +2039,7 @@ void Interpreter::dispatch_event(std::string const& type)
     };
     invoke(m_document, type);
     invoke(m_window, type);
+    drain_microtasks();
 }
 
 Value Interpreter::run(std::string const& source)
@@ -1875,7 +2055,9 @@ Value Interpreter::run(std::string const& source)
         return Value::undefined();
     }
     m_programs.push_back(program);
-    return execute(*program, m_globals).value;
+    auto result = execute(*program, m_globals).value;
+    drain_microtasks();
+    return result;
 }
 
 } // namespace aetheris::js
