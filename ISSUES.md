@@ -74,8 +74,9 @@ non-goals list.
   block), and the window manager is a headless/X11 prototype with a stub Cocoa
   (macOS) backend.
 - **Image decoding is limited.** PNG (8/16-bit, interlaced and
-  non-interlaced), baseline and progressive JPEG, GIF (first frame only), a
-  subset of SVG and ASCII PPM are decoded; WebP is not supported.
+  non-interlaced), baseline and progressive JPEG, GIF (first frame only), WebP
+  (when built with libwebp), a subset of SVG and ASCII PPM are decoded;
+  animated GIF/WebP use only the first frame.
 - **Text rendering is a single bitmap font.** Text is rasterised from one
   embedded 8x8 bitmap font with 4x4-coverage anti-aliasing; there is no vector
   font, font selection, kerning or shaping.

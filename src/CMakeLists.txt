@@ -29,6 +29,7 @@ add_library(AetherisRendering STATIC
     rendering/jpeg.cpp
     rendering/gif.cpp
     rendering/svg.cpp
+    rendering/webp.cpp
     rendering/css_parser.cpp
     rendering/css_tokenizer.cpp
     rendering/dom.cpp
@@ -56,6 +57,21 @@ target_include_directories(AetherisRendering
 )
 
 target_compile_features(AetherisRendering PUBLIC cxx_std_20)
+
+# Optional WebP: link the system libwebp (lossy VP8 + lossless VP8L) when it is
+# available. The two decoder functions are declared directly, so only the
+# library itself is required.
+if (NOT AETHERIS_WEBP_LIBRARY)
+    find_library(AETHERIS_WEBP_LIBRARY NAMES webp)
+endif()
+if (AETHERIS_WEBP_LIBRARY)
+    target_compile_definitions(AetherisRendering PRIVATE AETHERIS_HAS_WEBP=1)
+    target_link_libraries(AetherisRendering PRIVATE ${AETHERIS_WEBP_LIBRARY})
+    message(STATUS "Aetheris: libwebp found - WebP enabled")
+else()
+    target_compile_definitions(AetherisRendering PRIVATE AETHERIS_HAS_WEBP=0)
+    message(STATUS "Aetheris: libwebp not found - WebP disabled")
+endif()
 
 target_compile_definitions(AetherisRendering
     PUBLIC

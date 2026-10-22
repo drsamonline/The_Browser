@@ -32,6 +32,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - Interlaced (Adam7) PNG support in the decoder; `TestAetherisPng` now checks an interlaced image decodes identically to the same non-interlaced image.
 - Progressive JPEG (SOF2) support: multiple scans with spectral selection and successive approximation, sharing one coefficient buffer and reconstructing after the last scan. `TestAetherisJpeg` decodes a progressive fixture.
 - A minimal SVG rasteriser (`svg.{hpp,cpp}`): rect, circle, ellipse, line, polyline, polygon and path (Béziers flattened), fill + stroke, viewBox and translate/scale/matrix transforms, rendered with 2x supersampling; the image cache renders SVG. `TestAetherisSvg` covers shapes, paths and paints.
+- WebP decoding via the system libwebp (lossy VP8 and lossless VP8L), wired into the image cache and compiled in only when libwebp is found (`AETHERIS_HAS_WEBP`). `TestAetherisWebp` decodes lossless (exact) and lossy (approximate) fixtures.
 
 ### Fixed
 

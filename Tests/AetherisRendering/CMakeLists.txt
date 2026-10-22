@@ -214,6 +214,15 @@ add_executable(TestAetherisSvg TestAetherisSvg.cpp)
 target_link_libraries(TestAetherisSvg PRIVATE AetherisRendering)
 add_test(NAME AetherisSvg COMMAND TestAetherisSvg)
 
+if (NOT AETHERIS_WEBP_LIBRARY)
+    find_library(AETHERIS_WEBP_LIBRARY NAMES webp)
+endif()
+if (AETHERIS_WEBP_LIBRARY)
+    add_executable(TestAetherisWebp TestAetherisWebp.cpp)
+    target_link_libraries(TestAetherisWebp PRIVATE AetherisRendering)
+    add_test(NAME AetherisWebp COMMAND TestAetherisWebp)
+endif()
+
 # The TLS test needs OpenSSL on both sides (server + client).
 find_package(OpenSSL QUIET)
 if (OpenSSL_FOUND)
