@@ -16,7 +16,11 @@ RenderDocument::RenderDocument(Document document, std::unique_ptr<LayoutNode> la
 
 RenderDocument RenderDocument::create(std::string_view html, std::string_view css, float viewport_width, ResourceCache* resources, std::string_view source_url)
 {
-    auto document = Document::parse_html(html);
+    return create_from_document(Document::parse_html(html), css, viewport_width, resources, source_url);
+}
+
+RenderDocument RenderDocument::create_from_document(Document document, std::string_view css, float viewport_width, ResourceCache* resources, std::string_view source_url)
+{
     auto sheet = CssParser {}.parse(css);
 
     auto layout_root = LayoutTreeBuilder {}.build(document.root(), sheet);

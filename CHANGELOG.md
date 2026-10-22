@@ -37,6 +37,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - Expanded the mini JavaScript engine with String methods (`split`, `replace`, `substring`, `repeat`, `trim`, `includes`, `startsWith`, `endsWith`), Array methods (`forEach`, `map`, `filter`, `reduce`, `reverse`, `sort`, `concat`), numeric indexing on strings and arrays, `Object.keys` and `Array.isArray`, and a `CREDITS.md` documenting upstream attribution.
 - Added closures, the `new` operator with constructor functions and `this` binding for methods, `JSON.stringify`/`JSON.parse`, and `Math.trunc`/`Math.sign` to the mini JavaScript engine.
 - Added a prototype chain to the mini JavaScript engine: functions get a `prototype` object, `new` links instances to it, property lookup walks the chain, `Object.prototype` is extensible, and the `instanceof` operator is supported.
+- Minimal DOM bindings: `document.getElementById(id)` returns an element handle whose `textContent` can be read and written, and `--render` parses the document, runs inline scripts, then applies `textContent` changes (and `document.write` output) before layout. `RenderDocument::create_from_document` builds from an already-parsed document so a host can mutate it first.
 
 ### Fixed
 

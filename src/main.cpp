@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cstdio>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <string>
 #include <thread>
@@ -139,6 +140,42 @@ static int run_fetch(std::string const& url) {
     return response.ok() ? 0 : 2;
 }
 
+// DOM helpers for the JavaScript host bindings.
+static void collect_elements(rendering::DomNode& node, std::map<std::string, rendering::DomNode*>& out)
+{
+    if (node.type == rendering::DomNodeType::Element)
+        if (auto* id = node.attribute("id"))
+            out[*id] = &node;
+    for (auto& child : node.children)
+        collect_elements(*child, out);
+}
+
+static rendering::DomNode* find_element(rendering::DomNode& node, std::string const& name)
+{
+    if (node.type == rendering::DomNodeType::Element && node.name == name)
+        return &node;
+    for (auto& child : node.children)
+        if (auto* found = find_element(*child, name))
+            return found;
+    return nullptr;
+}
+
+static std::string node_text(rendering::DomNode const& node)
+{
+    std::string result;
+    if (node.type == rendering::DomNodeType::Text)
+        result += node.data;
+    for (auto const& child : node.children)
+        result += node_text(*child);
+    return result;
+}
+
+static void set_node_text(rendering::DomNode& node, std::string const& text)
+{
+    node.children.clear();
+    node.append_child(std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", text));
+}
+
 // Collects the bodies of inline <script> elements.
 static std::vector<std::string> extract_scripts(std::string const& html)
 {
@@ -227,14 +264,34 @@ static int run_render(std::string const& url, std::string const& output_path) {
     }
     network::Socket::cleanup();
 
-    // Run any inline scripts; document.write output is injected into the page
-    // before it is parsed and laid out.
+    // Parse the document so inline scripts can read and mutate it.
     std::string html = response.body;
+    rendering::Document document = rendering::Document::parse_html(html);
+
+    std::map<std::string, rendering::DomNode*> elements;
+    collect_elements(document.root(), elements);
+
+    std::vector<std::shared_ptr<aetheris::js::Object>> handles;
+    std::map<std::string, std::shared_ptr<aetheris::js::Object>> handle_by_id;
+    std::vector<std::pair<aetheris::js::Object*, rendering::DomNode*>> handle_nodes;
+    for (auto& [id, node] : elements) {
+        auto handle = std::make_shared<aetheris::js::Object>();
+        handle->properties["id"] = aetheris::js::Value::from_string(id);
+        handle->properties["textContent"] = aetheris::js::Value::from_string(node_text(*node));
+        handle_nodes.emplace_back(handle.get(), node);
+        handle_by_id[id] = handle;
+        handles.push_back(handle);
+    }
+
     std::string script_output;
     {
         aetheris::js::Interpreter js;
         js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
         js.write_handler = [&script_output](std::string const& text) { script_output += text; };
+        js.element_lookup = [&handle_by_id](std::string const& id) -> aetheris::js::Value {
+            auto it = handle_by_id.find(id);
+            return it == handle_by_id.end() ? aetheris::js::Value::undefined() : aetheris::js::Value::from_object(it->second);
+        };
         for (auto const& script : extract_scripts(html)) {
             js.run(script);
             if (js.has_error()) {
@@ -243,15 +300,25 @@ static int run_render(std::string const& url, std::string const& output_path) {
             }
         }
     }
-    if (!script_output.empty()) {
-        auto body_end = html.rfind("</body>");
-        if (body_end != std::string::npos)
-            html.insert(body_end, script_output);
-        else
-            html += script_output;
+
+    // Apply textContent changes the scripts made back onto the DOM.
+    for (auto& [handle, node] : handle_nodes) {
+        auto it = handle->properties.find("textContent");
+        if (it == handle->properties.end())
+            continue;
+        std::string updated = it->second.to_string();
+        if (updated != node_text(*node))
+            set_node_text(*node, updated);
     }
 
-    auto rendered = rendering::RenderDocument::create(html, css, 1024.0f, &resources, url);
+    // document.write output is appended to the body.
+    if (!script_output.empty()) {
+        auto* body = find_element(document.root(), "body");
+        auto text_node = std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", script_output);
+        (body ? *body : document.root()).append_child(std::move(text_node));
+    }
+
+    auto rendered = rendering::RenderDocument::create_from_document(std::move(document), css, 1024.0f, &resources, url);
     // A PPM has no alpha channel, so render onto an opaque white background to
     // keep the output viewable.
     auto surface = rendered.render_to_surface(1024, 768, rendering::Color { 255, 255, 255, 255 });

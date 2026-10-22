@@ -950,6 +950,11 @@ void Interpreter::setup_globals()
         return Value::undefined();
     }));
     document->properties["writeln"] = document->properties["write"];
+    document->properties["getElementById"] = Value::from_object(make_native([this](std::vector<Value> const& args) {
+        if (args.empty() || !element_lookup)
+            return Value::undefined();
+        return element_lookup(args[0].to_string());
+    }));
     m_globals->variables["document"] = Value::from_object(document);
 }
 
