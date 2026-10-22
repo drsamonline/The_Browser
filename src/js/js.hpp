@@ -63,12 +63,14 @@ struct Value {
 enum class NodeType : uint8_t {
     NumberLiteral, StringLiteral, BooleanLiteral, NullLiteral, Identifier,
     ArrayLiteral, ObjectLiteral, FunctionExpression,
-    Unary, Binary, Logical, Assignment, Conditional, Call, Member, New,
+    Unary, Binary, Logical, Assignment, Conditional, Call, Member, New, RegexLiteral,
     // statements
     Program, ExpressionStatement, VariableDeclaration, Block,
     IfStatement, WhileStatement, ForStatement, ForOfStatement, SwitchStatement, ReturnStatement,
     BreakStatement, ContinueStatement, FunctionDeclaration, ClassDeclaration,
 };
+
+class Regex;
 
 struct Node {
     NodeType type { NodeType::Program };
@@ -92,6 +94,7 @@ struct Node {
     std::unique_ptr<Node> update;
 
     bool kind_let { false };  // let/const vs var (cosmetic in this subset)
+    std::shared_ptr<Regex> regex;  // compiled regular-expression literal
 };
 
 // ---------------------------------------------------------------------------
@@ -99,12 +102,13 @@ struct Node {
 // ---------------------------------------------------------------------------
 
 enum class TokenType : uint8_t {
-    EndOfInput, Number, String, Identifier, Keyword, Punctuator,
+    EndOfInput, Number, String, Identifier, Keyword, Punctuator, Regex,
 };
 
 struct Token {
     TokenType type { TokenType::EndOfInput };
     std::string text;
+    std::string regex_flags;
     double number { 0 };
 };
 
@@ -137,6 +141,7 @@ private:
     std::unique_ptr<Node> parse_binary(int min_precedence);
     std::unique_ptr<Node> parse_unary();
     std::unique_ptr<Node> parse_postfix();
+    std::unique_ptr<Node> apply_postfix(std::unique_ptr<Node> expression);
     std::unique_ptr<Node> parse_primary();
     std::unique_ptr<Node> parse_function(bool is_declaration);
     std::unique_ptr<Node> parse_class();
@@ -159,10 +164,13 @@ private:
 
 using NativeFunction = std::function<Value(std::vector<Value> const&)>;
 
+class Regex;
+
 struct Object {
     std::map<std::string, Value> properties;
     std::vector<Value> elements;
     std::shared_ptr<Object> prototype; // [[Prototype]] chain link
+    std::shared_ptr<Regex> regex;      // set for RegExp objects
     bool is_array { false };
     bool is_function { false };
     bool is_native { false };

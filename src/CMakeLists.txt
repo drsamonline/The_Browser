@@ -130,6 +130,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(AetherisJS STATIC
     js/js.cpp
+    js/regex.cpp
 )
 
 target_include_directories(AetherisJS

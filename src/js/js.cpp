@@ -1,4 +1,5 @@
 #include "js.hpp"
+#include "regex.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -150,6 +151,41 @@ std::vector<Token> Lexer::tokenize()
             while (i + 1 < m_source.size() && !(m_source[i] == '*' && m_source[i + 1] == '/')) ++i;
             i += 2;
             continue;
+        }
+
+        // Regular-expression literal: a '/' where a value is expected (not
+        // after a token that can end an expression) starts a regex.
+        if (c == '/') {
+            bool value_expected = true;
+            if (!tokens.empty()) {
+                TokenType previous = tokens.back().type;
+                if (previous == TokenType::Identifier || previous == TokenType::Number || previous == TokenType::String || previous == TokenType::Regex
+                    || (previous == TokenType::Punctuator && (tokens.back().text == ")" || tokens.back().text == "]" || tokens.back().text == "}")))
+                    value_expected = false;
+            }
+            if (value_expected) {
+                size_t j = i + 1;
+                bool in_class = false;
+                while (j < m_source.size()) {
+                    char rc = m_source[j];
+                    if (rc == '\\') { j += 2; continue; }
+                    if (rc == '[') in_class = true;
+                    else if (rc == ']') in_class = false;
+                    else if (rc == '/' && !in_class) break;
+                    ++j;
+                }
+                if (j < m_source.size()) {
+                    Token token;
+                    token.type = TokenType::Regex;
+                    token.text = m_source.substr(i + 1, j - (i + 1));
+                    size_t k = j + 1;
+                    while (k < m_source.size() && std::isalpha(static_cast<unsigned char>(m_source[k]))) ++k;
+                    token.regex_flags = m_source.substr(j + 1, k - (j + 1));
+                    i = k;
+                    tokens.push_back(std::move(token));
+                    continue;
+                }
+            }
         }
 
         if (std::isdigit(static_cast<unsigned char>(c)) || (c == '.' && i + 1 < m_source.size() && std::isdigit(static_cast<unsigned char>(m_source[i + 1])))) {
@@ -567,8 +603,40 @@ std::unique_ptr<Node> Parser::parse_unary()
     if (check("new")) {
         advance();
         auto node = make_node(NodeType::New);
-        node->left = parse_postfix();
-        return node;
+        // `new` binds tighter than a call: the callee is a primary with member
+        // and index accesses, followed by at most one argument list. This makes
+        // `new X(a).y()` parse as `(new X(a)).y()`.
+        auto callee = parse_primary();
+        while (!failed()) {
+            if (match(".")) {
+                auto member = make_node(NodeType::Member);
+                member->left = std::move(callee);
+                if (peek().type == TokenType::Identifier || peek().type == TokenType::Keyword)
+                    member->string = advance().text;
+                else
+                    set_error("expected property name");
+                callee = std::move(member);
+            } else if (match("[")) {
+                auto member = make_node(NodeType::Member);
+                member->left = std::move(callee);
+                member->right = parse_expression();
+                expect("]");
+                callee = std::move(member);
+            } else {
+                break;
+            }
+        }
+        if (check("(")) {
+            advance();
+            while (!check(")") && peek().type != TokenType::EndOfInput && !failed()) {
+                node->children.push_back(parse_assignment());
+                if (!match(","))
+                    break;
+            }
+            expect(")");
+        }
+        node->left = std::move(callee);
+        return apply_postfix(std::move(node));
     }
     if (check("!") || check("-") || check("+") || check("typeof")) {
         std::string op = advance().text;
@@ -587,9 +655,8 @@ std::unique_ptr<Node> Parser::parse_unary()
     return parse_postfix();
 }
 
-std::unique_ptr<Node> Parser::parse_postfix()
+std::unique_ptr<Node> Parser::apply_postfix(std::unique_ptr<Node> expression)
 {
-    auto expression = parse_primary();
     for (;;) {
         if (match(".")) {
             if (peek().type != TokenType::Identifier && peek().type != TokenType::Keyword) { set_error("expected property name"); break; }
@@ -628,6 +695,11 @@ std::unique_ptr<Node> Parser::parse_postfix()
     return expression;
 }
 
+std::unique_ptr<Node> Parser::parse_postfix()
+{
+    return apply_postfix(parse_primary());
+}
+
 std::unique_ptr<Node> Parser::parse_primary()
 {
     Token const& token = peek();
@@ -636,6 +708,15 @@ std::unique_ptr<Node> Parser::parse_primary()
         advance();
         auto node = make_node(NodeType::NumberLiteral);
         node->number = token.number;
+        return node;
+    }
+    if (token.type == TokenType::Regex) {
+        advance();
+        auto node = make_node(NodeType::RegexLiteral);
+        std::string regex_error;
+        node->regex = Regex::compile(token.text, token.regex_flags, regex_error);
+        if (!node->regex)
+            set_error(regex_error.empty() ? "invalid regular expression" : regex_error);
         return node;
     }
     if (token.type == TokenType::String) {
@@ -899,6 +980,32 @@ struct JsonParser {
     }
 };
 
+static Value make_regex_object(std::shared_ptr<Regex> const& regex)
+{
+    if (!regex)
+        return Value::null();
+    auto object = std::make_shared<Object>();
+    object->regex = regex;
+    object->properties["source"] = Value::from_string(regex->source());
+    object->properties["flags"] = Value::from_string(regex->flags());
+    object->properties["global"] = Value::from_boolean(regex->global());
+    object->properties["test"] = Value::from_object(make_native([regex](std::vector<Value> const& args) {
+        return Value::from_boolean(!args.empty() && regex->test(args[0].to_string()));
+    }));
+    object->properties["exec"] = Value::from_object(make_native([regex](std::vector<Value> const& args) {
+        std::string text = args.empty() ? std::string() : args[0].to_string();
+        std::size_t start = 0, end = 0;
+        if (!regex->search(text, 0, start, end))
+            return Value::null();
+        auto array = std::make_shared<Object>();
+        array->is_array = true;
+        array->elements.push_back(Value::from_string(text.substr(start, end - start)));
+        array->properties["index"] = Value::from_number(static_cast<double>(start));
+        return Value::from_object(array);
+    }));
+    return Value::from_object(object);
+}
+
 void Interpreter::setup_globals()
 {
     m_object_prototype = std::make_shared<Object>();
@@ -1005,6 +1112,14 @@ void Interpreter::setup_globals()
         return parser.ok ? value : Value::undefined();
     }));
     m_globals->variables["JSON"] = Value::from_object(json);
+
+    // RegExp
+    m_globals->variables["RegExp"] = Value::from_object(make_native([](std::vector<Value> const& args) {
+        std::string pattern = args.empty() ? std::string() : args[0].to_string();
+        std::string flags = args.size() >= 2 ? args[1].to_string() : std::string();
+        std::string regex_error;
+        return make_regex_object(Regex::compile(pattern, flags, regex_error));
+    }));
 
     auto make_listener_registrar = [this](std::shared_ptr<Object> const& target) {
         return Value::from_object(make_native([target](std::vector<Value> const& args) {
@@ -1140,6 +1255,14 @@ Value Interpreter::get_property(Value const& object, std::string const& name)
                 std::vector<Value> parts;
                 if (args.empty()) {
                     parts.push_back(Value::from_string(receiver));
+                } else if (args[0].is_object() && args[0].object && args[0].object->regex) {
+                    auto const& regex = args[0].object->regex;
+                    std::size_t position = 0, start = 0, end = 0;
+                    while (position <= receiver.size() && regex->search(receiver, position, start, end)) {
+                        parts.push_back(Value::from_string(receiver.substr(position, start - position)));
+                        position = end > start ? end : start + 1;
+                    }
+                    parts.push_back(Value::from_string(receiver.substr(position)));
                 } else {
                     std::string separator = args[0].to_string();
                     if (separator.empty()) {
@@ -1162,11 +1285,52 @@ Value Interpreter::get_property(Value const& object, std::string const& name)
         if (name == "replace")
             return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
                 if (args.size() < 2) return Value::from_string(receiver);
-                std::string search = args[0].to_string();
                 std::string replacement = args[1].to_string();
+                if (args[0].is_object() && args[0].object && args[0].object->regex) {
+                    auto const& regex = args[0].object->regex;
+                    std::string result;
+                    std::size_t position = 0, start = 0, end = 0;
+                    while (position <= receiver.size() && regex->search(receiver, position, start, end)) {
+                        result += receiver.substr(position, start - position);
+                        result += replacement;
+                        position = end > start ? end : start + 1;
+                        if (!regex->global())
+                            break;
+                    }
+                    result += receiver.substr(position);
+                    return Value::from_string(result);
+                }
+                std::string search = args[0].to_string();
                 auto pos = search.empty() ? std::string::npos : receiver.find(search);
                 if (pos == std::string::npos) return Value::from_string(receiver);
                 return Value::from_string(receiver.substr(0, pos) + replacement + receiver.substr(pos + search.size()));
+            }));
+        if (name == "search")
+            return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
+                if (args.empty() || !args[0].is_object() || !args[0].object || !args[0].object->regex)
+                    return Value::from_number(-1);
+                std::size_t start = 0, end = 0;
+                return Value::from_number(args[0].object->regex->search(receiver, 0, start, end) ? static_cast<double>(start) : -1);
+            }));
+        if (name == "match")
+            return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
+                if (args.empty() || !args[0].is_object() || !args[0].object || !args[0].object->regex)
+                    return Value::null();
+                auto const& regex = args[0].object->regex;
+                auto array = std::make_shared<Object>();
+                array->is_array = true;
+                std::size_t position = 0, start = 0, end = 0;
+                while (position <= receiver.size() && regex->search(receiver, position, start, end)) {
+                    array->elements.push_back(Value::from_string(receiver.substr(start, end - start)));
+                    if (!regex->global()) {
+                        array->properties["index"] = Value::from_number(static_cast<double>(start));
+                        break;
+                    }
+                    position = end > start ? end : start + 1;
+                }
+                if (array->elements.empty())
+                    return Value::null();
+                return Value::from_object(array);
             }));
         if (name == "repeat")
             return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
@@ -1523,6 +1687,8 @@ Value Interpreter::evaluate(Node const& node, std::shared_ptr<Environment> const
         std::string name = node.right ? evaluate(*node.right, env).to_string() : node.string;
         return get_property(object, name);
     }
+    case NodeType::RegexLiteral:
+        return make_regex_object(node.regex);
     case NodeType::Call: {
         Value this_value;
         Value callee;
@@ -1539,15 +1705,10 @@ Value Interpreter::evaluate(Node const& node, std::shared_ptr<Environment> const
         return call(callee, arguments, this_value);
     }
     case NodeType::New: {
-        Value constructor;
+        auto constructor = evaluate(*node.left, env);
         std::vector<Value> arguments;
-        if (node.left && node.left->type == NodeType::Call) {
-            constructor = evaluate(*node.left->left, env);
-            for (auto const& child : node.left->children)
-                arguments.push_back(evaluate(*child, env));
-        } else {
-            constructor = evaluate(*node.left, env);
-        }
+        for (auto const& child : node.children)
+            arguments.push_back(evaluate(*child, env));
         auto instance = std::make_shared<Object>();
         auto prototype_property = get_property(constructor, "prototype");
         instance->prototype = (prototype_property.is_object() && prototype_property.object) ? prototype_property.object : m_object_prototype;

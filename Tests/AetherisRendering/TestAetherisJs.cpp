@@ -252,6 +252,21 @@ int main()
         require(h.output == "ready\nloaded\n", "event dispatch");
     }
 
+    // Regular expressions: literals, RegExp(), test/match/replace/split/search.
+    {
+        Harness h;
+        h.run("console.log(/[0-9]+/.test('abc123'));"
+              "console.log(/^a.*z$/.test('abcz'));"
+              "console.log('a1b2c3'.match(/[0-9]/g).join(','));"
+              "console.log('hello world'.replace(/o/g, '0'));"
+              "console.log('a,b;c'.split(/[,;]/).join('|'));"
+              "console.log('abc'.search(/b/));"
+              "console.log(new RegExp('[0-9]+').test('x42'));"
+              "console.log(/[A-Z]+/i.test('abc'));");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "true\ntrue\n1,2,3\nhell0 w0rld\na|b|c\n1\ntrue\ntrue\n", "regex");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;
