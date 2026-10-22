@@ -16,8 +16,7 @@
   <a href="https://drsamonline.github.io/The_Browser/#faq">FAQ</a> ·
   <a href="https://github.com/drsamonline/The_Browser/releases">Downloads</a> ·
   <a href="docs/USER_GUIDE.md">User guide</a> ·
-  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
-  <a href="https://drsamonline.github.io/">All projects</a>
+  <a href="docs/ARCHITECTURE.md">Architecture</a>
 </p>
 
 <p align="center">
@@ -170,7 +169,8 @@ cmake --build --preset StandaloneSize
 
 The size profile applies only to the Aetheris targets (`AetherisRendering`,
 `AetherisRuntime`, `aetheris`); a stripped `aetheris` executable is on the
-order of a few hundred kilobytes.
+order of half a megabyte with the current feature set (HTML/CSS layout,
+bitmap-font text, PNG images and the HTTP client all linked in).
 
 The `aetheris` executable exposes a small headless command surface:
 
