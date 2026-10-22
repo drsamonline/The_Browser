@@ -25,6 +25,9 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - `TestAetherisBitmapFont`: regression coverage for glyph lookup, metrics and rasterisation.
 - A dependency-free PNG decoder (`png.{hpp,cpp}`, colour types 0/2/3/4/6, 8/16-bit, non-interlaced) with its own DEFLATE inflater; the image cache now decodes PNG as well as PPM, and relative `src`/`href` references are resolved against the document URL so fetched pages' images load. `TestAetherisPng` covers RGB/RGBA/grey/palette inputs.
 - CSS `border` (width/style/colour, any order) and `background` (colour + `url()` image) shorthands, with `TestAetherisCssShorthands`.
+- A baseline JPEG decoder (`jpeg.{hpp,cpp}`, SOF0, 8-bit, 1/3 components, restart intervals); the image cache decodes JPEG as well as PNG/PPM. `TestAetherisJpeg` covers 4:4:4 colour and grayscale.
+- A GIF decoder (`gif.{hpp,cpp}`: LZW, global/local colour tables, interlacing, transparency); the image cache decodes GIF too. `TestAetherisGif` covers a palette fixture.
+- Anti-aliased text: `SoftwareSurface::draw_text` now supersamples each glyph cell (4x4 coverage) and blends by coverage, giving grayscale edges instead of hard pixels.
 
 ### Fixed
 

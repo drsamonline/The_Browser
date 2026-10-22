@@ -201,3 +201,11 @@ add_test(NAME AetherisPng COMMAND TestAetherisPng)
 add_executable(TestAetherisCssShorthands TestAetherisCssShorthands.cpp)
 target_link_libraries(TestAetherisCssShorthands PRIVATE AetherisRendering)
 add_test(NAME AetherisCssShorthands COMMAND TestAetherisCssShorthands)
+
+add_executable(TestAetherisJpeg TestAetherisJpeg.cpp)
+target_link_libraries(TestAetherisJpeg PRIVATE AetherisRendering)
+add_test(NAME AetherisJpeg COMMAND TestAetherisJpeg)
+
+add_executable(TestAetherisGif TestAetherisGif.cpp)
+target_link_libraries(TestAetherisGif PRIVATE AetherisRendering)
+add_test(NAME AetherisGif COMMAND TestAetherisGif)
