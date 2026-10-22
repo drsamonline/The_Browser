@@ -106,6 +106,90 @@ inline ParsedHttpUrl parse_http_url(std::string_view url)
     return out;
 }
 
+// --- Redirect and cookie helpers -------------------------------------------
+
+struct HttpCookie {
+    std::string host;
+    std::string name;
+    std::string value;
+};
+
+inline std::string http_trim(std::string text)
+{
+    auto begin = text.find_first_not_of(" \t\r\n");
+    auto end = text.find_last_not_of(" \t\r\n");
+    return begin == std::string::npos ? std::string() : text.substr(begin, end - begin + 1);
+}
+
+// Resolves a (possibly relative) Location against the request URL.
+inline std::string http_resolve_url(std::string const& base, std::string const& location)
+{
+    if (location.rfind("http://", 0) == 0 || location.rfind("https://", 0) == 0)
+        return location;
+    auto parsed = parse_http_url(base);
+    if (!parsed.valid)
+        return location;
+    std::string origin = parsed.scheme + "://" + parsed.host;
+    if ((parsed.scheme == "http" && parsed.port != 80) || (parsed.scheme == "https" && parsed.port != 443))
+        origin += ":" + std::to_string(parsed.port);
+    if (!location.empty() && location[0] == '/')
+        return origin + location;
+    auto slash = parsed.path.rfind('/');
+    std::string directory = slash == std::string::npos ? "/" : parsed.path.substr(0, slash + 1);
+    return origin + directory + location;
+}
+
+inline std::vector<HttpCookie>& http_cookie_jar()
+{
+    static std::vector<HttpCookie> jar;
+    return jar;
+}
+
+// Records Set-Cookie headers (name=value; attributes are ignored).
+inline void http_store_cookies(std::string const& host, HttpResponseData const& response)
+{
+    for (auto const& header : response.headers) {
+        if (header.name.size() != 10)
+            continue;
+        std::string lower;
+        for (char c : header.name)
+            lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (lower != "set-cookie")
+            continue;
+        auto semicolon = header.value.find(';');
+        std::string pair = header.value.substr(0, semicolon);
+        auto equals = pair.find('=');
+        if (equals == std::string::npos)
+            continue;
+        std::string name = http_trim(pair.substr(0, equals));
+        std::string value = http_trim(pair.substr(equals + 1));
+        if (name.empty())
+            continue;
+        auto& jar = http_cookie_jar();
+        bool replaced = false;
+        for (auto& cookie : jar)
+            if (cookie.host == host && cookie.name == name) {
+                cookie.value = value;
+                replaced = true;
+            }
+        if (!replaced)
+            jar.push_back({ host, name, value });
+    }
+}
+
+inline std::string http_cookie_header(std::string const& host)
+{
+    std::string result;
+    for (auto const& cookie : http_cookie_jar()) {
+        if (cookie.host != host)
+            continue;
+        if (!result.empty())
+            result += "; ";
+        result += cookie.name + "=" + cookie.value;
+    }
+    return result;
+}
+
 // A minimal send/recv transport over either a plain socket or a TLS stream.
 struct HttpTransport {
     Socket* socket { nullptr };
@@ -133,8 +217,40 @@ public:
         return request(url, "GET", {}, {}, timeout_ms);
     }
 
+    // Follows up to five redirects (301/302/303/307/308).
     static HttpResponseData request(std::string const& url, std::string const& method,
         std::vector<HttpHeader> headers, std::string const& body, int timeout_ms = 8000)
+    {
+        std::string current = url;
+        std::string current_method = method;
+        std::string current_body = body;
+        for (int hop = 0; hop < 6; ++hop) {
+            auto response = request_once(current, current_method, headers, current_body, timeout_ms);
+            if (!response.error.empty())
+                return response;
+            if (response.status == 301 || response.status == 302 || response.status == 303 || response.status == 307 || response.status == 308) {
+                auto location = response.header("Location");
+                if (location.empty())
+                    return response;
+                current = http_resolve_url(current, location);
+                if (response.status == 303) {
+                    current_method = "GET";
+                    current_body.clear();
+                }
+                continue;
+            }
+            return response;
+        }
+        HttpResponseData response;
+        response.error = "Too many redirects";
+        return response;
+    }
+
+    static void clear_cookies() { http_cookie_jar().clear(); }
+
+private:
+    static HttpResponseData request_once(std::string const& url, std::string const& method,
+        std::vector<HttpHeader> headers, std::string const& body, int timeout_ms)
     {
         HttpResponseData response;
 
@@ -171,6 +287,9 @@ public:
         request_text += "Host: " + parsed.host + "\r\n";
         request_text += "User-Agent: Aetheris/1.0\r\n";
         request_text += "Accept: */*\r\n";
+        auto cookie_header = http_cookie_header(parsed.host);
+        if (!cookie_header.empty())
+            request_text += "Cookie: " + cookie_header + "\r\n";
         request_text += "Connection: close\r\n";
         for (auto const& header : headers)
             request_text += header.name + ": " + header.value + "\r\n";
@@ -225,10 +344,10 @@ public:
             }
         }
 
+        http_store_cookies(parsed.host, response);
         return response;
     }
 
-private:
     static bool lower_equals(std::string const& value, std::string_view expected)
     {
         if (value.size() != expected.size())

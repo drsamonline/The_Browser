@@ -80,7 +80,7 @@ non-goals list.
 - **Prototype runtime cluster** (`src/cache`, `src/network`, `src/ui`,
   `include/aetheris/`): the socket layer resolves hostnames via `getaddrinfo`
   and connects with a bounded timeout, and there is a minimal HTTP/1.1 client
-  (`HttpClient`). HTTPS is available when OpenSSL is found at configure time
+  (`HttpClient`) that follows redirects and keeps a simple host-scoped cookie jar. HTTPS is available when OpenSSL is found at configure time
   (`AETHERIS_HAS_TLS`), with certificate + hostname verification; without it,
   only `http://` URLs are reachable. DNS resolution is still synchronous (it can
   block), and the window manager is a headless/X11 prototype with a stub Cocoa
@@ -94,8 +94,9 @@ non-goals list.
   font, font selection, kerning or shaping.
 - **Standards coverage is partial.** Flex and Grid are foundational; many CSS
   properties and HTML behaviours are unimplemented.
-- **Networking is not production-ready.** There is no complete TLS/certificate
-  validation or full RFC-level cookie behaviour.
+- **Networking is not production-ready.** Redirects and a host-scoped cookie
+  jar are handled, but TLS/certificate validation is not complete and cookies
+  are not RFC-complete (Domain/Expires/Secure/HttpOnly attributes are ignored).
 - **Provenance.** The repository contains upstream-derived Ladybird/SerenityOS
   infrastructure; see [UPSTREAM_ATTRIBUTION.md](UPSTREAM_ATTRIBUTION.md) before
   making licensing or commercial-use claims.
