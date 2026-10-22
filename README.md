@@ -170,7 +170,7 @@ cmake --build --preset StandaloneSize
 
 The size profile applies only to the Aetheris targets (`AetherisRendering`,
 `AetherisRuntime`, `aetheris`); a stripped `aetheris` executable is on the
-order of 0.7 MB with the current feature set (HTML/CSS layout, bitmap-font
+order of 1 MB with the current feature set (HTML/CSS layout, bitmap-font
 text, PNG/JPEG/GIF/SVG/WebP images, HTTPS/TLS and the HTTP client all linked in).
 
 The `aetheris` executable exposes a small headless command surface:
