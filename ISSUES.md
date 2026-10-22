@@ -46,6 +46,8 @@ The `aetheris` executable exposes a small, headless-friendly command surface:
 ./aetheris --version       # version banner
 ./aetheris --smoke-test    # initialise every subsystem, run a bounded frame
                            # loop and exit 0 (used by CI; no display needed)
+./aetheris --fetch <url>   # fetch a URL over HTTP and print status/size
+./aetheris --render <url>  # fetch a URL, render it and write a PPM image
 ```
 
 The Aetheris rendering pipeline is exercised by the CTest suite. To run just the
@@ -64,10 +66,11 @@ non-goals list.
 - **No JavaScript engine.** Scripting is not implemented; only the
   HTML/CSS/layout/paint pipeline is present.
 - **Prototype runtime cluster** (`src/cache`, `src/network`, `src/ui`,
-  `include/aetheris/`): the socket layer resolves IPv4 literals only (no
-  `getaddrinfo`), the HTTP path is a minimal sniffer, the window manager is a
-  headless/X11 prototype, and the Cocoa (macOS) backend is a stub. These are
-  compile-checked but not production-complete.
+  `include/aetheris/`): the socket layer resolves hostnames via `getaddrinfo`
+  and connects with a bounded timeout, and there is a minimal HTTP/1.1 client
+  (`HttpClient`). DNS resolution is still synchronous (it can block), TLS is not
+  implemented, so only `http://` URLs are reachable, and the window manager is a
+  headless/X11 prototype with a stub Cocoa (macOS) backend.
 - **Standards coverage is partial.** Flex and Grid are foundational; many CSS
   properties and HTML behaviours are unimplemented.
 - **Networking is not production-ready.** There is no complete TLS/certificate

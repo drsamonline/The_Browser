@@ -74,7 +74,8 @@ Every module above has regression coverage under `Tests/AetherisRendering/`
 
 `src/main.cpp`, `src/cache/`, `src/network/`, `src/ui/`, and `include/aetheris/`
 contain the prototype runtime (ghost cache with LZ4 compression, socket
-abstraction, X11/Win32/Cocoa window manager). They are wired into the
+abstraction with DNS + a bounded connect timeout, an HTTP/1.1 client, and the
+X11/Win32/Cocoa window manager). They are wired into the
 `AetherisRuntime` static library and the `aetheris` executable, so they are
 compile-checked in every standalone build. Their external dependencies (LZ4,
 X11) are **optional**: `cmake/AetherisStandaloneDeps.cmake` falls back to a

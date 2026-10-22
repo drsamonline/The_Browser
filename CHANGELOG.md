@@ -18,6 +18,9 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - Documentation set completed in GitHub style: `docs/USER_GUIDE.md`, `docs/ARCHITECTURE.md`, root `AUTHORS` file, author watermark (Dr. Sohil Momin) across project documents, `.mailmap` identity mapping, and Aetheris CODEOWNERS entries.
 - `Standalone` and `StandaloneSize` CMake presets, plus the `AETHERIS_SIZE_OPTIMIZED` profile (`-Os`, dead-section elimination, LTO, stripped) for minimum-footprint builds of the Aetheris targets.
 - A "known gaps and open work" section in `ISSUES.md`.
+- A minimal HTTP/1.1 client (`HttpClient`, `include/aetheris/network/http_client.hpp`) with DNS resolution via `getaddrinfo`, a bounded (non-blocking) connect timeout, and Content-Length, chunked and read-until-close body handling.
+- Headless `aetheris --fetch <url>` and `aetheris --render <url> [out.ppm]` modes; the executable now links `AetherisRendering` and can fetch a URL and render it to a PPM end to end.
+- `TestAetherisHttpClient`: a loopback-server regression test covering DNS + HTTP round-tripping.
 
 ### Fixed
 
@@ -46,7 +49,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 
 ### Known limitations
 
-Aetheris remains experimental and does not claim complete web-platform compliance, a complete production browser sandbox, or production-ready browser networking.
+Aetheris remains experimental and does not claim complete web-platform compliance, a complete production browser sandbox, or production-ready browser networking. Only `http://` URLs are reachable: TLS is not implemented, and DNS resolution is synchronous.
 
 ---
 

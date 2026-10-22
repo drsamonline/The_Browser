@@ -171,6 +171,17 @@ The size profile applies only to the Aetheris targets (`AetherisRendering`,
 `AetherisRuntime`, `aetheris`); a stripped `aetheris` executable is on the
 order of a few hundred kilobytes.
 
+The `aetheris` executable exposes a small headless command surface:
+
+```bash
+./aetheris --smoke-test           # init all subsystems, bounded frame loop, exit 0
+./aetheris --fetch <url>          # fetch a URL over HTTP, print status and size
+./aetheris --render <url> [out]   # fetch a URL and render it to a PPM image
+```
+
+Networking supports `http://` only: hostnames resolve through `getaddrinfo`
+and the connect is time-bounded, but TLS is not implemented.
+
 ## 🧭 Development principles
 
 - Preserve working architecture unless a change has a clear technical justification.

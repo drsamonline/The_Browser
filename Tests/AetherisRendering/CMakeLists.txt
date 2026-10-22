@@ -181,3 +181,11 @@ add_test(NAME TestBrowserChrome COMMAND TestBrowserChrome)
 add_executable(TestAetherisReleaseSmoke TestReleaseSmoke.cpp)
 target_link_libraries(TestAetherisReleaseSmoke PRIVATE AetherisRendering)
 add_test(NAME AetherisReleaseSmoke COMMAND TestAetherisReleaseSmoke)
+
+# Networking: the HTTP client lives in AetherisRuntime (the prototype runtime),
+# so this test links that target plus the threads library it uses for its
+# loopback server thread.
+find_package(Threads REQUIRED)
+add_executable(TestAetherisHttpClient TestAetherisHttpClient.cpp)
+target_link_libraries(TestAetherisHttpClient PRIVATE AetherisRuntime Threads::Threads)
+add_test(NAME AetherisHttpClient COMMAND TestAetherisHttpClient)

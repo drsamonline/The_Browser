@@ -5,8 +5,12 @@
 
 #include "aetheris/core.hpp"
 #include "aetheris/network/socket_abstraction.hpp"
+#include "aetheris/network/http_client.hpp"
 #include "aetheris/cache/ghost_cache.hpp"
 #include "aetheris/ui/window_manager.hpp"
+
+#include "render_document.hpp"
+#include "image_output.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -108,6 +112,62 @@ static int run_smoke_test() {
     return 0;
 }
 
+// Headless fetch mode: resolve and GET a URL over the network, then report the
+// result. Validates the networking path without needing a display server.
+static int run_fetch(std::string const& url) {
+    if (network::Socket::initialize() != network::SocketError::None) {
+        std::cerr << "Failed to initialize network subsystem" << std::endl;
+        return 1;
+    }
+
+    auto response = network::HttpClient::get(url);
+    network::Socket::cleanup();
+
+    if (!response.error.empty()) {
+        std::cerr << "Fetch failed: " << response.error << std::endl;
+        return 1;
+    }
+
+    std::cout << response.status_line << std::endl;
+    std::cout << "  Content-Type: " << response.header("Content-Type") << std::endl;
+    std::cout << "  Bytes: " << response.body.size() << std::endl;
+    return response.ok() ? 0 : 2;
+}
+
+// Headless render mode: fetch a URL, run the rendering pipeline and write the
+// resulting surface to a PPM file. Exercises the full fetch -> parse -> style
+// -> layout -> paint path without a display server.
+static int run_render(std::string const& url, std::string const& output_path) {
+    if (network::Socket::initialize() != network::SocketError::None) {
+        std::cerr << "Failed to initialize network subsystem" << std::endl;
+        return 1;
+    }
+
+    auto response = network::HttpClient::get(url);
+    network::Socket::cleanup();
+
+    if (!response.error.empty()) {
+        std::cerr << "Fetch failed: " << response.error << std::endl;
+        return 1;
+    }
+    if (!response.ok()) {
+        std::cerr << "HTTP error: " << response.status_line << std::endl;
+        return 2;
+    }
+
+    rendering::RenderDocument document = rendering::RenderDocument::create(response.body, {}, 1024.0f);
+    // A PPM has no alpha channel, so render onto an opaque white background to
+    // keep the output viewable.
+    auto surface = document.render_to_surface(1024, 768, rendering::Color { 255, 255, 255, 255 });
+    if (!rendering::ImageOutput::write_ppm(surface, output_path)) {
+        std::cerr << "Failed to write " << output_path << std::endl;
+        return 1;
+    }
+
+    std::cout << "Rendered " << response.body.size() << " bytes of HTML to " << output_path << std::endl;
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     using namespace std::chrono;
 
@@ -117,6 +177,10 @@ int main(int argc, char* argv[]) {
             std::cout << "Usage: aetheris [options]\n"
                       << "  --smoke-test   Initialize all subsystems, run a few headless\n"
                       << "                 frames, print stats and exit 0 (used by CI).\n"
+                      << "  --fetch <url>  Fetch a URL over HTTP and print the status,\n"
+                      << "                 content type and body size.\n"
+                      << "  --render <url> [out.ppm]\n"
+                      << "                 Fetch a URL, render it and write a PPM image.\n"
                       << "  --version      Print version information.\n"
                       << "  -h, --help     Print this help.\n";
             return 0;
@@ -127,6 +191,17 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--smoke-test") {
             return run_smoke_test();
+        }
+        if (arg == "--fetch" && i + 1 < argc) {
+            return run_fetch(argv[++i]);
+        }
+        if (arg == "--render" && i + 1 < argc) {
+            std::string url = argv[++i];
+            std::string output_path = "aetheris-render.ppm";
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                output_path = argv[++i];
+            }
+            return run_render(url, output_path);
         }
     }
 

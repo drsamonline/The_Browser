@@ -95,7 +95,7 @@ add_executable(aetheris
     main.cpp
 )
 
-target_link_libraries(aetheris PRIVATE AetherisRuntime)
+target_link_libraries(aetheris PRIVATE AetherisRuntime AetherisRendering)
 
 set_target_properties(aetheris PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"

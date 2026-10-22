@@ -29,6 +29,8 @@
     #include <unistd.h>
     #include <fcntl.h>
     #include <errno.h>
+    #include <netdb.h>
+    #include <sys/select.h>
 #endif
 
 namespace aetheris::network {
@@ -115,69 +117,99 @@ public:
     }
     
     /**
-     * Connect to remote host
+     * Connect to a remote host. Accepts a hostname or an IP literal and
+     * resolves it with getaddrinfo, trying each returned address in turn.
      */
     SocketError connect(std::string_view host, uint16_t port, int timeout_ms = 5000) {
-        // Create socket
-#if AETHERIS_PLATFORM_WINDOWS
-        m_socket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (m_socket == INVALID_SOCKET) {
-            return SocketError::InvalidSocket;
-        }
-        
-        // Set timeout
-        DWORD timeout = static_cast<DWORD>(timeout_ms);
-        ::setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, 
-                     reinterpret_cast<const char*>(&timeout), sizeof(timeout));
-#else
-        m_socket = ::socket(AF_INET, SOCK_STREAM, 0);
-        if (m_socket < 0) {
-            return SocketError::InvalidSocket;
-        }
-        
-        // Set timeout using timeval
-        struct timeval tv;
-        tv.tv_sec = timeout_ms / 1000;
-        tv.tv_usec = (timeout_ms % 1000) * 1000;
-        ::setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-#endif
-        
-        // Resolve hostname
-        struct sockaddr_in server_addr{};
-        server_addr.sin_family = AF_INET;
-        server_addr.sin_port = htons(port);
-        
-#if AETHERIS_PLATFORM_WINDOWS
-        auto addr_result = inet_pton(AF_INET, std::string(host).c_str(), &server_addr.sin_addr);
-#else
-        auto addr_result = inet_pton(AF_INET, std::string(host).c_str(), &server_addr.sin_addr);
-#endif
-        
-        if (addr_result <= 0) {
-            // Try DNS resolution (simplified - in production use getaddrinfo)
+        close();
+
+        struct addrinfo hints {};
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_protocol = IPPROTO_TCP;
+
+        struct addrinfo* addresses = nullptr;
+        std::string host_name(host);
+        std::string service = std::to_string(port);
+        if (::getaddrinfo(host_name.c_str(), service.c_str(), &hints, &addresses) != 0 || !addresses) {
             return SocketError::ConnectionFailed;
         }
-        
-        // Connect
+
+        SocketError outcome = SocketError::ConnectionFailed;
+        for (auto* address = addresses; address; address = address->ai_next) {
+            auto candidate = ::socket(address->ai_family, address->ai_socktype, address->ai_protocol);
 #if AETHERIS_PLATFORM_WINDOWS
-        int result = ::connect(m_socket, 
-                               reinterpret_cast<struct sockaddr*>(&server_addr), 
-                               sizeof(server_addr));
-        if (result == SOCKET_ERROR) {
-            close();
-            return SocketError::ConnectionFailed;
-        }
+            if (candidate == INVALID_SOCKET)
+                continue;
+            DWORD io_timeout = static_cast<DWORD>(timeout_ms);
+            ::setsockopt(candidate, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&io_timeout), sizeof(io_timeout));
+            ::setsockopt(candidate, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&io_timeout), sizeof(io_timeout));
+
+            // Non-blocking connect: a filtered or unreachable host must not
+            // hang the browser for the kernel's full TCP timeout.
+            u_long non_blocking = 1;
+            ::ioctlsocket(candidate, FIONBIO, &non_blocking);
+            bool connected = ::connect(candidate, address->ai_addr, static_cast<int>(address->ai_addrlen)) == 0;
+            if (!connected && ::WSAGetLastError() == WSAEWOULDBLOCK) {
+                fd_set write_set;
+                FD_ZERO(&write_set);
+                FD_SET(candidate, &write_set);
+                struct timeval wait;
+                wait.tv_sec = timeout_ms / 1000;
+                wait.tv_usec = (timeout_ms % 1000) * 1000;
+                if (::select(0, nullptr, &write_set, nullptr, &wait) > 0) {
+                    int so_error = 0;
+                    int length = sizeof(so_error);
+                    connected = ::getsockopt(candidate, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&so_error), &length) == 0 && so_error == 0;
+                }
+            }
+            non_blocking = 0;
+            ::ioctlsocket(candidate, FIONBIO, &non_blocking);
+
+            if (connected) {
+                m_socket = candidate;
+                outcome = SocketError::None;
+                break;
+            }
+            ::closesocket(candidate);
 #else
-        int result = ::connect(m_socket, 
-                               reinterpret_cast<struct sockaddr*>(&server_addr), 
-                               sizeof(server_addr));
-        if (result < 0) {
-            close();
-            return SocketError::ConnectionFailed;
-        }
+            if (candidate < 0)
+                continue;
+            struct timeval io_timeout;
+            io_timeout.tv_sec = timeout_ms / 1000;
+            io_timeout.tv_usec = (timeout_ms % 1000) * 1000;
+            ::setsockopt(candidate, SOL_SOCKET, SO_RCVTIMEO, &io_timeout, sizeof(io_timeout));
+            ::setsockopt(candidate, SOL_SOCKET, SO_SNDTIMEO, &io_timeout, sizeof(io_timeout));
+
+            int flags = ::fcntl(candidate, F_GETFL, 0);
+            ::fcntl(candidate, F_SETFL, flags | O_NONBLOCK);
+            bool connected = ::connect(candidate, address->ai_addr, address->ai_addrlen) == 0;
+            if (!connected && errno == EINPROGRESS) {
+                fd_set write_set;
+                FD_ZERO(&write_set);
+                FD_SET(candidate, &write_set);
+                struct timeval wait;
+                wait.tv_sec = timeout_ms / 1000;
+                wait.tv_usec = (timeout_ms % 1000) * 1000;
+                if (::select(candidate + 1, nullptr, &write_set, nullptr, &wait) > 0) {
+                    int so_error = 0;
+                    socklen_t length = sizeof(so_error);
+                    connected = ::getsockopt(candidate, SOL_SOCKET, SO_ERROR, &so_error, &length) == 0 && so_error == 0;
+                }
+            }
+            ::fcntl(candidate, F_SETFL, flags);
+
+            if (connected) {
+                m_socket = candidate;
+                outcome = SocketError::None;
+                break;
+            }
+            ::close(candidate);
 #endif
-        
-        return SocketError::None;
+        }
+
+        ::freeaddrinfo(addresses);
+        return outcome;
     }
     
     /**
