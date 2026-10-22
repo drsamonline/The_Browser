@@ -302,6 +302,47 @@ void StyleResolver::apply_declaration(StyleProperties& properties, CssDeclaratio
         return;
     }
 
+    if (declaration.property == "border") {
+        // <width> <style> <color>, in any order.
+        std::istringstream stream(declaration.value);
+        std::string token;
+        while (stream >> token) {
+            if (token == "solid" || token == "dashed" || token == "dotted" || token == "none") {
+                properties.set("border-style", token);
+            } else if (std::isdigit(static_cast<unsigned char>(token[0])) || token[0] == '.') {
+                properties.set("border-top-width", token);
+                properties.set("border-right-width", token);
+                properties.set("border-bottom-width", token);
+                properties.set("border-left-width", token);
+            } else {
+                properties.set("border-color", token);
+            }
+        }
+        return;
+    }
+
+    if (declaration.property == "background") {
+        auto const& value = declaration.value;
+        auto url_pos = value.find("url(");
+        if (url_pos != std::string::npos) {
+            auto url_end = value.find(')', url_pos);
+            properties.set("background-image", value.substr(url_pos, url_end == std::string::npos ? std::string::npos : url_end - url_pos + 1));
+        }
+        std::istringstream stream(value);
+        std::string token;
+        while (stream >> token) {
+            if (token.find("url(") != std::string::npos)
+                continue;
+            if (token == "repeat" || token == "no-repeat" || token == "repeat-x" || token == "repeat-y"
+                || token == "center" || token == "left" || token == "right" || token == "top" || token == "bottom"
+                || token == "fixed" || token == "scroll" || token == "cover" || token == "contain")
+                continue;
+            properties.set("background-color", token);
+            break;
+        }
+        return;
+    }
+
     properties.set(declaration.property, declaration.value);
 }
 

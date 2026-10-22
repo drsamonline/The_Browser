@@ -197,3 +197,7 @@ add_test(NAME AetherisBitmapFont COMMAND TestAetherisBitmapFont)
 add_executable(TestAetherisPng TestAetherisPng.cpp)
 target_link_libraries(TestAetherisPng PRIVATE AetherisRendering)
 add_test(NAME AetherisPng COMMAND TestAetherisPng)
+
+add_executable(TestAetherisCssShorthands TestAetherisCssShorthands.cpp)
+target_link_libraries(TestAetherisCssShorthands PRIVATE AetherisRendering)
+add_test(NAME AetherisCssShorthands COMMAND TestAetherisCssShorthands)
