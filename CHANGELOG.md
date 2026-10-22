@@ -36,6 +36,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - A self-contained mini JavaScript engine (`src/js/`, the `AetherisJS` library): lexer, recursive-descent parser and tree-walking interpreter covering variables, operators, control flow, functions/recursion, arrays, objects and built-ins (`console.log`, `Math`, `parseInt`/`parseFloat`, string and array methods, `document.write`). `aetheris --eval <script>` runs a snippet and `--render` executes inline `<script>` blocks, injecting `document.write` output before layout. `TestAetherisJs` covers the core. (The full LibJS engine in the tree is a bytecode VM needing Rust + a clang GC plugin + ICU and is not built in the standalone profile.)
 - Expanded the mini JavaScript engine with String methods (`split`, `replace`, `substring`, `repeat`, `trim`, `includes`, `startsWith`, `endsWith`), Array methods (`forEach`, `map`, `filter`, `reduce`, `reverse`, `sort`, `concat`), numeric indexing on strings and arrays, `Object.keys` and `Array.isArray`, and a `CREDITS.md` documenting upstream attribution.
 - Added closures, the `new` operator with constructor functions and `this` binding for methods, `JSON.stringify`/`JSON.parse`, and `Math.trunc`/`Math.sign` to the mini JavaScript engine.
+- Added a prototype chain to the mini JavaScript engine: functions get a `prototype` object, `new` links instances to it, property lookup walks the chain, `Object.prototype` is extensible, and the `instanceof` operator is supported.
 
 ### Fixed
 

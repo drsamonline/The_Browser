@@ -117,7 +117,7 @@ bool is_keyword(std::string const& text)
 {
     static const char* keywords[] = {
         "var", "let", "const", "function", "return", "if", "else", "while", "for",
-        "break", "continue", "true", "false", "null", "undefined", "new", "typeof", "else"
+        "break", "continue", "true", "false", "null", "undefined", "new", "typeof", "else", "instanceof"
     };
     for (auto* keyword : keywords)
         if (text == keyword)
@@ -470,7 +470,7 @@ static int binary_precedence(std::string const& op)
     if (op == "||") return 1;
     if (op == "&&") return 2;
     if (op == "==" || op == "!=" || op == "===" || op == "!==") return 3;
-    if (op == "<" || op == ">" || op == "<=" || op == ">=") return 4;
+    if (op == "<" || op == ">" || op == "<=" || op == ">=" || op == "instanceof") return 4;
     if (op == "+" || op == "-") return 5;
     if (op == "*" || op == "/" || op == "%") return 6;
     return 0;
@@ -480,7 +480,7 @@ std::unique_ptr<Node> Parser::parse_binary(int min_precedence)
 {
     auto left = parse_unary();
     for (;;) {
-        if (peek().type != TokenType::Punctuator)
+        if (peek().type != TokenType::Punctuator && peek().type != TokenType::Keyword)
             break;
         std::string op = peek().text;
         int precedence = binary_precedence(op);
@@ -836,6 +836,8 @@ struct JsonParser {
 
 void Interpreter::setup_globals()
 {
+    m_object_prototype = std::make_shared<Object>();
+
     // console.log
     auto console = std::make_shared<Object>();
     console->properties["log"] = Value::from_object(make_native([this](std::vector<Value> const& args) {
@@ -910,6 +912,7 @@ void Interpreter::setup_globals()
             for (auto const& [key, value] : args[0].object->properties) result->elements.push_back(Value::from_string(key));
         return Value::from_object(result);
     }));
+    object_constructor->properties["prototype"] = Value::from_object(m_object_prototype);
     m_globals->variables["Object"] = Value::from_object(object_constructor);
 
     auto array_constructor = make_native([](std::vector<Value> const&) {
@@ -954,8 +957,19 @@ std::shared_ptr<Object> Interpreter::make_array(std::vector<Value> elements)
 {
     auto object = std::make_shared<Object>();
     object->is_array = true;
+    object->prototype = m_object_prototype;
     object->elements = std::move(elements);
     return object;
+}
+
+Value Interpreter::get_property_from_chain(std::shared_ptr<Object> const& object, std::string const& name)
+{
+    for (auto current = object; current; current = current->prototype) {
+        auto it = current->properties.find(name);
+        if (it != current->properties.end())
+            return it->second;
+    }
+    return Value::undefined();
 }
 
 Value Interpreter::get_property(Value const& object, std::string const& name)
@@ -1202,16 +1216,10 @@ Value Interpreter::get_property(Value const& object, std::string const& name)
                 return shared->elements[index];
             return Value::undefined();
         }
-        auto it = shared->properties.find(name);
-        if (it != shared->properties.end())
-            return it->second;
-        return Value::undefined();
+        return get_property_from_chain(shared, name);
     }
 
-    auto it = shared->properties.find(name);
-    if (it != shared->properties.end())
-        return it->second;
-    return Value::undefined();
+    return get_property_from_chain(shared, name);
 }
 
 void Interpreter::set_property(Value const& object, std::string const& name, Value value)
@@ -1254,6 +1262,17 @@ Value Interpreter::evaluate_binary(std::string const& op, Value const& left, Val
     if (op == ">") return Value::from_boolean(left.to_number() > right.to_number());
     if (op == "<=") return Value::from_boolean(left.to_number() <= right.to_number());
     if (op == ">=") return Value::from_boolean(left.to_number() >= right.to_number());
+    if (op == "instanceof") {
+        if (!left.is_object() || !left.object || !right.is_object() || !right.object)
+            return Value::from_boolean(false);
+        auto target = get_property(right, "prototype");
+        if (!target.is_object() || !target.object)
+            return Value::from_boolean(false);
+        for (auto current = left.object; current; current = current->prototype)
+            if (current == target.object)
+                return Value::from_boolean(true);
+        return Value::from_boolean(false);
+    }
     return Value::undefined();
 }
 
@@ -1308,6 +1327,7 @@ Value Interpreter::evaluate(Node const& node, std::shared_ptr<Environment> const
     }
     case NodeType::ObjectLiteral: {
         auto object = std::make_shared<Object>();
+        object->prototype = m_object_prototype;
         for (auto const& [key, value] : node.properties)
             object->properties[key] = evaluate(*value, env);
         return Value::from_object(object);
@@ -1316,6 +1336,12 @@ Value Interpreter::evaluate(Node const& node, std::shared_ptr<Environment> const
     case NodeType::FunctionDeclaration: {
         auto object = std::make_shared<Object>();
         object->is_function = true;
+        object->prototype = m_object_prototype;
+        {
+            auto prototype = std::make_shared<Object>();
+            prototype->prototype = m_object_prototype;
+            object->properties["prototype"] = Value::from_object(prototype);
+        }
         object->parameters = node.parameters;
         object->function_body = std::make_shared<Node>();
         if (node.body) {
@@ -1417,6 +1443,8 @@ Value Interpreter::evaluate(Node const& node, std::shared_ptr<Environment> const
             constructor = evaluate(*node.left, env);
         }
         auto instance = std::make_shared<Object>();
+        auto prototype_property = get_property(constructor, "prototype");
+        instance->prototype = (prototype_property.is_object() && prototype_property.object) ? prototype_property.object : m_object_prototype;
         Value this_value = Value::from_object(instance);
         auto result = call(constructor, arguments, this_value);
         if (result.is_object() && result.object)

@@ -172,6 +172,29 @@ int main()
         require(h.output == "{\"a\":1,\"b\":[true,null,\"x\"]}\nx\n1\n", "JSON");
     }
 
+    // Prototypes and instanceof.
+    {
+        Harness h;
+        h.run("function Animal(name) { this.name = name; }"
+              "Animal.prototype.speak = function () { return this.name + ' speaks'; };"
+              "function Dog(name) { this.name = name; }"
+              "Dog.prototype = new Animal();"
+              "var d = new Dog('Rex');"
+              "console.log(d.speak());"
+              "console.log(d instanceof Dog);"
+              "console.log(d instanceof Animal);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "Rex speaks\ntrue\ntrue\n", "prototypes + instanceof");
+    }
+
+    // Object.prototype extensions are visible to object literals.
+    {
+        Harness h;
+        h.run("Object.prototype.tag = function () { return 'obj'; }; var o = {}; console.log(o.tag());");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "obj\n", "Object.prototype extension");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;

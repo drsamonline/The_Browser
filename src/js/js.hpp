@@ -161,6 +161,7 @@ using NativeFunction = std::function<Value(std::vector<Value> const&)>;
 struct Object {
     std::map<std::string, Value> properties;
     std::vector<Value> elements;
+    std::shared_ptr<Object> prototype; // [[Prototype]] chain link
     bool is_array { false };
     bool is_function { false };
     bool is_native { false };
@@ -215,6 +216,7 @@ private:
     Value call(Value const& callee, std::vector<Value> const& arguments, Value const& this_value = {});
     Value call_function(std::shared_ptr<Object> const& function, std::vector<Value> const& arguments, Value const& this_value = {});
     Value get_property(Value const& object, std::string const& name);
+    Value get_property_from_chain(std::shared_ptr<Object> const& object, std::string const& name);
     void set_property(Value const& object, std::string const& name, Value value);
     std::shared_ptr<Object> make_array(std::vector<Value> elements);
 
@@ -222,6 +224,7 @@ private:
     void declare(std::shared_ptr<Environment> const& env, std::string const& name, Value value);
 
     std::shared_ptr<Environment> m_globals;
+    std::shared_ptr<Object> m_object_prototype;
     bool m_has_error { false };
     std::string m_error;
 };

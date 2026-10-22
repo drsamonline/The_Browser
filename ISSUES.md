@@ -66,9 +66,9 @@ non-goals list.
 - **The JavaScript engine is a small subset.** `src/js/` is a self-contained
   tree-walking interpreter (variables, operators, control flow, functions and
   recursion, arrays, objects and a few built-ins). It is not a conforming
-  implementation: closures, constructors/`new`/`this`, and `JSON` are supported,
-  but there are no prototypes or classes, no async, no regular expressions, and
-  only a minimal DOM (`document.write`).
+  implementation: closures, constructors/`new`/`this`, prototypes and
+  `instanceof`, and `JSON` are supported, but there is no `class` syntax, no
+  async, no regular expressions, and only a minimal DOM (`document.write`).
   The full LibJS engine in the tree needs Rust, a clang GC plugin and ICU and
   is not built in the standalone profile.
 - **Prototype runtime cluster** (`src/cache`, `src/network`, `src/ui`,
