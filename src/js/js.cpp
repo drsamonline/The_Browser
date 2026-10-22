@@ -737,6 +737,28 @@ void Interpreter::setup_globals()
         return Value::from_boolean(args.empty() || std::isnan(args[0].to_number()));
     }));
 
+    auto object_constructor = make_native([](std::vector<Value> const& args) {
+        return args.empty() ? Value::from_object(std::make_shared<Object>()) : args[0];
+    });
+    object_constructor->properties["keys"] = Value::from_object(make_native([](std::vector<Value> const& args) {
+        auto result = std::make_shared<Object>();
+        result->is_array = true;
+        if (!args.empty() && args[0].is_object() && args[0].object)
+            for (auto const& [key, value] : args[0].object->properties) result->elements.push_back(Value::from_string(key));
+        return Value::from_object(result);
+    }));
+    m_globals->variables["Object"] = Value::from_object(object_constructor);
+
+    auto array_constructor = make_native([](std::vector<Value> const&) {
+        auto array = std::make_shared<Object>();
+        array->is_array = true;
+        return Value::from_object(array);
+    });
+    array_constructor->properties["isArray"] = Value::from_object(make_native([](std::vector<Value> const& args) {
+        return Value::from_boolean(!args.empty() && args[0].is_object() && args[0].object && args[0].object->is_array);
+    }));
+    m_globals->variables["Array"] = Value::from_object(array_constructor);
+
     // document.write
     auto document = std::make_shared<Object>();
     document->properties["write"] = Value::from_object(make_native([this](std::vector<Value> const& args) {
@@ -797,6 +819,80 @@ Value Interpreter::get_property(Value const& object, std::string const& name)
                 if (end < start) end = start;
                 return Value::from_string(receiver.substr(start, end - start));
             }));
+        if (name == "substring")
+            return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
+                int size = static_cast<int>(receiver.size());
+                int start = args.empty() ? 0 : std::max(0, std::min(size, static_cast<int>(args[0].to_number())));
+                int end = args.size() >= 2 ? std::max(0, std::min(size, static_cast<int>(args[1].to_number()))) : size;
+                if (start > end) std::swap(start, end);
+                return Value::from_string(receiver.substr(start, end - start));
+            }));
+        if (name == "split")
+            return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
+                std::vector<Value> parts;
+                if (args.empty()) {
+                    parts.push_back(Value::from_string(receiver));
+                } else {
+                    std::string separator = args[0].to_string();
+                    if (separator.empty()) {
+                        for (char c : receiver) parts.push_back(Value::from_string(std::string(1, c)));
+                    } else {
+                        size_t pos = 0;
+                        while (true) {
+                            auto next = receiver.find(separator, pos);
+                            if (next == std::string::npos) { parts.push_back(Value::from_string(receiver.substr(pos))); break; }
+                            parts.push_back(Value::from_string(receiver.substr(pos, next - pos)));
+                            pos = next + separator.size();
+                        }
+                    }
+                }
+                auto array = std::make_shared<Object>();
+                array->is_array = true;
+                array->elements = std::move(parts);
+                return Value::from_object(array);
+            }));
+        if (name == "replace")
+            return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
+                if (args.size() < 2) return Value::from_string(receiver);
+                std::string search = args[0].to_string();
+                std::string replacement = args[1].to_string();
+                auto pos = search.empty() ? std::string::npos : receiver.find(search);
+                if (pos == std::string::npos) return Value::from_string(receiver);
+                return Value::from_string(receiver.substr(0, pos) + replacement + receiver.substr(pos + search.size()));
+            }));
+        if (name == "repeat")
+            return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
+                int count = args.empty() ? 0 : std::max(0, static_cast<int>(args[0].to_number()));
+                std::string result;
+                for (int i = 0; i < count; ++i) result += receiver;
+                return Value::from_string(result);
+            }));
+        if (name == "trim")
+            return Value::from_object(make_native([receiver](std::vector<Value> const&) {
+                size_t begin = receiver.find_first_not_of(" \t\r\n");
+                size_t end = receiver.find_last_not_of(" \t\r\n");
+                return Value::from_string(begin == std::string::npos ? std::string() : receiver.substr(begin, end - begin + 1));
+            }));
+        if (name == "includes")
+            return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
+                return Value::from_boolean(!args.empty() && receiver.find(args[0].to_string()) != std::string::npos);
+            }));
+        if (name == "startsWith")
+            return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
+                return Value::from_boolean(!args.empty() && receiver.rfind(args[0].to_string(), 0) == 0);
+            }));
+        if (name == "endsWith")
+            return Value::from_object(make_native([receiver](std::vector<Value> const& args) {
+                if (args.empty()) return Value::from_boolean(false);
+                std::string suffix = args[0].to_string();
+                return Value::from_boolean(receiver.size() >= suffix.size() && receiver.compare(receiver.size() - suffix.size(), suffix.size(), suffix) == 0);
+            }));
+        if (!name.empty() && name.find_first_not_of("0123456789") == std::string::npos) {
+            unsigned long index = std::strtoul(name.c_str(), nullptr, 10);
+            if (index < receiver.size())
+                return Value::from_string(receiver.substr(index, 1));
+            return Value::undefined();
+        }
         return Value::undefined();
     }
 
@@ -865,6 +961,68 @@ Value Interpreter::get_property(Value const& object, std::string const& name)
                 array->elements = std::move(result);
                 return Value::from_object(array);
             }));
+        if (name == "forEach" || name == "map" || name == "filter") {
+            return Value::from_object(make_native([this, shared, name](std::vector<Value> const& args) {
+                auto result = std::make_shared<Object>();
+                result->is_array = true;
+                if (args.empty()) return Value::from_object(result);
+                Value callback = args[0];
+                for (size_t i = 0; i < shared->elements.size(); ++i) {
+                    std::vector<Value> callback_args { shared->elements[i], Value::from_number(static_cast<double>(i)) };
+                    auto value = call(callback, callback_args);
+                    if (name == "forEach") continue;
+                    if (name == "map") result->elements.push_back(value);
+                    else if (value.to_boolean()) result->elements.push_back(shared->elements[i]);
+                }
+                return Value::from_object(result);
+            }));
+        }
+        if (name == "reduce")
+            return Value::from_object(make_native([this, shared](std::vector<Value> const& args) {
+                if (args.empty()) return Value::undefined();
+                Value callback = args[0];
+                Value accumulator = args.size() >= 2 ? args[1] : Value::undefined();
+                size_t start = 0;
+                if (args.size() < 2) {
+                    if (shared->elements.empty()) return Value::undefined();
+                    accumulator = shared->elements[0];
+                    start = 1;
+                }
+                for (size_t i = start; i < shared->elements.size(); ++i) {
+                    std::vector<Value> callback_args { accumulator, shared->elements[i], Value::from_number(static_cast<double>(i)) };
+                    accumulator = call(callback, callback_args);
+                }
+                return accumulator;
+            }));
+        if (name == "reverse")
+            return Value::from_object(make_native([shared](std::vector<Value> const&) {
+                std::reverse(shared->elements.begin(), shared->elements.end());
+                return Value::from_object(shared);
+            }));
+        if (name == "sort")
+            return Value::from_object(make_native([shared](std::vector<Value> const&) {
+                std::sort(shared->elements.begin(), shared->elements.end(), [](Value const& a, Value const& b) { return a.to_string() < b.to_string(); });
+                return Value::from_object(shared);
+            }));
+        if (name == "concat")
+            return Value::from_object(make_native([shared](std::vector<Value> const& args) {
+                auto result = std::make_shared<Object>();
+                result->is_array = true;
+                result->elements = shared->elements;
+                for (auto const& arg : args) {
+                    if (arg.is_object() && arg.object && arg.object->is_array)
+                        for (auto const& element : arg.object->elements) result->elements.push_back(element);
+                    else
+                        result->elements.push_back(arg);
+                }
+                return Value::from_object(result);
+            }));
+        if (!name.empty() && name.find_first_not_of("0123456789") == std::string::npos) {
+            unsigned long index = std::strtoul(name.c_str(), nullptr, 10);
+            if (index < shared->elements.size())
+                return shared->elements[index];
+            return Value::undefined();
+        }
         auto it = shared->properties.find(name);
         if (it != shared->properties.end())
             return it->second;

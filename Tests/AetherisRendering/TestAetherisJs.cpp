@@ -106,6 +106,45 @@ int main()
         require(h.output == "big\ntrue\n", "ternary and logical");
     }
 
+    // String methods.
+    {
+        Harness h;
+        h.run("console.log('a,b,c'.split(',').length);"
+              "console.log('a,b,c'.split(',')[1]);"
+              "console.log('hello'.replace('l', 'L'));"
+              "console.log('abcdef'.substring(1, 4));"
+              "console.log('ab'.repeat(3));"
+              "console.log('  x  '.trim());"
+              "console.log('hello'.includes('ell'));"
+              "console.log('hello'.startsWith('he'));"
+              "console.log('hello'.endsWith('lo'));");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "3\nb\nheLlo\nbcd\nababab\nx\ntrue\ntrue\ntrue\n", "string methods");
+    }
+
+    // Array iteration methods with callbacks.
+    {
+        Harness h;
+        h.run("var a = [1, 2, 3, 4];"
+              "console.log(a.map(function (x) { return x * 2; }).join(','));"
+              "console.log(a.filter(function (x) { return x % 2 === 0; }).join(','));"
+              "console.log(a.reduce(function (acc, x) { return acc + x; }, 0));"
+              "var total = 0; a.forEach(function (x) { total = total + x; }); console.log(total);"
+              "console.log([3, 1, 2].sort().join(','));"
+              "console.log([1, 2, 3].reverse().join(','));");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "2,4,6,8\n2,4\n10\n10\n1,2,3\n3,2,1\n", "array methods");
+    }
+
+    // Object.keys and Array.isArray.
+    {
+        Harness h;
+        h.run("var o = { a: 1, b: 2 }; console.log(Object.keys(o).join(','));"
+              "console.log(Array.isArray([1])); console.log(Array.isArray('x'));");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "a,b\ntrue\nfalse\n", "Object.keys / Array.isArray");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;

@@ -187,6 +187,14 @@ Networking supports `http://` and, when the build finds OpenSSL, `https://`
 a custom CA bundle). Hostnames resolve through `getaddrinfo` and the connect is
 time-bounded.
 
+## Credits
+
+Aetheris is derived from **Ladybird** and **SerenityOS** (BSD-2-Clause); a
+self-contained mini JavaScript engine, the rendering foundation and the
+standalone runtime are Aetheris additions. Optional external libraries
+(OpenSSL, libwebp, LZ4, X11) and bundled public-domain data are used with
+their own licences. See [CREDITS.md](CREDITS.md) for the full breakdown.
+
 ## 🧭 Development principles
 
 - Preserve working architecture unless a change has a clear technical justification.
