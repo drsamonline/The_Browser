@@ -45,6 +45,19 @@ int main()
     require(image.pixel(0, 0).red == 255 && image.pixel(0, 0).alpha == 255, "palette entry 0");
     require(image.pixel(1, 1).green == 255 && image.pixel(1, 1).alpha == 0, "palette entry 3 + tRNS");
 
+    // Interlaced (Adam7) must decode identically to the same non-interlaced image.
+    Image interlaced;
+    require(decode_png(bytes(kPngInterlaced, kPngInterlaced_len), interlaced), "decode interlaced PNG");
+    Image plain;
+    require(decode_png(bytes(kPngPlain, kPngPlain_len), plain), "decode plain PNG");
+    require(interlaced.width == plain.width && interlaced.height == plain.height, "interlaced size");
+    for (int y = 0; y < plain.height; ++y)
+        for (int x = 0; x < plain.width; ++x) {
+            auto a = interlaced.pixel(x, y);
+            auto b = plain.pixel(x, y);
+            require(a.red == b.red && a.green == b.green && a.blue == b.blue, "interlaced matches plain");
+        }
+
     // Non-PNG input is rejected.
     std::vector<unsigned char> junk { 'P', '3', ' ', '2' };
     require(!decode_png(junk, image), "reject non-PNG");

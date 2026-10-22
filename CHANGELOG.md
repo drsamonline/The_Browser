@@ -29,6 +29,8 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - A GIF decoder (`gif.{hpp,cpp}`: LZW, global/local colour tables, interlacing, transparency); the image cache decodes GIF too. `TestAetherisGif` covers a palette fixture.
 - Anti-aliased text: `SoftwareSurface::draw_text` now supersamples each glyph cell (4x4 coverage) and blends by coverage, giving grayscale edges instead of hard pixels.
 - Optional HTTPS/TLS (`tls.{hpp,cpp}`, `AETHERIS_HAS_TLS`): a real OpenSSL handshake with certificate and hostname verification against the system trust store (or `AETHERIS_CA_FILE`); `HttpClient` now serves `https://`. `TestAetherisTls` performs a hermetic handshake against an in-process OpenSSL server (trusted connect + self-signed rejection).
+- Interlaced (Adam7) PNG support in the decoder; `TestAetherisPng` now checks an interlaced image decodes identically to the same non-interlaced image.
+- Progressive JPEG (SOF2) support: multiple scans with spectral selection and successive approximation, sharing one coefficient buffer and reconstructing after the last scan. `TestAetherisJpeg` decodes a progressive fixture.
 
 ### Fixed
 

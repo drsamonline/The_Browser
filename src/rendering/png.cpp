@@ -370,7 +370,10 @@ bool decode_png(std::vector<unsigned char> const& bytes, Image& out)
         pos = data_start + length + 4;
     }
 
-    if (width <= 0 || height <= 0 || interlace != 0)
+    if (width <= 0 || height <= 0)
+        return false;
+    // Interlaced images are handled for byte-aligned pixels (8/16-bit).
+    if (interlace != 0 && bit_depth < 8)
         return false;
     if (bit_depth != 8 && bit_depth != 16 && !(color_type == 3 && (bit_depth == 1 || bit_depth == 2 || bit_depth == 4)))
         return false;
@@ -397,35 +400,69 @@ bool decode_png(std::vector<unsigned char> const& bytes, Image& out)
     }
 
     int bits_per_pixel = channels * bit_depth;
-    int stride = (width * bits_per_pixel + 7) / 8;
     int filter_bpp = (bits_per_pixel + 7) / 8;
-    if (raw.size() < static_cast<size_t>(height) * (stride + 1))
-        return false;
+    int full_stride = (width * bits_per_pixel + 7) / 8;
 
-    std::vector<unsigned char> image_data(static_cast<size_t>(height) * stride);
+    std::vector<unsigned char> image_data(static_cast<size_t>(height) * full_stride, 0);
     size_t raw_pos = 0;
-    for (int y = 0; y < height; ++y) {
-        int filter = raw[raw_pos++];
-        unsigned char const* line = &raw[raw_pos];
-        raw_pos += stride;
-        unsigned char* target = &image_data[static_cast<size_t>(y) * stride];
-        unsigned char const* previous = y > 0 ? &image_data[static_cast<size_t>(y - 1) * stride] : nullptr;
 
-        for (int i = 0; i < stride; ++i) {
-            int value = line[i];
-            int left = i >= filter_bpp ? target[i - filter_bpp] : 0;
-            int up = previous ? previous[i] : 0;
-            int up_left = (previous && i >= filter_bpp) ? previous[i - filter_bpp] : 0;
-            switch (filter) {
-            case 0: break;
-            case 1: value += left; break;
-            case 2: value += up; break;
-            case 3: value += (left + up) / 2; break;
-            case 4: value += paeth(left, up, up_left); break;
-            default: return false;
+    // Unfilter one pass (non-interlaced is a single full-size pass) and scatter
+    // its pixels into the full-resolution image. Adam7 passes interleave rows
+    // and columns; the plain case is x_step = y_step = 1.
+    auto unfilter_pass = [&](int pass_width, int pass_height, int x0, int y0, int x_step, int y_step) -> bool {
+        if (pass_width <= 0 || pass_height <= 0)
+            return true;
+        int pass_stride = (pass_width * bits_per_pixel + 7) / 8;
+        if (raw_pos + static_cast<size_t>(pass_height) * (pass_stride + 1) > raw.size())
+            return false;
+        std::vector<unsigned char> line(static_cast<size_t>(pass_stride), 0);
+        std::vector<unsigned char> previous(static_cast<size_t>(pass_stride), 0);
+        int bytes_per_pixel = bits_per_pixel / 8;
+        for (int py = 0; py < pass_height; ++py) {
+            int filter = raw[raw_pos++];
+            unsigned char const* src = &raw[raw_pos];
+            raw_pos += pass_stride;
+            for (int i = 0; i < pass_stride; ++i) {
+                int value = src[i];
+                int left = i >= filter_bpp ? line[i - filter_bpp] : 0;
+                int up = previous[i];
+                int up_left = i >= filter_bpp ? previous[i - filter_bpp] : 0;
+                switch (filter) {
+                case 0: break;
+                case 1: value += left; break;
+                case 2: value += up; break;
+                case 3: value += (left + up) / 2; break;
+                case 4: value += paeth(left, up, up_left); break;
+                default: return false;
+                }
+                line[i] = static_cast<unsigned char>(value & 0xFF);
             }
-            target[i] = static_cast<unsigned char>(value & 0xFF);
+            unsigned char* target = &image_data[static_cast<size_t>(y0 + py * y_step) * full_stride];
+            if (x_step == 1) {
+                std::memcpy(target, line.data(), static_cast<size_t>(pass_stride));
+            } else if (bytes_per_pixel > 0) {
+                for (int px = 0; px < pass_width; ++px)
+                    std::memcpy(target + static_cast<size_t>(x0 + px * x_step) * bytes_per_pixel,
+                        line.data() + static_cast<size_t>(px) * bytes_per_pixel, static_cast<size_t>(bytes_per_pixel));
+            }
+            previous = line;
         }
+        return true;
+    };
+
+    if (interlace == 1) {
+        static const int x_starts[7] = { 0, 4, 0, 2, 0, 1, 0 };
+        static const int y_starts[7] = { 0, 0, 4, 0, 2, 0, 1 };
+        static const int x_steps[7] = { 8, 8, 4, 4, 2, 2, 1 };
+        static const int y_steps[7] = { 8, 8, 8, 4, 4, 2, 2 };
+        for (int pass = 0; pass < 7; ++pass) {
+            int pass_width = (width - x_starts[pass] + x_steps[pass] - 1) / x_steps[pass];
+            int pass_height = (height - y_starts[pass] + y_steps[pass] - 1) / y_steps[pass];
+            if (!unfilter_pass(pass_width, pass_height, x_starts[pass], y_starts[pass], x_steps[pass], y_steps[pass]))
+                return false;
+        }
+    } else if (!unfilter_pass(width, height, 0, 0, 1, 1)) {
+        return false;
     }
 
     out = Image {};
@@ -434,7 +471,7 @@ bool decode_png(std::vector<unsigned char> const& bytes, Image& out)
     out.pixels.resize(static_cast<size_t>(width) * height);
 
     auto sample = [&](int x, int y, int channel) -> unsigned char {
-        size_t bit_index = static_cast<size_t>(y) * stride * 8 + static_cast<size_t>(x) * bits_per_pixel + static_cast<size_t>(channel) * bit_depth;
+        size_t bit_index = static_cast<size_t>(y) * full_stride * 8 + static_cast<size_t>(x) * bits_per_pixel + static_cast<size_t>(channel) * bit_depth;
         size_t byte_index = bit_index / 8;
         if (bit_depth == 8) {
             return image_data[byte_index];
