@@ -24,6 +24,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace aetheris;
 
@@ -176,6 +177,105 @@ static void set_node_text(rendering::DomNode& node, std::string const& text)
     node.append_child(std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", text));
 }
 
+// ---- JavaScript DOM host -----------------------------------------------------
+// Owns the mapping between JS element handles and DOM nodes, including nodes
+// created with document.createElement that are not yet in the tree.
+namespace {
+
+std::unique_ptr<rendering::DomNode> detach_child(rendering::DomNode& parent, rendering::DomNode* child)
+{
+    for (auto it = parent.children.begin(); it != parent.children.end(); ++it) {
+        if (it->get() == child) {
+            auto node = std::move(*it);
+            parent.children.erase(it);
+            return node;
+        }
+    }
+    return nullptr;
+}
+
+struct DomHost {
+    std::map<aetheris::js::Object*, rendering::DomNode*> node_by_handle;
+    std::map<rendering::DomNode*, rendering::DomNode*> parent_of;
+    std::map<rendering::DomNode*, std::unique_ptr<rendering::DomNode>> pending;
+
+    std::shared_ptr<aetheris::js::Object> handle_for(rendering::DomNode* node);
+
+    void collect(rendering::DomNode& node)
+    {
+        for (auto& child : node.children) {
+            parent_of[child.get()] = &node;
+            collect(*child);
+        }
+    }
+
+    void adopt(rendering::DomNode* parent, rendering::DomNode* child)
+    {
+        std::unique_ptr<rendering::DomNode> node;
+        auto pit = pending.find(child);
+        if (pit != pending.end()) {
+            node = std::move(pit->second);
+            pending.erase(pit);
+        } else {
+            auto par = parent_of.find(child);
+            if (par != parent_of.end())
+                node = detach_child(*par->second, child);
+            if (!node)
+                return;
+        }
+        parent->append_child(std::move(node));
+        parent_of[child] = parent;
+    }
+};
+
+std::shared_ptr<aetheris::js::Object> DomHost::handle_for(rendering::DomNode* node)
+{
+    auto handle = std::make_shared<aetheris::js::Object>();
+    node_by_handle[handle.get()] = node;
+    auto* id = node->attribute("id");
+    handle->properties["id"] = aetheris::js::Value::from_string(id ? *id : "");
+    handle->properties["textContent"] = aetheris::js::Value::from_string(node_text(*node));
+
+    auto set_attribute = std::make_shared<aetheris::js::Object>();
+    set_attribute->is_function = true;
+    set_attribute->is_native = true;
+    set_attribute->native = [node](std::vector<aetheris::js::Value> const& args) {
+        if (args.size() >= 2)
+            node->attributes[args[0].to_string()] = args[1].to_string();
+        return aetheris::js::Value::undefined();
+    };
+    handle->properties["setAttribute"] = aetheris::js::Value::from_object(set_attribute);
+
+    auto get_attribute = std::make_shared<aetheris::js::Object>();
+    get_attribute->is_function = true;
+    get_attribute->is_native = true;
+    get_attribute->native = [node](std::vector<aetheris::js::Value> const& args) {
+        if (args.empty())
+            return aetheris::js::Value::undefined();
+        auto* value = node->attribute(args[0].to_string());
+        return value ? aetheris::js::Value::from_string(*value) : aetheris::js::Value::undefined();
+    };
+    handle->properties["getAttribute"] = aetheris::js::Value::from_object(get_attribute);
+
+    auto* self = this;
+    auto append_child = std::make_shared<aetheris::js::Object>();
+    append_child->is_function = true;
+    append_child->is_native = true;
+    append_child->native = [self, node](std::vector<aetheris::js::Value> const& args) {
+        if (!args.empty() && args[0].is_object() && args[0].object) {
+            auto it = self->node_by_handle.find(args[0].object.get());
+            if (it != self->node_by_handle.end())
+                self->adopt(node, it->second);
+        }
+        return aetheris::js::Value::undefined();
+    };
+    handle->properties["appendChild"] = aetheris::js::Value::from_object(append_child);
+
+    return handle;
+}
+
+} // namespace
+
 // Collects the bodies of inline <script> elements.
 static std::vector<std::string> extract_scripts(std::string const& html)
 {
@@ -268,17 +368,16 @@ static int run_render(std::string const& url, std::string const& output_path) {
     std::string html = response.body;
     rendering::Document document = rendering::Document::parse_html(html);
 
+    DomHost dom;
+    dom.collect(document.root());
+
     std::map<std::string, rendering::DomNode*> elements;
     collect_elements(document.root(), elements);
 
     std::vector<std::shared_ptr<aetheris::js::Object>> handles;
     std::map<std::string, std::shared_ptr<aetheris::js::Object>> handle_by_id;
-    std::vector<std::pair<aetheris::js::Object*, rendering::DomNode*>> handle_nodes;
     for (auto& [id, node] : elements) {
-        auto handle = std::make_shared<aetheris::js::Object>();
-        handle->properties["id"] = aetheris::js::Value::from_string(id);
-        handle->properties["textContent"] = aetheris::js::Value::from_string(node_text(*node));
-        handle_nodes.emplace_back(handle.get(), node);
+        auto handle = dom.handle_for(node);
         handle_by_id[id] = handle;
         handles.push_back(handle);
     }
@@ -292,6 +391,14 @@ static int run_render(std::string const& url, std::string const& output_path) {
             auto it = handle_by_id.find(id);
             return it == handle_by_id.end() ? aetheris::js::Value::undefined() : aetheris::js::Value::from_object(it->second);
         };
+        js.create_element = [&dom, &handles](std::string const& tag) -> aetheris::js::Value {
+            auto node = std::make_unique<rendering::DomNode>(rendering::DomNodeType::Element, tag, "");
+            auto* raw = node.get();
+            dom.pending[raw] = std::move(node);
+            auto handle = dom.handle_for(raw);
+            handles.push_back(handle);
+            return aetheris::js::Value::from_object(handle);
+        };
         for (auto const& script : extract_scripts(html)) {
             js.run(script);
             if (js.has_error()) {
@@ -302,7 +409,7 @@ static int run_render(std::string const& url, std::string const& output_path) {
     }
 
     // Apply textContent changes the scripts made back onto the DOM.
-    for (auto& [handle, node] : handle_nodes) {
+    for (auto& [handle, node] : dom.node_by_handle) {
         auto it = handle->properties.find("textContent");
         if (it == handle->properties.end())
             continue;

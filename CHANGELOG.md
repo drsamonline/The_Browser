@@ -40,6 +40,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - Minimal DOM bindings: `document.getElementById(id)` returns an element handle whose `textContent` can be read and written, and `--render` parses the document, runs inline scripts, then applies `textContent` changes (and `document.write` output) before layout. `RenderDocument::create_from_document` builds from an already-parsed document so a host can mutate it first.
 - Added `class` syntax to the mini JavaScript engine: `constructor` and methods are desugared onto a prototype object, so `new`/`instanceof`/inheritance work with classes as well as constructor functions.
 - Added the `for...of` loop (over arrays and strings) and the `switch`/`case`/`default` statement to the mini JavaScript engine.
+- Extended the DOM bindings: `document.createElement`, `element.appendChild`, `element.setAttribute` and `element.getAttribute`, so scripts can build and insert new elements before layout.
 
 ### Fixed
 

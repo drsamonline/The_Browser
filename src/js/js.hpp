@@ -201,6 +201,7 @@ public:
     std::function<void(std::string const&)> print_handler; // console.log
     std::function<void(std::string const&)> write_handler; // document.write
     std::function<Value(std::string const&)> element_lookup; // document.getElementById
+    std::function<Value(std::string const&)> create_element; // document.createElement
 
 private:
     struct Completion {

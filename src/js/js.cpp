@@ -1020,6 +1020,11 @@ void Interpreter::setup_globals()
             return Value::undefined();
         return element_lookup(args[0].to_string());
     }));
+    document->properties["createElement"] = Value::from_object(make_native([this](std::vector<Value> const& args) {
+        if (args.empty() || !create_element)
+            return Value::undefined();
+        return create_element(args[0].to_string());
+    }));
     m_globals->variables["document"] = Value::from_object(document);
 }
 
