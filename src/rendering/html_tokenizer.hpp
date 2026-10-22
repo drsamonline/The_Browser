@@ -77,6 +77,7 @@ private:
 
     static bool is_whitespace(char c);
     static bool is_alpha(char c);
+    static bool is_tag_name_char(char c);
     static bool is_attribute_name_char(char c);
     static char to_lower(char c);
     static std::string to_lower_copy(std::string_view text);

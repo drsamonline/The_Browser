@@ -21,11 +21,6 @@ DomNode* DomNode::first_child() const
     return children.empty() ? nullptr : children.front().get();
 }
 
-DomNode* DomNode::last_child() const
-{
-    return children.empty() ? nullptr : children.back().get();
-}
-
 std::string const* DomNode::attribute(std::string const& attribute_name) const
 {
     auto it = attributes.find(attribute_name);

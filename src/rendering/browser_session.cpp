@@ -185,9 +185,6 @@ std::string BrowserSession::extract_title(ResourceLoader& loader, Url const& url
     return title;
 }
 
-} // namespace aetheris::rendering
-
-namespace aetheris::rendering {
 bool BrowserSession::hover_at(float x,float y){ auto hit=hit_test(x,y); return m_visual_state.set_hovered(hit.dom_node); }
 bool BrowserSession::activate_control_at(float x,float y){ auto hit=hit_test(x,y); if(!hit.dom_node||!m_form_runtime) return false; for(size_t i=0;i<m_form_runtime->control_count();++i){auto c=m_form_runtime->control(i); if(c&&c->node==hit.dom_node){ if(m_form_runtime->activate(i)){m_visual_state.set_focused(hit.dom_node); m_visual_state.mark_layout_dirty(); return true;} return false; }} return false;}
 }

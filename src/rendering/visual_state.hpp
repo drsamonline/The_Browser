@@ -13,7 +13,6 @@ struct VisualInteractionState {
     bool set_active(DomNode const*);
     bool set_focused(DomNode const*);
     void mark_layout_dirty();
-    void mark_paint_dirty();
     bool consume_layout_dirty();
     bool consume_paint_dirty();
 };

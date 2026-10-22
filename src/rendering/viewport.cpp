@@ -35,11 +35,6 @@ ViewportPoint Viewport::to_document_coordinates(float viewport_x, float viewport
     return { viewport_x + m_scroll_x, viewport_y + m_scroll_y };
 }
 
-ViewportPoint Viewport::to_viewport_coordinates(float document_x, float document_y) const
-{
-    return { document_x - m_scroll_x, document_y - m_scroll_y };
-}
-
 void Viewport::clamp_scroll()
 {
     m_scroll_x = std::clamp(m_scroll_x, 0.0f, std::max(0.0f, m_document_width - m_width));

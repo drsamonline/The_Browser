@@ -13,7 +13,7 @@ namespace aetheris::rendering {
 
 class SoftwareSurface {
 public:
-    SoftwareSurface(int width, int height, Color clear_color = { 255, 255, 255, 255 });
+    SoftwareSurface(int width, int height, Color clear_color = { 0, 0, 0, 0 });
 
     int width() const { return m_width; }
     int height() const { return m_height; }

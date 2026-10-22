@@ -28,7 +28,6 @@ struct DomNode {
 
     DomNode& append_child(std::unique_ptr<DomNode> child);
     DomNode* first_child() const;
-    DomNode* last_child() const;
 
     std::string const* attribute(std::string const& name) const;
     bool has_attribute(std::string const& name) const;

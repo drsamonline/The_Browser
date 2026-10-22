@@ -16,6 +16,7 @@
 - [ ] `cmake --build build --config Debug`
 - [ ] `ctest --test-dir build --output-on-failure`
 - [ ] Release smoke test passes as part of CTest.
+- [ ] Minimum-footprint profile builds and smoke-runs (`cmake --preset StandaloneSize && cmake --build --preset StandaloneSize && ./build-size/bin/aetheris --smoke-test`).
 - [ ] CI status is reviewed for the release commit.
 
 ## Release evidence

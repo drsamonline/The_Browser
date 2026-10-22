@@ -14,7 +14,6 @@ public:
     void add_event_listener(DomNode*,DomEventType,Listener);
     DomEvent dispatch(DomEventType,DomNode*);
     bool set_attribute(DomNode*,std::string,std::string);
-    bool set_text(DomNode*,std::string);
     DomNode* append_element(DomNode*,std::string);
     bool remove(DomNode*);
     bool dirty() const{return m_dirty;} bool consume_dirty(){bool d=m_dirty;m_dirty=false;return d;}

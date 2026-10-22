@@ -15,6 +15,12 @@ else()
     set(AETHERIS_OPTIONAL_COMPONENTS_DEFAULT ON)
 endif()
 
+# Minimum-footprint profile for the Aetheris targets: size-first codegen (-Os),
+# dead-section elimination (gc-sections / dead_strip), link-time optimization
+# and a post-link strip. Applied to the Aetheris targets in src/CMakeLists.txt
+# only, so it never changes upstream-derived build behaviour.
+option(AETHERIS_SIZE_OPTIMIZED "Build the Aetheris targets for minimum binary size" OFF)
+
 option(AETHERIS_BUILD_WEBDRIVER "Build the WebDriver automation executable" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})
 option(AETHERIS_ENABLE_AUTOMATION "Enable browser automation integration and WebDriver IPC" ${AETHERIS_BUILD_WEBDRIVER})
 option(AETHERIS_ENABLE_TESTING "Enable project test targets and CTest integration" ${AETHERIS_OPTIONAL_COMPONENTS_DEFAULT})

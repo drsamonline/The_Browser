@@ -1,2 +1,19 @@
+# Build output — never commit generated trees (they are large and non-portable).
+/build/
+/Build/
+/build-*/
+/out/
+/dist/
+
 # CTest artifacts
 Testing/
+
+# Editor / OS cruft
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Python bytecode
+__pycache__/
+*.pyc

@@ -355,7 +355,7 @@ void LayoutEngine::layout_absolute_children(LayoutNode& node, float available_wi
         float child_x = left >= 0 ? base_x + left : (right >= 0 ? base_x + available_width - right - child_width : base_x);
         float child_y = base_y + parse_length(child->style.get("top"), 0, node.box.content.height);
 
-        layout_node(*child, child_x, child_y, child_width > 0 ? child_width : available_width);
+        layout_node(*child, child_x, child_y, available_width);
     }
 }
 

@@ -25,7 +25,6 @@ public:
     void scroll_by(float dx, float dy);
 
     ViewportPoint to_document_coordinates(float viewport_x, float viewport_y) const;
-    ViewportPoint to_viewport_coordinates(float document_x, float document_y) const;
 
 private:
     void clamp_scroll();

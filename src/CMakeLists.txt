@@ -100,3 +100,45 @@ target_link_libraries(aetheris PRIVATE AetherisRuntime)
 set_target_properties(aetheris PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+
+# ---------------------------------------------------------------------------
+# Minimum-footprint profile (AETHERIS_SIZE_OPTIMIZED): size-first codegen,
+# dead-section elimination, LTO and a post-link strip. Scoped to the Aetheris
+# targets so the upstream-derived tree is unaffected.
+# ---------------------------------------------------------------------------
+if (AETHERIS_SIZE_OPTIMIZED)
+    set(AETHERIS_SIZE_TARGETS AetherisRendering AetherisRuntime aetheris)
+
+    if (MSVC)
+        set(AETHERIS_SIZE_COMPILE /O1 /Gy /Gw)
+        set(AETHERIS_SIZE_LINK /OPT:REF /OPT:ICF)
+    else()
+        set(AETHERIS_SIZE_COMPILE -Os -ffunction-sections -fdata-sections
+                                  -fno-unwind-tables -fno-asynchronous-unwind-tables)
+        if (APPLE)
+            set(AETHERIS_SIZE_LINK -Wl,-dead_strip)
+        else()
+            set(AETHERIS_SIZE_LINK -Wl,--gc-sections)
+        endif()
+    endif()
+
+    foreach (target IN LISTS AETHERIS_SIZE_TARGETS)
+        target_compile_options(${target} PRIVATE ${AETHERIS_SIZE_COMPILE})
+        target_link_options(${target} PRIVATE ${AETHERIS_SIZE_LINK})
+    endforeach()
+
+    # Link-time optimization for this profile is provided by the project-wide
+    # ENABLE_LTO_FOR_RELEASE option (see Meta/CMake/compile_options.cmake),
+    # which is ON by default for Release builds.
+
+    # Strip the shipped executable when the toolchain provides `strip`.
+    if (NOT MSVC AND NOT APPLE)
+        find_program(AETHERIS_STRIP_TOOL strip)
+        if (AETHERIS_STRIP_TOOL)
+            add_custom_command(TARGET aetheris POST_BUILD
+                COMMAND "${AETHERIS_STRIP_TOOL}" --strip-unneeded "$<TARGET_FILE:aetheris>"
+                COMMENT "Stripping aetheris for minimum size"
+            )
+        endif()
+    endif()
+endif()

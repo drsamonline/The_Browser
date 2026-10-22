@@ -178,9 +178,6 @@ void SoftwareSurface::draw_image(LayoutRect const& rect, Image const& image, std
     for (int y=top;y<bottom;++y) for(int x=left;x<right;++x) { if(!accepts(x,y,clip)) continue; int sx=std::clamp(int((x-rect.x)*image.width/rect.width),0,image.width-1); int sy=std::clamp(int((y-rect.y)*image.height/rect.height),0,image.height-1); blend_pixel(x,y,image.pixel(sx,sy)); }
 }
 
-} // namespace aetheris::rendering
-
-namespace aetheris::rendering {
 void SoftwareSurface::draw_image(LayoutRect const& rect, Image const& image, std::string_view object_fit, std::optional<RoundedRect> clip)
 {
     if (!image.valid() || rect.width <= 0 || rect.height <= 0) return;

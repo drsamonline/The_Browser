@@ -8,6 +8,41 @@
   "include": [
     "Meta/CMake/presets/CMake${hostSystemName}Presets.json"
   ],
+  "configurePresets": [
+    {
+      "hidden": true,
+      "name": "standalone-base",
+      "displayName": "Aetheris standalone (no vcpkg)",
+      "description": "Builds only the self-contained Aetheris code in src/ plus its CTest suite. Skips the upstream Ladybird tree, so no vcpkg toolchain is required.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-standalone",
+      "cacheVariables": {
+        "AETHERIS_STANDALONE_BUILD": "ON",
+        "AETHERIS_ENABLE_TESTING": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "Standalone",
+      "inherits": "standalone-base",
+      "displayName": "Aetheris standalone (Debug)",
+      "description": "Fast, dependency-light Debug build of the Aetheris targets for local development and CI.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "StandaloneSize",
+      "inherits": "standalone-base",
+      "displayName": "Aetheris standalone (minimum size)",
+      "description": "Size-first Release build: -Os, gc-sections, LTO and a stripped executable.",
+      "binaryDir": "${sourceDir}/build-size",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "AETHERIS_SIZE_OPTIMIZED": "ON"
+      }
+    }
+  ],
   "buildPresets": [
     {
       "name": "Release",
@@ -29,6 +64,20 @@
       "configurePreset": "Sanitizer",
       "displayName": "Sanitizer Build",
       "description": "Build the project with Sanitizers on Unix"
+    },
+    {
+      "name": "Standalone",
+      "inherits": "base",
+      "configurePreset": "Standalone",
+      "displayName": "Aetheris standalone (Debug)",
+      "description": "Build the self-contained Aetheris targets"
+    },
+    {
+      "name": "StandaloneSize",
+      "inherits": "base",
+      "configurePreset": "StandaloneSize",
+      "displayName": "Aetheris standalone (minimum size)",
+      "description": "Build the Aetheris targets for minimum size"
     }
   ],
   "testPresets": [
@@ -58,6 +107,16 @@
         "ASAN_OPTIONS": "strict_string_checks=1:check_initialization_order=1:strict_init_order=1:detect_stack_use_after_return=1:allocator_may_return_null=1:$penv{ASAN_OPTIONS}",
         "UBSAN_OPTIONS": "print_stacktrace=1:print_summary=1:halt_on_error=1:$penv{UBSAN_OPTIONS}"
       }
+    },
+    {
+      "name": "Standalone",
+      "inherits": "root_base",
+      "configurePreset": "Standalone"
+    },
+    {
+      "name": "StandaloneSize",
+      "inherits": "root_base",
+      "configurePreset": "StandaloneSize"
     }
   ]
 }

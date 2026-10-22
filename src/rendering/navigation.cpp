@@ -49,9 +49,6 @@ RenderDocument const* NavigationController::current_document() const
     return m_current_document ? &*m_current_document : nullptr;
 }
 
-} // namespace aetheris::rendering
-
-namespace aetheris::rendering {
 
 NavigationResult NavigationController::navigate(NavigationRequest const& request, ResourceLoader& loader)
 {

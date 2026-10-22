@@ -58,19 +58,29 @@ Every module above has regression coverage under `Tests/AetherisRendering/`
 
 - Root `CMakeLists.txt` adds `src/` after `AK`/`Libraries`; `src/CMakeLists.txt`
   defines the `AetherisRendering` static library with `cxx_std_20` and the
-  `AETHERIS_RENDERING_FOUNDATION=1` definition.
+  `AETHERIS_RENDERING_FOUNDATION=1` definition, the `AetherisRuntime` static
+  library (the prototype cluster), and the `aetheris` executable.
 - Tests are added through `Tests/AetherisRendering/CMakeLists.txt` when
   `AETHERIS_ENABLE_TESTING` and `BUILD_TESTING` are on.
+- Two optional build profiles keep the tree buildable on bare runners and
+  small on disk:
+  - `AETHERIS_STANDALONE_BUILD=ON` builds only the Aetheris targets in `src/`
+    plus the `Tests/AetherisRendering` suite, with no vcpkg toolchain.
+  - `AETHERIS_SIZE_OPTIMIZED=ON` builds the Aetheris targets for minimum
+    footprint (`-Os`, dead-section elimination, LTO, stripped executable).
+  Both are exposed as CMake presets (`Standalone`, `StandaloneSize`).
 
-## Dormant prototype cluster
+## Prototype runtime cluster
 
-`src/main.cpp`, `src/cache/`, `src/network/`, `src/ui/`, and
-`include/aetheris/` contain early experiments (ghost cache with LZ4-style
-compression, socket abstraction, X11 window manager). They are **not** part of
-any build target today because their external dependencies (LZ4, X11) are not
-declared in `vcpkg.json`. Options going forward (tracked in
-[ISSUES.md](../ISSUES.md)): declare the dependencies and add proper targets,
-re-implement dependency-free, or remove.
+`src/main.cpp`, `src/cache/`, `src/network/`, `src/ui/`, and `include/aetheris/`
+contain the prototype runtime (ghost cache with LZ4 compression, socket
+abstraction, X11/Win32/Cocoa window manager). They are wired into the
+`AetherisRuntime` static library and the `aetheris` executable, so they are
+compile-checked in every standalone build. Their external dependencies (LZ4,
+X11) are **optional**: `cmake/AetherisStandaloneDeps.cmake` falls back to a
+bundled compression shim and a headless window manager when the system
+libraries are absent, which keeps the standalone profile buildable on bare
+runners. See [ISSUES.md](../ISSUES.md) for the remaining gaps in this cluster.
 
 ## Design principles
 

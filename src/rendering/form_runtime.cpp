@@ -92,12 +92,6 @@ bool FormRuntime::focus(size_t index) {
     return true;
 }
 
-bool FormRuntime::clear_focus() {
-    if (!m_focused) return false;
-    m_controls[*m_focused].focused = false;
-    m_focused.reset();
-    return true;
-}
 
 bool FormRuntime::insert_text(std::string_view text) {
     if (!m_focused) return false;

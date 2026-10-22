@@ -368,8 +368,12 @@
     .reveal{opacity:1;transform:none}
   }
   .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  /* keep flex/grid children from forcing horizontal overflow */
+  .steps>*,.step>*,.cards>*,.foot-grid>*{min-width:0}
+  .cta-band>*{min-width:0}
+  .cta-band{overflow-wrap:anywhere}
+  .dl-list li a{min-width:0}
 </style>
-<style id="__overflow_fix__"> /* horizontal-overflow fixes */ .steps>*,.step>*,.cards>*,.foot-grid>*{min-width:0} .cta-band>*{min-width:0} .cta-band{overflow-wrap:anywhere} .dl-list li a{min-width:0} </style>
 </head>
 <body>
 
@@ -580,7 +584,15 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6l7-3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
       </div>
       <h3>Test-driven, honestly scoped</h3>
-      <p>The Aetheris suite is 40+ regression test executables wired into CTest. The project states plainly that it is not production-ready and avoids unsupported performance claims.</p>
+      <p>The Aetheris suite is 39 regression test executables wired into CTest. The project states plainly that it is not production-ready and avoids unsupported performance claims.</p>
+    </div>
+
+    <div class="card reveal">
+      <div class="ico">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4h16v16H4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 9h6v6H9z" stroke="currentColor" stroke-width="1.8"/></svg>
+      </div>
+      <h3>Minimal footprint by design</h3>
+      <p>The core links nothing at runtime, and a size-first profile (<code>-Os</code>, dead-section elimination, LTO, stripped) keeps the shipped binary tiny &mdash; a stripped <code>aetheris</code> executable lands around <strong>0.35&nbsp;MB</strong>.</p>
     </div>
 
   </div>
@@ -636,6 +648,18 @@
 <span class="k">ctest</span> --test-dir build-standalone --output-on-failure --no-tests=error
 <span class="c"># headless smoke run (X11 optional)</span>
 ./build-standalone/bin/aetheris --smoke-test</pre>
+
+      <div class="code-head" style="margin-top:18px">
+        <span class="dots"><i></i><i></i><i></i></span> named presets — debug &amp; minimum size
+      </div>
+      <pre class="code"><span class="c"># presets (no vcpkg toolchain needed)</span>
+<span class="k">cmake</span> --preset Standalone          <span class="c"># fast Debug build</span>
+<span class="k">cmake</span> --build --preset Standalone
+
+<span class="c"># size-first Release: -Os, gc-sections, LTO, stripped</span>
+<span class="k">cmake</span> --preset StandaloneSize
+<span class="k">cmake</span> --build --preset StandaloneSize
+<span class="c"># -> ~0.35 MB stripped aetheris executable</span></pre>
     </div>
   </div>
 </section>
@@ -803,15 +827,15 @@
         How do I build and test it?
         <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </summary>
-      <div class="ans">Configure with <code>cmake -S . -B build</code>, build with <code>cmake --build build --config Debug</code>, and test with <code>ctest --test-dir build --output-on-failure</code>. The Aetheris-specific targets also build through a dependency-light standalone profile with <code>-DAETHERIS_STANDALONE_BUILD=ON</code>.</div>
+      <div class="ans">Configure with <code>cmake -S . -B build</code>, build with <code>cmake --build build --config Debug</code>, and test with <code>ctest --test-dir build --output-on-failure</code>. The Aetheris-specific targets also build through the dependency-light <code>Standalone</code> preset (or <code>-DAETHERIS_STANDALONE_BUILD=ON</code>), and a size-first <code>StandaloneSize</code> preset builds them for minimum footprint.</div>
     </details>
     <details class="q">
       <summary>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        Why do some prototype files not build?
+        Does the prototype runtime build?
         <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </summary>
-      <div class="ans">Early experiments in <code>src/main.cpp</code>, <code>src/cache/</code>, <code>src/network/</code>, <code>src/ui/</code> and <code>include/aetheris/</code> are dormant: their external dependencies (LZ4, X11) are not declared, so they are not part of any build target. They are kept as design reference.</div>
+      <div class="ans">Yes. The prototype runtime in <code>src/main.cpp</code>, <code>src/cache/</code>, <code>src/network/</code>, <code>src/ui/</code> and <code>include/aetheris/</code> is built into the <code>AetherisRuntime</code> library and the <code>aetheris</code> executable. Its external dependencies (LZ4, X11) are optional and fall back to bundled shims, so it is compile-checked on every standalone build &mdash; though it is not production-complete.</div>
     </details>
     <details class="q">
       <summary>

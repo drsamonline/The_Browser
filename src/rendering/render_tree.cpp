@@ -35,13 +35,6 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
     float radius = std::max(0.0f, number(node.style.get("border-radius"), 0.0f));
 
     bool clips_children = node.style.get("overflow") && (*node.style.get("overflow") == "hidden" || *node.style.get("overflow") == "clip");
-    if (clips_children) {
-        PaintCommand command;
-        command.rect = node.box.content;
-        command.radius = radius;
-        command.push_clip = true;
-        commands.push_back(std::move(command));
-    }
 
     if (node.dom_node && node.dom_node->type == DomNodeType::Text) {
         for (auto const& fragment : node.text_fragments) {
@@ -92,13 +85,37 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
         }
     }
 
+    if (clips_children) {
+        // The overflow clip applies to descendants only; the element's own
+        // background and border were painted above and must remain visible,
+        // so push the clip here (after self-painting) rather than at entry.
+        PaintCommand command;
+        command.rect = {
+            node.box.content.x - node.box.padding.left,
+            node.box.content.y - node.box.padding.top,
+            node.box.content.width + node.box.padding.left + node.box.padding.right,
+            node.box.content.height + node.box.padding.top + node.box.padding.bottom
+        };
+        command.radius = radius;
+        command.push_clip = true;
+        commands.push_back(std::move(command));
+    }
+
     std::vector<LayoutNode const*> ordered_children;
     ordered_children.reserve(node.children.size());
-    for (auto const& child : node.children)
+    bool any_z_index = false;
+    for (auto const& child : node.children) {
+        if (z_index(*child) != 0)
+            any_z_index = true;
         ordered_children.push_back(child.get());
-    std::stable_sort(ordered_children.begin(), ordered_children.end(), [](auto const* a, auto const* b) {
-        return z_index(*a) < z_index(*b);
-    });
+    }
+    // Only pay for a stable sort when a child actually sets a z-index; the
+    // common case is that every child is auto (0) and the order is unchanged.
+    if (any_z_index) {
+        std::stable_sort(ordered_children.begin(), ordered_children.end(), [](auto const* a, auto const* b) {
+            return z_index(*a) < z_index(*b);
+        });
+    }
     for (auto const* child : ordered_children)
         emit(*child, commands, opacity);
 

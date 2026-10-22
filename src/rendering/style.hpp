@@ -30,7 +30,6 @@ private:
     static int specificity(std::string const& selector);
     static void apply_declaration(StyleProperties& properties, CssDeclaration const& declaration);
 
-    static bool is_inherited_property(std::string const& property);
     static void apply_initial_values(DomNode const& node, StyleProperties& properties);
 };
 

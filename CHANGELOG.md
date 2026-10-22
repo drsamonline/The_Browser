@@ -16,14 +16,32 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - Regression coverage for application, runtime, security, and browser-chrome behavior.
 - Final v0.1 acceptance criteria, release checklist, and release smoke coverage.
 - Documentation set completed in GitHub style: `docs/USER_GUIDE.md`, `docs/ARCHITECTURE.md`, root `AUTHORS` file, author watermark (Dr. Sohil Momin) across project documents, `.mailmap` identity mapping, and Aetheris CODEOWNERS entries.
+- `Standalone` and `StandaloneSize` CMake presets, plus the `AETHERIS_SIZE_OPTIMIZED` profile (`-Os`, dead-section elimination, LTO, stripped) for minimum-footprint builds of the Aetheris targets.
+- A "known gaps and open work" section in `ISSUES.md`.
 
 ### Fixed
 
 - Browser chrome navigation now constructs `NavigationRequest` using the current rendering/navigation API.
 - Browser chrome navigation uses the active session viewport width when available.
+- HTML tokenizer no longer truncates tag names at the first non-letter character, so `h1`–`h6` and custom elements (e.g. `my-element`) keep their full name.
+- CSS selector matching now supports descendant (` `) and child (`>`) combinators; previously only the right-most compound was matched, so rules such as `#id .class` or `section > p` never applied. Specificity is computed as CSS (a,b,c) without double-counting class or element identifiers.
+- Inherited properties (notably `color` and `text-decoration`) now reach descendants: initial values are applied after inheritance instead of before, so text nodes render with their ancestor's colour.
+- Absolutely positioned elements resolve percentage widths against the containing block rather than against the already-resolved width.
+- `overflow: hidden`/`clip` now clips descendants only; an element's own background and border are no longer clipped away by its own overflow.
+- Offscreen surfaces (`SoftwareSurface`, `RenderDocument::render_to_surface`) default to a transparent clear colour instead of opaque white.
+
+### Performance
+
+- The CSS cascade takes a fast path for selectors without combinators and no longer copies the selector string per (node, selector) pair.
+- The paint tree skips the per-node child sort when no child sets a `z-index`.
+- The release optimization profile is now portable: LTO and dead-strip flags are chosen per toolchain and probed before use (previously `-flto=auto -ffat-lto-objects` and `-Wl,--gc-sections` were applied to every Clang/GNU build, which broke non-GCC toolchains and Apple's linker). `-Ofast` was dropped because it enables fast-math and contradicts the project's `-ffp-contract=off` determinism.
 
 ### Changed
 
+- The HTML tree builder no longer synthesises implicit `<html>`/`<body>` wrappers around fragment input; parsed trees match the document as authored, consistent with the `AetherisRendering` regression suite.
+- Removed committed build output (`build-standalone/`, `build-docs/`) from the repository and taught `.gitignore` to ignore build trees.
+- Removed dead code: unused `StyleResolver::is_inherited_property`, `DomNode::last_child`, `VisualInteractionState::mark_paint_dirty`, `FormRuntime::clear_focus`, `CookieJar::clear_origin`, `Viewport::to_viewport_coordinates` and `DocumentRuntime::set_text`, and merged split namespace blocks in `software_surface.cpp`, `navigation.cpp` and `browser_session.cpp`.
+- Rewrote `ISSUES.md` (previously Ladybird boilerplate with stale project references) and refreshed `README.md`, `docs/ARCHITECTURE.md` and the landing page for the new build profiles and the footprint story.
 - Project documentation uses explicit Ladybird/SerenityOS-derived provenance and avoids unsupported fixed performance claims.
 
 ### Known limitations

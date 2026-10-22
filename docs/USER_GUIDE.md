@@ -26,11 +26,11 @@ and which parts of the tree are Aetheris-specific versus upstream-derived.
 | Path | Provenance | What it contains |
 |------|------------|------------------|
 | `src/rendering/` | **Aetheris** | The standalone C++20 rendering foundation: HTML tokenizer, tree builder, DOM, CSS tokenizer/parser, style resolution, layout (block/flex/grid), paint executor, software surface, resource loading, security policy, cookie jar, navigation, sessions, tabs, and browser chrome. Built as the static library `AetherisRendering`. |
-| `Tests/AetherisRendering/` | **Aetheris** | 40+ regression test executables covering every subsystem above, wired into CTest. |
+| `Tests/AetherisRendering/` | **Aetheris** | 39 regression test executables covering every subsystem above, wired into CTest. |
 | `docs/` | **Aetheris** | Project-local documentation (this guide, development workflow, release process, provenance policy). |
 | `AK/`, `Libraries/`, `Services/`, `UI/`, `Meta/`, `Utilities/`, `Base/` | Upstream-derived | Ladybird/SerenityOS infrastructure: core libraries, JS engine, image codecs, services, platform UI shells, build tooling, fuzzers, linters. |
 | `Documentation/` | Upstream-derived | Original Ladybird developer documentation (build instructions, coding style, patterns, DevTools, etc.). Kept intact for reference. |
-| `include/aetheris/`, `src/cache/`, `src/network/`, `src/ui/`, `src/main.cpp` | **Aetheris prototype (dormant)** | Early prototype experiments. Not wired into any default build target and pending dependency decisions (LZ4, X11). Treat as design reference only; see [ISSUES.md](../ISSUES.md). |
+| `include/aetheris/`, `src/cache/`, `src/network/`, `src/ui/`, `src/main.cpp` | **Aetheris prototype** | Prototype runtime (ghost cache, socket abstraction, window manager) built into the `AetherisRuntime` static library and the `aetheris` executable. LZ4/X11 are optional with bundled fallbacks. Compile-checked but not production-complete; see [ISSUES.md](../ISSUES.md). |
 
 ## Prerequisites
 
@@ -141,9 +141,11 @@ non-goals before drawing conclusions.
 **Can I relicense the repository?** No blanket relicensing without the
 file-level audit required by [docs/UPSTREAM_ATTRIBUTION.md](UPSTREAM_ATTRIBUTION.md).
 
-**Why do `src/main.cpp` and `include/aetheris/` not build?** They are dormant
-prototype code with unresolved external dependencies (LZ4, X11) and are not
-part of any build target. Either wire them up properly or remove them; see
+**Do `src/main.cpp` and `include/aetheris/` build?** Yes. The prototype runtime
+(ghost cache, socket abstraction, window manager) is built into the
+`AetherisRuntime` library and the `aetheris` executable; its external
+dependencies (LZ4, X11) are optional and fall back to bundled shims, so it is
+compile-checked on every standalone build. It is not production-complete; see
 [ISSUES.md](../ISSUES.md).
 
 ---

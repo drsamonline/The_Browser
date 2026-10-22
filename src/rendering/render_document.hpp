@@ -30,7 +30,7 @@ public:
     LayoutNode const& layout_root() const { return *m_layout_root; }
     RenderTree const& render_tree() const { return m_render_tree; }
 
-    SoftwareSurface render_to_surface(int width, int height, Color clear_color = { 255, 255, 255, 255 }) const;
+    SoftwareSurface render_to_surface(int width, int height, Color clear_color = { 0, 0, 0, 0 }) const;
     void apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width);
     std::size_t visual_generation() const { return m_visual_generation; }
 

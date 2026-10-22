@@ -1,16 +1,14 @@
 /**
- * AETHERIS WINDOW MANAGER - Implementation Stub
- * See header file for full inline implementation
+ * Aetheris window manager — translation unit.
+ *
+ * The window manager is implemented entirely as inline code in
+ * <aetheris/ui/window_manager.hpp> for zero-overhead, header-only use. This
+ * translation unit exists only so the component participates in the build graph
+ * and stays compile-checked.
  */
 
 #include "aetheris/ui/window_manager.hpp"
 
-// All implementations are in the header file as inline functions
-// for zero-overhead cross-platform abstraction
-
 namespace aetheris::ui {
-
-// Additional non-inline implementations can go here
-// Currently all functionality is provided via inline methods
 
 } // namespace aetheris::ui

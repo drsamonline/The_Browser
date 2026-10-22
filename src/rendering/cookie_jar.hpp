@@ -12,7 +12,6 @@ public:
     bool set_from_header(Url const&, std::string const&);
     std::vector<Cookie> cookies_for(Url const&) const;
     std::string cookie_header(Url const&) const;
-    void clear_origin(Url const&);
 private:
     static std::string origin_key(Url const&);
     std::unordered_map<std::string, std::vector<Cookie>> m_cookies;

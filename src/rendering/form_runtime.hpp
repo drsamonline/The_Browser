@@ -41,7 +41,6 @@ public:
     FormControlState const* control(size_t index) const;
 
     bool focus(size_t index);
-    bool clear_focus();
     bool insert_text(std::string_view text);
     bool backspace();
     bool set_value(size_t index, std::string value);

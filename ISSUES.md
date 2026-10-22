@@ -1,81 +1,80 @@
-# Issue-reporting guidelines
+# Issue and bug-reporting guidelines
 
-**Author:** Dr. Sohil Momin · Part of the [Aetheris documentation set](docs/USER_GUIDE.md)
+**Author:** Dr. Sohil Momin · Part of the [Aetheris documentation set](USER_GUIDE.md)
 
-Report problems using our detailed [bug-reporting
-form](https://github.com/LadybirdBrowser/ladybird/issues/new?template=bug_report.yml), which helps to ensure that, for us to reproduce and investigate the problem, your bug report includes the information needed — including a reduced test case.
+Report problems with the Aetheris-specific code (and reproducible upstream
+issues) using the repository's own issue forms:
 
-## How you can write a reduced test case
+- Bugs — [`.github/ISSUE_TEMPLATE/bug_report.yml`](../.github/ISSUE_TEMPLATE/bug_report.yml)
+- Feature requests — [`.github/ISSUE_TEMPLATE/feature_request.yml`](../.github/ISSUE_TEMPLATE/feature_request.yml)
 
-When raising an issue, the single-most important thing you can provide is a reduced test others can use to reproduce the problem.
+A clear issue lets a maintainer reproduce the problem without guessing. The
+single most important thing you can provide is a **reduced test case**.
 
-You can create a reduced test case for a problem by starting from the HTML/JS/CSS source for a particular website/page which causes the problem, and removing as much content as possible while still having a document that reproduces the problem.
+## How to write a reduced test case
 
-Here’s how you can do that:
+Start from the HTML/JS/CSS for the page that shows the problem and remove as
+much as possible while the problem still reproduces:
 
-1. Create a local `REDUCTION.html` (or whatever name) copy of the page — ideally by using something like the [SingleFile](https://addons.mozilla.org/en-US/firefox/addon/single-file/) extension for Firefox or Chrome to save a canned copy of the page as it currently exists (post-JS-execution).
+1. Save a canned copy of the page (e.g. with the [SingleFile](https://addons.mozilla.org/en-US/firefox/addon/single-file/)
+   extension) so external stylesheets and scripts are inlined, then strip
+   irrelevant elements in the browser devtools.
+2. If you are not using SingleFile, add a `<base href="…">` element so relative
+   resources still resolve, and copy any external stylesheet or script locally.
+3. Load the reduced document and confirm the same problem occurs.
+4. **Script-related problems:** remove `script` elements one at a time and
+   reload after each removal. If removing a script fixes the problem, you have
+   isolated the cause.
+5. **CSS-related problems:** inline the stylesheets into a `style` element, then
+   remove rules one at a time, reloading after each removal.
+6. **HTML-related problems:** remove elements one at a time, starting with
+   `head`, and reload after each removal.
 
-   That also allows you to use Firefox/Chrome devtools to quickly strip out irrelevant elements from the page before saving a copy.
+You will end up with a minimal document that still reproduces the problem.
+Publish it at a site such as [CodePen](https://codepen.io/pen/),
+[JS Bin](https://jsbin.com) or [JSFiddle](https://jsfiddle.net) and link it in
+the issue.
 
-2. If you’re *not* using something like SingleFile, then: To ensure any images,external style sheets, or external scripts that use a relative path will get loaded by your local `REDUCTION.html` document, put a `base` element into the document — like this:
+*[Credits: the reduction method above is adapted from https://webkit.org/test-case-reduction/.]*
 
-   ```html
-   <base href="https://ladybird.org/">
-   ```
+## Running and debugging Aetheris
 
-    However, if the problem appears to be caused not by anything in the source of the document itself, but instead by something in an external script or external stylesheet, then you’ll also need to create a local copy of the problem script or problem stylesheet.
-
-3. Open/load the `REDUCTION.html` file in Ladybird, and verify that the same problem occurs with it as occurs with the original website/page you copied it from.
-
-4. **Script-related problems:** Especially if you believe the problem is related to any JavaScript that the document is executing, then temporarily disable scripting by unchecking **Enable Scripting** option in the **Debug** menu in Ladybird, and then reload the `REDUCTION.html` file in Ladybird.
-
-   * If the problem still happens after you’ve disabled scripting, then you can remove any and all `script` elements from the document, and you can continue on from there.
-
-   * If the problem does not happen any longer after you’ve disabled scripting, then that tells you the cause is related to the contents from one or more of the `script` elements, and you can check the **Enable Scripting** option to turn scripting back on, and you can continue on from there.
-
-5. **CSS-related problems**: Especially if you believe that the problem is related to any CSS stylesheets the document is using, then:
-
-   1. [If you’ve not used something like the [SingleFile](https://addons.mozilla.org/en-US/firefox/addon/single-file/) extension for Firefox or Chrome] Add a `style` element in the `REDUCTION.html` file, and then for each external style sheet the document has, paste the contents from that external stylesheet into that `style` element.
-
-   2. Start removing CSS rules from any and all `style` elements in the document, and reload the `REDUCTION.html` file in Ladybird.
-
-      * If the problem does not happen any longer after you’ve removed a particular CSS rule, then you may have isolated the cause. Re-add that CSS rule to the document, and continue on from there.
-
-      * If the problem does continue to happen after you’ve removed a CSS rule, then you’ve successfully reduced the test case by one CSS rule, and you can continue on from there.
-
-   Either way, keep repeating the two steps above, removing CSS rules one by one, and with each removal, checking whether the problem still happens — and if it does, putting the CSS rule you removed back into the document, or otherwise, leaving the CSS rule out and moving on.
-
-6. **HTML-related problems:** Begin removing one *element* at time from the `REDUCTION.html` file, starting with the elements in the document `head`.
-
-7. Reload the `REDUCTION.html` file in Ladybird, and verify whether the problem is still happening.
-
-   * If the problem does not happen any longer after you’ve removed a particular element, then you may have isolated the cause. Re-add that element to the document, and continue on from there.
-
-   * If the problem does continue to happen after you’ve removed a particular element, then you’ve successfully reduced the test case by one element, and you can continue on from there.
-
-   Either way, keep repeating the steps: removing elements one by one, and with each removal, checking whether the problem still happens — and if it does, putting the element you removed back into the document, or otherwise, leaving the element out and moving on.
-
-In the end, after following the steps above and removing elements and CSS rules, you’ll have a reduced test case that you can include when you raise an issue for the problem.
-
-## How to share/publish your reduced test case at a URL
-
-You can take your reduced test case and post it online at a site such as the following:
-
-* https://codepen.io/pen/
-* https://jsbin.com
-* https://jsfiddle.net
-
-That will give you a URL which you can then include in the issue you raise for the problem.
-
-*[Credits: The “How you can write a reduced test case” details above are largely taken from https://webkit.org/test-case-reduction/.]*
-
-## Debugging
-
-When investigating a bug, it can be helpful to use the `--enable-idl-tracing` command-line flag when running Ladybird. This will output detailed information about the calls being made to the browser's internal interfaces, which can help pinpoint where a problem is occurring.
+The `aetheris` executable exposes a small, headless-friendly command surface:
 
 ```bash
-./Meta/ladybird.py run ladybird --enable-idl-tracing
+./aetheris --help          # usage and options
+./aetheris --version       # version banner
+./aetheris --smoke-test    # initialise every subsystem, run a bounded frame
+                           # loop and exit 0 (used by CI; no display needed)
 ```
+
+The Aetheris rendering pipeline is exercised by the CTest suite. To run just the
+Aetheris tests:
+
+```bash
+ctest --test-dir build-standalone -R Aetheris --output-on-failure
+```
+
+## Known gaps and open work
+
+Aetheris is experimental. The following are known limitations rather than
+regressions — see [V0.1_ACCEPTANCE.md](V0.1_ACCEPTANCE.md) for the full
+non-goals list.
+
+- **No JavaScript engine.** Scripting is not implemented; only the
+  HTML/CSS/layout/paint pipeline is present.
+- **Prototype runtime cluster** (`src/cache`, `src/network`, `src/ui`,
+  `include/aetheris/`): the socket layer resolves IPv4 literals only (no
+  `getaddrinfo`), the HTTP path is a minimal sniffer, the window manager is a
+  headless/X11 prototype, and the Cocoa (macOS) backend is a stub. These are
+  compile-checked but not production-complete.
+- **Standards coverage is partial.** Flex and Grid are foundational; many CSS
+  properties and HTML behaviours are unimplemented.
+- **Networking is not production-ready.** There is no complete TLS/certificate
+  validation or full RFC-level cookie behaviour.
+- **Provenance.** The repository contains upstream-derived Ladybird/SerenityOS
+  infrastructure; see [UPSTREAM_ATTRIBUTION.md](UPSTREAM_ATTRIBUTION.md) before
+  making licensing or commercial-use claims.
 
 ---
 

@@ -155,6 +155,22 @@ ctest --test-dir build --output-on-failure
 
 Reconfiguration is required when CMake configuration or build-registered files change. Otherwise, an existing build directory can be reused.
 
+For a dependency-light workflow that skips the upstream tree entirely, use the
+`Standalone` preset; for a size-first release build, use `StandaloneSize`:
+
+```bash
+cmake --preset Standalone
+cmake --build --preset Standalone
+ctest --preset Standalone
+
+cmake --preset StandaloneSize   # -Os, gc-sections, LTO, stripped
+cmake --build --preset StandaloneSize
+```
+
+The size profile applies only to the Aetheris targets (`AetherisRendering`,
+`AetherisRuntime`, `aetheris`); a stripped `aetheris` executable is on the
+order of a few hundred kilobytes.
+
 ## 🧭 Development principles
 
 - Preserve working architecture unless a change has a clear technical justification.

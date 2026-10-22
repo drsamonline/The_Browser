@@ -317,21 +317,33 @@ elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
         endif()
     endif()
     
-    # Aetheris: Aggressive LTO and dead-code elimination for maximum performance
+    # Aetheris: aggressive LTO and dead-code elimination for release builds.
+    # Flags are chosen per toolchain and probed before use, so the profile is
+    # portable across GCC, Clang and MSVC and across GNU ld and Apple's linker
+    # (which spells dead-stripping differently). -Ofast is deliberately avoided:
+    # it enables fast-math, which contradicts the -ffp-contract=off determinism
+    # the layout and painting code relies on.
     if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
         if (MSVC)
-            # MSVC: Enable whole program optimization and aggressive dead code elimination
-            add_cxx_compile_options(/GL)  # Link-time code generation
-            add_cxx_link_options(/LTCG /OPT:REF /OPT:ICF)  # LTO + remove unused functions/data
-            add_cxx_compile_options(/Qpar)  # Parallel compilation
-            add_cxx_compile_options(/Ob3)  # Aggressive inlining
-        elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-            # GCC/Clang: Enable LTO, aggressive optimization, and dead code elimination
-            add_cxx_compile_options(-flto=auto -ffat-lto-objects)
-            add_cxx_compile_options(-fdata-sections -ffunction-sections)
-            add_cxx_link_options(-Wl,--gc-sections)  # Dead code elimination
+            add_cxx_compile_options(/GL /Qpar /Ob3)   # whole-program + parallel codegen, aggressive inlining
+            add_cxx_link_options(/LTCG /OPT:REF /OPT:ICF)
+        else()
+            add_cxx_compile_option_if_supported(-fdata-sections)
+            add_cxx_compile_option_if_supported(-ffunction-sections)
+            if (APPLE)
+                add_cxx_link_option_if_supported(-Wl,-dead_strip)
+            else()
+                add_cxx_link_option_if_supported(-Wl,--gc-sections)
+            endif()
             if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-                add_cxx_compile_options(-Ofast -fuse-linker-plugin)
+                # Fat LTO objects keep the link step self-contained on GNU ld.
+                add_cxx_compile_option_if_supported(-flto=auto)
+                add_cxx_compile_option_if_supported(-ffat-lto-objects)
+                add_cxx_compile_option_if_supported(-fuse-linker-plugin)
+            elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CXX_SIMULATE_ID MATCHES "MSVC")
+                # Clang LTO needs the flag on both the compile and the link step.
+                add_cxx_compile_option_if_supported(-flto=thin)
+                add_cxx_link_option_if_supported(-flto=thin)
             endif()
         endif()
     endif()

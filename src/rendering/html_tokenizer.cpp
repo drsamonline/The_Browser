@@ -116,7 +116,7 @@ HtmlToken HtmlTokenizer::parse_tag(bool is_end_tag, size_t token_line, size_t to
     skip_whitespace();
 
     std::string name;
-    while (!eof() && is_alpha(peek())) {
+    while (!eof() && is_tag_name_char(peek())) {
         name += to_lower(peek());
         consume();
     }
@@ -231,6 +231,14 @@ bool HtmlTokenizer::is_whitespace(char c)
 bool HtmlTokenizer::is_alpha(char c)
 {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+bool HtmlTokenizer::is_tag_name_char(char c)
+{
+    // A tag name runs until whitespace, '/' (self-closing) or '>' (tag end),
+    // per the HTML "tag name state". Digits and hyphens are valid, so this must
+    // not be restricted to ASCII letters (e.g. h1..h6, custom elements).
+    return c != '\0' && !is_whitespace(c) && c != '/' && c != '>';
 }
 
 bool HtmlTokenizer::is_attribute_name_char(char c)

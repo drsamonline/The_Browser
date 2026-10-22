@@ -14,6 +14,7 @@
 #include <memory>
 #include <array>
 #include <span>
+#include <string_view>  // std::char_traits<char>::length (used by hash_string)
 #include <concepts>
 #include <type_traits>
 
