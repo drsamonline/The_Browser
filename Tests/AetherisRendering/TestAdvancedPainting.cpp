@@ -35,9 +35,24 @@ int main()
 
     auto surface = rendered.render_to_surface(80, 40);
     auto corner = surface.pixel(0, 0);
-    auto center = surface.pixel(15, 10);
-    require(center.red > corner.red, "rounded corner leaves background visible");
-    require(center.red > 100 && center.blue > 0, "opacity compositing applied");
+
+    // The rounded corner lies outside the div, so the background shows through
+    // there while the div body is painted. Text is now real glyphs (not a solid
+    // cell), so scan for the composited white-text pixels rather than sampling a
+    // single fixed point.
+    bool body_painted = false;
+    bool text_composited = false;
+    for (int y = 0; y < surface.height(); ++y) {
+        for (int x = 0; x < surface.width(); ++x) {
+            auto pixel = surface.pixel(x, y);
+            if (pixel.red > corner.red)
+                body_painted = true;
+            if (pixel.red > 100 && pixel.green > 0 && pixel.blue > 0)
+                text_composited = true;
+        }
+    }
+    require(body_painted, "rounded corner leaves background visible");
+    require(text_composited, "opacity compositing applied");
 
     auto path = std::filesystem::temp_directory_path() / "aetheris_batch09.ppm";
     require(ImageOutput::write_ppm(surface, path.string()), "image output");

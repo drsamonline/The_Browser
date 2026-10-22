@@ -1,4 +1,5 @@
 #include "software_surface.hpp"
+#include "bitmap_font.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -150,14 +151,41 @@ void SoftwareSurface::stroke_rounded_rect(LayoutRect const& rect, float radius, 
     }
 }
 
-void SoftwareSurface::fill_text_cell(LayoutRect const& rect, Color color, std::optional<RoundedRect> clip)
+void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, float font_size, Color color, std::optional<RoundedRect> clip)
 {
-    auto glyph = rect;
-    glyph.x += 1;
-    glyph.y += 1;
-    glyph.width = std::max(0.0f, glyph.width - 2);
-    glyph.height = std::max(0.0f, glyph.height * 0.7f - 1);
-    fill_rect(glyph, color, clip);
+    if (text.empty() || font_size <= 0)
+        return;
+
+    int cell_width = std::max(1, static_cast<int>(std::lround(bitmap_advance(font_size))));
+    int cell_height = std::max(1, static_cast<int>(std::lround(bitmap_cell_height(font_size))));
+    int pen_x = static_cast<int>(std::lround(rect.x));
+    int pen_y = static_cast<int>(std::lround(rect.y));
+
+    for (char character : text) {
+        auto const& glyph = bitmap_glyph_for(character);
+        for (int row = 0; row < 8; ++row) {
+            auto bits = glyph.rows[row];
+            if (!bits)
+                continue;
+            int y0 = pen_y + row * cell_height / 8;
+            int y1 = pen_y + (row + 1) * cell_height / 8;
+            if (y1 <= y0)
+                y1 = y0 + 1;
+            for (int col = 0; col < 8; ++col) {
+                if (!(bits & (0x80 >> col)))
+                    continue;
+                int x0 = pen_x + col * cell_width / 8;
+                int x1 = pen_x + (col + 1) * cell_width / 8;
+                if (x1 <= x0)
+                    x1 = x0 + 1;
+                for (int y = y0; y < y1; ++y)
+                    for (int x = x0; x < x1; ++x)
+                        if (accepts(x, y, clip))
+                            blend_pixel(x, y, color);
+            }
+        }
+        pen_x += cell_width;
+    }
 }
 
 void SoftwareSurface::draw_text_decoration(LayoutRect const& rect, std::string const& decoration, Color color, std::optional<RoundedRect> clip)

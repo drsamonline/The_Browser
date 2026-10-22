@@ -21,6 +21,8 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - A minimal HTTP/1.1 client (`HttpClient`, `include/aetheris/network/http_client.hpp`) with DNS resolution via `getaddrinfo`, a bounded (non-blocking) connect timeout, and Content-Length, chunked and read-until-close body handling.
 - Headless `aetheris --fetch <url>` and `aetheris --render <url> [out.ppm]` modes; the executable now links `AetherisRendering` and can fetch a URL and render it to a PPM end to end.
 - `TestAetherisHttpClient`: a loopback-server regression test covering DNS + HTTP round-tripping.
+- A dependency-free 8x8 bitmap font (`bitmap_font.{hpp,cpp}`, public-domain font8x8 data) with real glyph rasterisation: `DrawText` now paints actual glyphs instead of a solid cell, and text measurement and rasterisation share one advance so glyphs line up with layout.
+- `TestAetherisBitmapFont`: regression coverage for glyph lookup, metrics and rasterisation.
 
 ### Fixed
 
@@ -49,7 +51,7 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 
 ### Known limitations
 
-Aetheris remains experimental and does not claim complete web-platform compliance, a complete production browser sandbox, or production-ready browser networking. Only `http://` URLs are reachable: TLS is not implemented, and DNS resolution is synchronous.
+Aetheris remains experimental and does not claim complete web-platform compliance, a complete production browser sandbox, or production-ready browser networking. Only `http://` URLs are reachable: TLS is not implemented, and DNS resolution is synchronous. Text rendering uses a single embedded 8x8 bitmap font: there is no vector font, font selection, kerning or shaping.
 
 ---
 

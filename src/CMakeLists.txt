@@ -24,6 +24,7 @@ add_library(AetherisRendering STATIC
     rendering/browser_chrome.cpp
     rendering/image.cpp
     rendering/font.cpp
+    rendering/bitmap_font.cpp
     rendering/css_parser.cpp
     rendering/css_tokenizer.cpp
     rendering/dom.cpp

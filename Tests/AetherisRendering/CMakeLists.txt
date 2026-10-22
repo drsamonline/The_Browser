@@ -189,3 +189,7 @@ find_package(Threads REQUIRED)
 add_executable(TestAetherisHttpClient TestAetherisHttpClient.cpp)
 target_link_libraries(TestAetherisHttpClient PRIVATE AetherisRuntime Threads::Threads)
 add_test(NAME AetherisHttpClient COMMAND TestAetherisHttpClient)
+
+add_executable(TestAetherisBitmapFont TestAetherisBitmapFont.cpp)
+target_link_libraries(TestAetherisBitmapFont PRIVATE AetherisRendering)
+add_test(NAME AetherisBitmapFont COMMAND TestAetherisBitmapFont)

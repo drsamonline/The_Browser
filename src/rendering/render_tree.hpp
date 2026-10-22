@@ -30,6 +30,7 @@ struct PaintCommand {
     std::string color;
     std::string border_style { "solid" };
     float baseline { 0 };
+    float font_size { 16 };
     std::string text_decoration { "none" };
     float radius { 0 };
     std::shared_ptr<Image const> image;

@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace aetheris::rendering {
@@ -23,7 +24,7 @@ public:
     void fill_rounded_rect(LayoutRect const&, float radius, Color, std::optional<RoundedRect> clip = {});
     void stroke_rect(LayoutRect const&, BoxEdges const&, Color, std::optional<RoundedRect> clip = {}, std::string_view style = "solid");
     void stroke_rounded_rect(LayoutRect const&, float radius, BoxEdges const&, Color, std::optional<RoundedRect> clip = {}, std::string_view style = "solid");
-    void fill_text_cell(LayoutRect const&, Color, std::optional<RoundedRect> clip = {});
+    void draw_text(LayoutRect const&, std::string_view text, float font_size, Color, std::optional<RoundedRect> clip = {});
     void draw_text_decoration(LayoutRect const&, std::string const& decoration, Color, std::optional<RoundedRect> clip = {});
     void draw_image(LayoutRect const&, Image const&, std::optional<RoundedRect> clip = {});
     void draw_image(LayoutRect const&, Image const&, std::string_view object_fit, std::optional<RoundedRect> clip = {});

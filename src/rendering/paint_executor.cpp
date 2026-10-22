@@ -41,7 +41,7 @@ void PaintExecutor::execute(RenderTree const& tree, SoftwareSurface& surface) co
             surface.stroke_rounded_rect(command.rect, command.radius, command.edges, color, clip, command.border_style);
             break;
         case PaintCommand::Type::DrawText:
-            surface.fill_text_cell(command.rect, color, clip);
+            surface.draw_text(command.rect, command.text, command.font_size, color, clip);
             break;
         case PaintCommand::Type::DrawTextDecoration:
             surface.draw_text_decoration(command.rect, command.text_decoration, color, clip);

@@ -44,6 +44,7 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
             command.baseline = fragment.baseline;
             command.text = fragment.text;
             command.opacity = opacity;
+            command.font_size = number(node.style.get("font-size"), 16.0f);
             if (auto color = node.style.get("color"))
                 command.color = *color;
             commands.push_back(command);

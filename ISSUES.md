@@ -71,6 +71,9 @@ non-goals list.
   (`HttpClient`). DNS resolution is still synchronous (it can block), TLS is not
   implemented, so only `http://` URLs are reachable, and the window manager is a
   headless/X11 prototype with a stub Cocoa (macOS) backend.
+- **Text rendering is a single bitmap font.** Text is rasterised from one
+  embedded 8x8 bitmap font; there is no vector font, font selection, kerning,
+  shaping or anti-aliased rendering.
 - **Standards coverage is partial.** Flex and Grid are foundational; many CSS
   properties and HTML behaviours are unimplemented.
 - **Networking is not production-ready.** There is no complete TLS/certificate
