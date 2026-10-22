@@ -16,7 +16,8 @@
   <a href="https://drsamonline.github.io/The_Browser/#faq">FAQ</a> ·
   <a href="https://github.com/drsamonline/The_Browser/releases">Downloads</a> ·
   <a href="docs/USER_GUIDE.md">User guide</a> ·
-  <a href="docs/ARCHITECTURE.md">Architecture</a>
+  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="https://drsamonline.github.io/">All projects</a>
 </p>
 
 <p align="center">
