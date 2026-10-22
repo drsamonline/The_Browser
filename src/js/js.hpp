@@ -181,6 +181,9 @@ struct Object {
     std::shared_ptr<Regex> regex;      // set for RegExp objects
     std::shared_ptr<PromiseData> promise; // set for Promise objects
     bool is_array { false };
+    bool is_map { false };
+    bool is_set { false };
+    std::vector<std::pair<Value, Value>> entries; // Map key/value pairs
     bool is_function { false };
     bool is_native { false };
     bool is_async { false }; // async function: results are wrapped in a Promise

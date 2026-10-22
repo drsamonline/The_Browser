@@ -1,6 +1,10 @@
 #include "js.hpp"
 #include "regex.hpp"
 
+#include <chrono>
+#include <ctime>
+#include <cstdio>
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -1123,6 +1127,55 @@ void Interpreter::drain_microtasks()
     }
 }
 
+static double current_time_ms()
+{
+    using namespace std::chrono;
+    return static_cast<double>(duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count());
+}
+
+static std::string format_date(double ms, bool iso)
+{
+    auto seconds = static_cast<std::time_t>(ms / 1000.0);
+    std::tm tm {};
+    gmtime_r(&seconds, &tm);
+    char buffer[64];
+    if (iso)
+        std::snprintf(buffer, sizeof(buffer), "%04d-%02d-%02dT%02d:%02d:%02d.000Z", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    else
+        std::snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    return buffer;
+}
+
+static Value make_date_object(double ms)
+{
+    auto object = std::make_shared<Object>();
+    auto part = [ms](int which) -> double {
+        auto seconds = static_cast<std::time_t>(ms / 1000.0);
+        std::tm tm {};
+        gmtime_r(&seconds, &tm);
+        switch (which) {
+        case 0: return tm.tm_year + 1900;
+        case 1: return tm.tm_mon;
+        case 2: return tm.tm_mday;
+        case 3: return tm.tm_wday;
+        case 4: return tm.tm_hour;
+        case 5: return tm.tm_min;
+        default: return tm.tm_sec;
+        }
+    };
+    object->properties["getFullYear"] = Value::from_object(make_native([part](std::vector<Value> const&) { return Value::from_number(part(0)); }));
+    object->properties["getMonth"] = Value::from_object(make_native([part](std::vector<Value> const&) { return Value::from_number(part(1)); }));
+    object->properties["getDate"] = Value::from_object(make_native([part](std::vector<Value> const&) { return Value::from_number(part(2)); }));
+    object->properties["getDay"] = Value::from_object(make_native([part](std::vector<Value> const&) { return Value::from_number(part(3)); }));
+    object->properties["getHours"] = Value::from_object(make_native([part](std::vector<Value> const&) { return Value::from_number(part(4)); }));
+    object->properties["getMinutes"] = Value::from_object(make_native([part](std::vector<Value> const&) { return Value::from_number(part(5)); }));
+    object->properties["getSeconds"] = Value::from_object(make_native([part](std::vector<Value> const&) { return Value::from_number(part(6)); }));
+    object->properties["getTime"] = Value::from_object(make_native([ms](std::vector<Value> const&) { return Value::from_number(ms); }));
+    object->properties["toISOString"] = Value::from_object(make_native([ms](std::vector<Value> const&) { return Value::from_string(format_date(ms, true)); }));
+    object->properties["toString"] = Value::from_object(make_native([ms](std::vector<Value> const&) { return Value::from_string(format_date(ms, false)); }));
+    return Value::from_object(object);
+}
+
 void Interpreter::setup_globals()
 {
     m_object_prototype = std::make_shared<Object>();
@@ -1279,6 +1332,30 @@ void Interpreter::setup_globals()
     }));
     m_globals->variables["Promise"] = Value::from_object(promise_constructor);
 
+    // Date (UTC)
+    auto date_constructor = make_native([](std::vector<Value> const& args) {
+        double ms = args.empty() ? current_time_ms() : args[0].to_number();
+        return make_date_object(ms);
+    });
+    date_constructor->properties["now"] = Value::from_object(make_native([](std::vector<Value> const&) {
+        return Value::from_number(current_time_ms());
+    }));
+    m_globals->variables["Date"] = Value::from_object(date_constructor);
+
+    // Map
+    m_globals->variables["Map"] = Value::from_object(make_native([](std::vector<Value> const&) {
+        auto object = std::make_shared<Object>();
+        object->is_map = true;
+        return Value::from_object(object);
+    }));
+
+    // Set
+    m_globals->variables["Set"] = Value::from_object(make_native([](std::vector<Value> const&) {
+        auto object = std::make_shared<Object>();
+        object->is_set = true;
+        return Value::from_object(object);
+    }));
+
     auto make_listener_registrar = [this](std::shared_ptr<Object> const& target) {
         return Value::from_object(make_native([target](std::vector<Value> const& args) {
             if (args.size() < 2)
@@ -1349,6 +1426,21 @@ std::shared_ptr<Object> Interpreter::make_function(Node const& node, std::shared
     object->function_body = std::shared_ptr<Node>(node.body.get(), [](Node*) {});
     object->closure = env;
     return object;
+}
+
+static bool same_value(Value const& a, Value const& b)
+{
+    if (a.type != b.type)
+        return false;
+    switch (a.type) {
+    case Value::Type::Undefined: return true;
+    case Value::Type::Null: return true;
+    case Value::Type::Boolean: return a.boolean == b.boolean;
+    case Value::Type::Number: return a.number == b.number;
+    case Value::Type::String: return a.string == b.string;
+    case Value::Type::Object: return a.object == b.object;
+    }
+    return false;
 }
 
 Value Interpreter::get_property_from_chain(std::shared_ptr<Object> const& object, std::string const& name)
@@ -1635,6 +1727,13 @@ Value Interpreter::get_property(Value const& object, std::string const& name)
                 std::sort(shared->elements.begin(), shared->elements.end(), [](Value const& a, Value const& b) { return a.to_string() < b.to_string(); });
                 return Value::from_object(shared);
             }));
+        if (name == "includes")
+            return Value::from_object(make_native([shared](std::vector<Value> const& args) {
+                if (args.empty()) return Value::from_boolean(false);
+                for (auto const& element : shared->elements)
+                    if (same_value(element, args[0])) return Value::from_boolean(true);
+                return Value::from_boolean(false);
+            }));
         if (name == "concat")
             return Value::from_object(make_native([shared](std::vector<Value> const& args) {
                 auto result = std::make_shared<Object>();
@@ -1654,6 +1753,84 @@ Value Interpreter::get_property(Value const& object, std::string const& name)
                 return shared->elements[index];
             return Value::undefined();
         }
+        return get_property_from_chain(shared, name);
+    }
+
+    if (shared->is_map) {
+        if (name == "size") return Value::from_number(static_cast<double>(shared->entries.size()));
+        if (name == "set")
+            return Value::from_object(make_native([shared](std::vector<Value> const& args) {
+                if (args.size() >= 2) {
+                    for (auto& entry : shared->entries)
+                        if (same_value(entry.first, args[0])) { entry.second = args[1]; return Value::from_object(shared); }
+                    shared->entries.emplace_back(args[0], args[1]);
+                }
+                return Value::from_object(shared);
+            }));
+        if (name == "get")
+            return Value::from_object(make_native([shared](std::vector<Value> const& args) {
+                if (args.empty()) return Value::undefined();
+                for (auto const& entry : shared->entries)
+                    if (same_value(entry.first, args[0])) return entry.second;
+                return Value::undefined();
+            }));
+        if (name == "has")
+            return Value::from_object(make_native([shared](std::vector<Value> const& args) {
+                if (args.empty()) return Value::from_boolean(false);
+                for (auto const& entry : shared->entries)
+                    if (same_value(entry.first, args[0])) return Value::from_boolean(true);
+                return Value::from_boolean(false);
+            }));
+        if (name == "delete")
+            return Value::from_object(make_native([shared](std::vector<Value> const& args) {
+                if (args.empty()) return Value::from_boolean(false);
+                for (auto it = shared->entries.begin(); it != shared->entries.end(); ++it)
+                    if (same_value(it->first, args[0])) { shared->entries.erase(it); return Value::from_boolean(true); }
+                return Value::from_boolean(false);
+            }));
+        if (name == "keys")
+            return Value::from_object(make_native([shared](std::vector<Value> const&) {
+                auto array = std::make_shared<Object>();
+                array->is_array = true;
+                for (auto const& entry : shared->entries) array->elements.push_back(entry.first);
+                return Value::from_object(array);
+            }));
+        if (name == "values")
+            return Value::from_object(make_native([shared](std::vector<Value> const&) {
+                auto array = std::make_shared<Object>();
+                array->is_array = true;
+                for (auto const& entry : shared->entries) array->elements.push_back(entry.second);
+                return Value::from_object(array);
+            }));
+        return get_property_from_chain(shared, name);
+    }
+
+    if (shared->is_set) {
+        if (name == "size") return Value::from_number(static_cast<double>(shared->elements.size()));
+        if (name == "add")
+            return Value::from_object(make_native([shared](std::vector<Value> const& args) {
+                if (!args.empty()) {
+                    bool found = false;
+                    for (auto const& element : shared->elements)
+                        if (same_value(element, args[0])) found = true;
+                    if (!found) shared->elements.push_back(args[0]);
+                }
+                return Value::from_object(shared);
+            }));
+        if (name == "has")
+            return Value::from_object(make_native([shared](std::vector<Value> const& args) {
+                if (args.empty()) return Value::from_boolean(false);
+                for (auto const& element : shared->elements)
+                    if (same_value(element, args[0])) return Value::from_boolean(true);
+                return Value::from_boolean(false);
+            }));
+        if (name == "delete")
+            return Value::from_object(make_native([shared](std::vector<Value> const& args) {
+                if (args.empty()) return Value::from_boolean(false);
+                for (auto it = shared->elements.begin(); it != shared->elements.end(); ++it)
+                    if (same_value(*it, args[0])) { shared->elements.erase(it); return Value::from_boolean(true); }
+                return Value::from_boolean(false);
+            }));
         return get_property_from_chain(shared, name);
     }
 

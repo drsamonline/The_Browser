@@ -295,6 +295,20 @@ int main()
         require(h.output == "27\n", "async/await and chaining");
     }
 
+    // Map, Set, Date and Array.includes.
+    {
+        Harness h;
+        h.run("var m = new Map(); m.set('a', 1); m.set('b', 2);"
+              "console.log(m.get('a'), m.size, m.has('b'));"
+              "var s = new Set(); s.add(1); s.add(1); s.add(2);"
+              "console.log(s.size, s.has(2));"
+              "console.log([1, 2, 3].includes(2));"
+              "console.log(new Date(0).toISOString());"
+              "console.log(typeof Date.now());");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "1 2 true\n2 true\ntrue\n1970-01-01T00:00:00.000Z\nnumber\n", "Map/Set/Date");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;
