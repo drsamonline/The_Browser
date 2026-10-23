@@ -289,7 +289,7 @@ uint32_t read_u32(unsigned char const* p)
         | (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
-uint32_t crc32(unsigned char const* data, size_t length)
+[[maybe_unused]] uint32_t crc32(unsigned char const* data, size_t length)
 {
     static uint32_t table[256];
     static bool ready = false;
