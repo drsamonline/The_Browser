@@ -272,7 +272,7 @@ std::vector<Polygon> parse_path(std::string const& d)
         return value;
     };
 
-    auto flush = [&](bool closed) {
+    auto flush = [&](bool /*closed*/) {
         if (current.size() >= 2)
             result.push_back(current);
         current.clear();
