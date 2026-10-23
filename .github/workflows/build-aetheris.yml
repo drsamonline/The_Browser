@@ -131,7 +131,7 @@ jobs:
       # Binary cache keyed ONLY on the dependency manifests (not on the whole
       # Meta/CMake tree), so ordinary source changes never invalidate it.
       - name: Restore vcpkg binary cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: Build/caches/vcpkg-binary-cache
           key: aetheris-vcpkg-bin-windows-x64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
@@ -141,7 +141,7 @@ jobs:
       # Installed-tree cache: lets vcpkg skip re-planning and lets CMake reuse
       # already-built ports even when a partial binary-cache miss occurs.
       - name: Restore vcpkg installed tree
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             Build/vcpkg/downloads
@@ -368,14 +368,14 @@ jobs:
 
       - name: Save vcpkg binary cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: Build/caches/vcpkg-binary-cache
           key: aetheris-vcpkg-bin-windows-x64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}-${{ github.run_id }}
 
       - name: Save vcpkg installed tree cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             Build/vcpkg/downloads
