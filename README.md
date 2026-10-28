@@ -1,3 +1,5 @@
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 <p align="center">
   <img src="docs/assets/favicon.svg" width="72" height="72" alt="Aetheris Browser logo" />
 </p>
