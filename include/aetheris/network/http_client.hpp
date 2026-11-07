@@ -17,6 +17,7 @@
 
 #include <cctype>
 #include <chrono>
+#include <memory>
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
@@ -229,6 +230,50 @@ inline std::int64_t http_max_age(HttpResponseData const& response)
     return digits ? value : -1;
 }
 
+// --- Connection pool -------------------------------------------------------
+
+struct HttpConnection {
+    std::unique_ptr<Socket> socket;
+    std::unique_ptr<TlsStream> tls;
+};
+
+inline std::vector<std::pair<std::string, HttpConnection>>& http_connection_pool()
+{
+    static std::vector<std::pair<std::string, HttpConnection>> pool;
+    return pool;
+}
+
+inline std::string http_origin_key(ParsedHttpUrl const& url)
+{
+    return url.scheme + "://" + url.host + ":" + std::to_string(url.port);
+}
+
+inline HttpConnection http_take_connection(std::string const& key)
+{
+    auto& pool = http_connection_pool();
+    for (auto it = pool.begin(); it != pool.end(); ++it) {
+        if (it->first == key) {
+            HttpConnection connection = std::move(it->second);
+            pool.erase(it);
+            return connection;
+        }
+    }
+    return {};
+}
+
+// Keeps at most four idle connections per origin.
+inline void http_return_connection(std::string const& key, HttpConnection connection)
+{
+    auto& pool = http_connection_pool();
+    std::size_t count = 0;
+    for (auto const& entry : pool)
+        if (entry.first == key)
+            ++count;
+    if (count >= 4)
+        return;
+    pool.emplace_back(key, std::move(connection));
+}
+
 // A minimal send/recv transport over either a plain socket or a TLS stream.
 struct HttpTransport {
     Socket* socket { nullptr };
@@ -287,6 +332,7 @@ public:
 
     static void clear_cookies() { http_cookie_jar().clear(); }
     static void clear_cache() { http_cache_entries().clear(); }
+    static void clear_connections() { http_connection_pool().clear(); }
 
 private:
     static HttpResponseData request_once(std::string const& url, std::string const& method,
@@ -305,29 +351,36 @@ private:
             response.error = "Invalid or unsupported URL";
             return response;
         }
-        Socket socket;
-        TlsStream tls;
-        HttpTransport transport;
-        if (parsed.scheme == "https") {
-            if (!TlsStream::available()) {
-                response.error = "TLS support is not built in";
-                return response;
+        auto const key = http_origin_key(parsed);
+        HttpConnection connection = http_take_connection(key);
+        if (!connection.socket && !connection.tls) {
+            if (parsed.scheme == "https") {
+                if (!TlsStream::available()) {
+                    response.error = "TLS support is not built in";
+                    return response;
+                }
+                // AETHERIS_CA_FILE lets a test or a corporate proxy trust an
+                // explicit CA bundle; otherwise the system store is used.
+                auto const* ca_file = std::getenv("AETHERIS_CA_FILE");
+                auto tls = std::make_unique<TlsStream>();
+                if (!tls->connect(parsed.host, parsed.port, timeout_ms, ca_file ? ca_file : "")) {
+                    response.error = tls->error();
+                    return response;
+                }
+                connection.tls = std::move(tls);
+            } else {
+                auto socket = std::make_unique<Socket>();
+                if (socket->connect(parsed.host, parsed.port, timeout_ms) != SocketError::None) {
+                    response.error = "Could not connect to " + parsed.host;
+                    return response;
+                }
+                connection.socket = std::move(socket);
             }
-            // AETHERIS_CA_FILE lets a test or a corporate proxy trust an
-            // explicit CA bundle; otherwise the system store is used.
-            auto const* ca_file = std::getenv("AETHERIS_CA_FILE");
-            if (!tls.connect(parsed.host, parsed.port, timeout_ms, ca_file ? ca_file : "")) {
-                response.error = tls.error();
-                return response;
-            }
-            transport.tls = &tls;
-        } else {
-            if (socket.connect(parsed.host, parsed.port, timeout_ms) != SocketError::None) {
-                response.error = "Could not connect to " + parsed.host;
-                return response;
-            }
-            transport.socket = &socket;
         }
+
+        HttpTransport transport;
+        transport.socket = connection.socket.get();
+        transport.tls = connection.tls.get();
 
         std::string request_text = method + " " + parsed.path + " HTTP/1.1\r\n";
         request_text += "Host: " + parsed.host + "\r\n";
@@ -336,7 +389,7 @@ private:
         auto cookie_header = http_cookie_header(parsed.host);
         if (!cookie_header.empty())
             request_text += "Cookie: " + cookie_header + "\r\n";
-        request_text += "Connection: close\r\n";
+        request_text += "Connection: keep-alive\r\n";
         for (auto const& header : headers)
             request_text += header.name + ": " + header.value + "\r\n";
         if (!body.empty())
@@ -391,6 +444,19 @@ private:
         }
 
         http_store_cookies(parsed.host, response);
+
+        // Keep the connection only when the body was fully delimited and the
+        // server did not ask to close it.
+        {
+            std::string connection_header = response.header("Connection");
+            for (auto& c : connection_header)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            bool server_close = connection_header.find("close") != std::string::npos;
+            bool delimited = !response.header("Content-Length").empty()
+                || lower_equals(response.header("Transfer-Encoding"), "chunked");
+            if (delimited && !server_close)
+                http_return_connection(key, std::move(connection));
+        }
 
         auto max_age = http_max_age(response);
         if (max_age > 0) {

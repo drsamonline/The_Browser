@@ -190,6 +190,59 @@ static uint16_t start_counting_server(std::thread& server_thread, int& request_c
     return port;
 }
 
+// Serves two requests over a single connection (keep-alive) and records how
+// many connections were accepted.
+static uint16_t start_keepalive_server(std::thread& server_thread, int& accepted)
+{
+    int listener = ::socket(AF_INET, SOCK_STREAM, 0);
+    require(listener >= 0, "listener socket");
+
+    int reuse = 1;
+    ::setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+    struct sockaddr_in address {};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = 0;
+    require(::bind(listener, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) == 0, "bind");
+    require(::listen(listener, 2) == 0, "listen");
+
+    socklen_t length = sizeof(address);
+    require(::getsockname(listener, reinterpret_cast<struct sockaddr*>(&address), &length) == 0, "getsockname");
+    uint16_t port = ntohs(address.sin_port);
+
+    server_thread = std::thread([listener, &accepted]() {
+        int connection = ::accept(listener, nullptr, nullptr);
+        if (connection < 0) {
+            ::close(listener);
+            return;
+        }
+        ++accepted;
+        for (int request_index = 0; request_index < 2; ++request_index) {
+            std::string request;
+            char buffer[2048];
+            while (request.find("\r\n\r\n") == std::string::npos) {
+                auto bytes = ::recv(connection, buffer, sizeof(buffer), 0);
+                if (bytes <= 0)
+                    break;
+                request.append(buffer, static_cast<size_t>(bytes));
+            }
+            if (request.empty())
+                break;
+            std::string body = "ok";
+            std::string response = "HTTP/1.1 200 OK\r\n";
+            response += "Content-Length: " + std::to_string(body.size()) + "\r\n";
+            response += request_index == 0 ? "Connection: keep-alive\r\n" : "Connection: close\r\n";
+            response += "\r\n";
+            response += body;
+            ::send(connection, response.data(), response.size(), 0);
+        }
+        ::close(connection);
+        ::close(listener);
+    });
+    return port;
+}
+
 int main()
 {
     require(Socket::initialize() == SocketError::None, "socket init");
@@ -243,6 +296,21 @@ int main()
         require(first.body == "cached", "cache: first body");
         require(second.body == "cached", "cache: second body");
         require(requests == 1, "cache: only one network request");
+    }
+
+    // Two requests reuse one connection when the server allows keep-alive.
+    {
+        HttpClient::clear_connections();
+        HttpClient::clear_cache();
+        std::thread server;
+        int accepted = 0;
+        auto port = start_keepalive_server(server, accepted);
+        auto base = "http://127.0.0.1:" + std::to_string(port);
+        auto first = HttpClient::get(base + "/one");
+        auto second = HttpClient::get(base + "/two");
+        server.join();
+        require(first.body == "ok" && second.body == "ok", "keep-alive: both bodies arrive");
+        require(accepted == 1, "keep-alive: one connection serves two requests");
     }
 
     Socket::cleanup();

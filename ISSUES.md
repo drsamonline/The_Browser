@@ -96,10 +96,11 @@ non-goals list.
   font, font selection, kerning or shaping.
 - **Standards coverage is partial.** Flex and Grid are foundational; many CSS
   properties and HTML behaviours are unimplemented.
-- **Networking is not production-ready.** Redirects, a host-scoped cookie jar
-  and a `Cache-Control: max-age` response cache are handled, but there is no
-  keep-alive/connection pooling, TLS/certificate validation is not complete,
-  and cookies are not RFC-complete (Domain/Expires/Secure/HttpOnly are ignored).
+- **Networking is not production-ready.** Redirects, a host-scoped cookie jar,
+  a `Cache-Control: max-age` response cache and per-origin keep-alive reuse are
+  handled, but TLS/certificate validation is not complete, cookies are not
+  RFC-complete (Domain/Expires/Secure/HttpOnly are ignored), and a pooled
+  connection closed by the server mid-idle is not retried.
 - **Provenance.** The repository contains upstream-derived Ladybird/SerenityOS
   infrastructure; see [UPSTREAM_ATTRIBUTION.md](UPSTREAM_ATTRIBUTION.md) before
   making licensing or commercial-use claims.
