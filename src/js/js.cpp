@@ -1014,11 +1014,18 @@ static Value make_regex_object(std::shared_ptr<Regex> const& regex)
     object->properties["exec"] = Value::from_object(make_native([regex](std::vector<Value> const& args) {
         std::string text = args.empty() ? std::string() : args[0].to_string();
         std::size_t start = 0, end = 0;
-        if (!regex->search(text, 0, start, end))
+        std::vector<std::pair<std::size_t, std::size_t>> groups;
+        if (!regex->search(text, 0, start, end, &groups))
             return Value::null();
         auto array = std::make_shared<Object>();
         array->is_array = true;
         array->elements.push_back(Value::from_string(text.substr(start, end - start)));
+        for (std::size_t i = 1; i < groups.size(); ++i) {
+            if (groups[i].first == std::string::npos)
+                array->elements.push_back(Value::undefined());
+            else
+                array->elements.push_back(Value::from_string(text.substr(groups[i].first, groups[i].second - groups[i].first)));
+        }
         array->properties["index"] = Value::from_number(static_cast<double>(start));
         return Value::from_object(array);
     }));
@@ -1541,9 +1548,27 @@ Value Interpreter::get_property(Value const& object, std::string const& name)
                     auto const& regex = args[0].object->regex;
                     std::string result;
                     std::size_t position = 0, start = 0, end = 0;
-                    while (position <= receiver.size() && regex->search(receiver, position, start, end)) {
+                    std::vector<std::pair<std::size_t, std::size_t>> groups;
+                    while (position <= receiver.size() && regex->search(receiver, position, start, end, &groups)) {
                         result += receiver.substr(position, start - position);
-                        result += replacement;
+                        for (std::size_t i = 0; i < replacement.size(); ++i) {
+                            if (replacement[i] == '$' && i + 1 < replacement.size()) {
+                                char next = replacement[i + 1];
+                                if (next == '&') {
+                                    result += receiver.substr(start, end - start);
+                                    ++i;
+                                    continue;
+                                }
+                                if (next >= '1' && next <= '9') {
+                                    auto index = static_cast<std::size_t>(next - '0');
+                                    if (index < groups.size() && groups[index].first != std::string::npos)
+                                        result += receiver.substr(groups[index].first, groups[index].second - groups[index].first);
+                                    ++i;
+                                    continue;
+                                }
+                            }
+                            result += replacement[i];
+                        }
                         position = end > start ? end : start + 1;
                         if (!regex->global())
                             break;
@@ -1571,9 +1596,16 @@ Value Interpreter::get_property(Value const& object, std::string const& name)
                 auto array = std::make_shared<Object>();
                 array->is_array = true;
                 std::size_t position = 0, start = 0, end = 0;
-                while (position <= receiver.size() && regex->search(receiver, position, start, end)) {
+                std::vector<std::pair<std::size_t, std::size_t>> groups;
+                while (position <= receiver.size() && regex->search(receiver, position, start, end, &groups)) {
                     array->elements.push_back(Value::from_string(receiver.substr(start, end - start)));
                     if (!regex->global()) {
+                        for (std::size_t i = 1; i < groups.size(); ++i) {
+                            if (groups[i].first == std::string::npos)
+                                array->elements.push_back(Value::undefined());
+                            else
+                                array->elements.push_back(Value::from_string(receiver.substr(groups[i].first, groups[i].second - groups[i].first)));
+                        }
                         array->properties["index"] = Value::from_number(static_cast<double>(start));
                         break;
                     }

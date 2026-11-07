@@ -22,6 +22,7 @@ struct Node {
     int minimum { 0 };
     int maximum { -1 };
     bool greedy { true };
+    int group_index { 0 }; // 1-based capture index, 0 = non-capturing
 };
 
 NodePtr make_node(Node::Kind kind)
@@ -58,7 +59,7 @@ bool in_class(Node const& node, char c, bool ignore_case)
     return node.negated ? !found : found;
 }
 
-bool match_node(NodePtr const& node, std::string const& text, std::size_t position, bool ignore_case, std::function<bool(std::size_t)> const& continuation)
+bool match_node(NodePtr const& node, std::string const& text, std::size_t position, bool ignore_case, std::vector<std::pair<std::size_t, std::size_t>>* captures, std::function<bool(std::size_t)> const& continuation)
 {
     switch (node->kind) {
     case Node::Kind::Literal:
@@ -77,19 +78,31 @@ bool match_node(NodePtr const& node, std::string const& text, std::size_t positi
         return position == 0 && continuation(position);
     case Node::Kind::End:
         return position == text.size() && continuation(position);
-    case Node::Kind::Group:
-        return match_node(node->child, text, position, ignore_case, continuation);
+    case Node::Kind::Group: {
+        if (node->group_index > 0 && captures) {
+            std::size_t start = position;
+            auto saved = (*captures)[node->group_index];
+            return match_node(node->child, text, position, ignore_case, captures, [&](std::size_t next) {
+                (*captures)[node->group_index] = { start, next };
+                if (continuation(next))
+                    return true;
+                (*captures)[node->group_index] = saved;
+                return false;
+            });
+        }
+        return match_node(node->child, text, position, ignore_case, captures, continuation);
+    }
     case Node::Kind::Concat: {
         std::function<bool(std::size_t, std::size_t)> step = [&](std::size_t index, std::size_t at) -> bool {
             if (index == node->children.size())
                 return continuation(at);
-            return match_node(node->children[index], text, at, ignore_case, [&](std::size_t next) { return step(index + 1, next); });
+            return match_node(node->children[index], text, at, ignore_case, captures, [&](std::size_t next) { return step(index + 1, next); });
         };
         return step(0, position);
     }
     case Node::Kind::Alt:
         for (auto const& branch : node->children)
-            if (match_node(branch, text, position, ignore_case, continuation))
+            if (match_node(branch, text, position, ignore_case, captures, continuation))
                 return true;
         return false;
     case Node::Kind::Repeat: {
@@ -98,14 +111,14 @@ bool match_node(NodePtr const& node, std::string const& text, std::size_t positi
             if (count < node->minimum) {
                 if (!can_more)
                     return false;
-                return match_node(node->child, text, at, ignore_case, [&](std::size_t next) {
+                return match_node(node->child, text, at, ignore_case, captures, [&](std::size_t next) {
                     if (next == at)
                         return false;
                     return repeat(next, count + 1);
                 });
             }
             if (node->greedy) {
-                if (can_more && match_node(node->child, text, at, ignore_case, [&](std::size_t next) {
+                if (can_more && match_node(node->child, text, at, ignore_case, captures, [&](std::size_t next) {
                         if (next == at)
                             return false;
                         return repeat(next, count + 1);
@@ -116,7 +129,7 @@ bool match_node(NodePtr const& node, std::string const& text, std::size_t positi
             if (continuation(at))
                 return true;
             if (can_more)
-                return match_node(node->child, text, at, ignore_case, [&](std::size_t next) {
+                return match_node(node->child, text, at, ignore_case, captures, [&](std::size_t next) {
                     if (next == at)
                         return false;
                     return repeat(next, count + 1);
@@ -134,6 +147,7 @@ struct Parser {
     std::string const& pattern;
     std::size_t position { 0 };
     bool ok { true };
+    int group_count { 0 };
 
     bool at_end() const { return position >= pattern.size(); }
     char peek() const { return at_end() ? '\0' : pattern[position]; }
@@ -291,11 +305,23 @@ struct Parser {
         char c = peek();
         if (c == '(') {
             ++position;
+            bool capturing = true;
+            if (peek() == '?') {
+                // (?:...) is non-capturing; other (?...) forms are unsupported.
+                ++position;
+                if (consume(':')) {
+                    capturing = false;
+                } else {
+                    ok = false;
+                }
+            }
             auto inner = parse_alternation();
             if (!consume(')'))
                 ok = false;
             auto group = make_node(Node::Kind::Group);
             group->child = inner;
+            if (capturing)
+                group->group_index = ++group_count;
             return group;
         }
         if (c == '[')
@@ -327,6 +353,7 @@ struct Regex::Impl {
     std::string flags;
     bool global { false };
     bool ignore_case { false };
+    std::size_t group_count { 0 };
     NodePtr root;
 };
 
@@ -359,30 +386,37 @@ std::shared_ptr<Regex> Regex::compile(std::string const& pattern, std::string co
         error = "invalid regular expression";
         return nullptr;
     }
+    impl->group_count = static_cast<std::size_t>(parser.group_count);
 
     auto regex = std::make_shared<Regex>();
     regex->m_impl = impl;
     return regex;
 }
 
-bool Regex::search(std::string const& text, std::size_t start, std::size_t& match_start, std::size_t& match_end) const
+bool Regex::search(std::string const& text, std::size_t start, std::size_t& match_start, std::size_t& match_end,
+    std::vector<std::pair<std::size_t, std::size_t>>* captures) const
 {
     if (!m_impl || !m_impl->root)
         return false;
     for (std::size_t position = start; position <= text.size(); ++position) {
         std::size_t end = position;
-        bool matched = match_node(m_impl->root, text, position, m_impl->ignore_case, [&](std::size_t at) {
+        std::vector<std::pair<std::size_t, std::size_t>> slots(m_impl->group_count + 1, { std::string::npos, std::string::npos });
+        bool matched = match_node(m_impl->root, text, position, m_impl->ignore_case, &slots, [&](std::size_t at) {
             end = at;
             return true;
         });
         if (matched) {
             match_start = position;
             match_end = end;
+            if (captures)
+                *captures = slots;
             return true;
         }
     }
     return false;
 }
+
+std::size_t Regex::group_count() const { return m_impl ? m_impl->group_count : 0; }
 
 bool Regex::test(std::string const& text) const
 {

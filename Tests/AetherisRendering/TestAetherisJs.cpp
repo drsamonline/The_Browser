@@ -309,6 +309,17 @@ int main()
         require(h.output == "1 2 true\n2 true\ntrue\n1970-01-01T00:00:00.000Z\nnumber\n", "Map/Set/Date");
     }
 
+    // Regex capture groups: match/exec expose them and replace expands $1..$9.
+    {
+        Harness h;
+        h.run("console.log('2026-10-22'.replace(/([0-9]+)-([0-9]+)-([0-9]+)/, '$3/$2/$1'));"
+              "var m = 'abc123'.match(/([a-z]+)([0-9]+)/); console.log(m[1], m[2]);"
+              "console.log('a1 b2'.replace(/([a-z])([0-9])/g, '$2$1'));"
+              "var e = /([0-9]+)/.exec('x42'); console.log(e[0], e[1], e.index);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "22/10/2026\nabc 123\n1a 2b\n42 42 1\n", "regex capture groups");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;

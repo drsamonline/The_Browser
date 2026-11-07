@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace aetheris::js {
 
@@ -17,7 +19,10 @@ public:
     static std::shared_ptr<Regex> compile(std::string const& pattern, std::string const& flags, std::string& error);
 
     // Finds the first match at or after `start`, reporting its extent.
-    bool search(std::string const& text, std::size_t start, std::size_t& match_start, std::size_t& match_end) const;
+    bool search(std::string const& text, std::size_t start, std::size_t& match_start, std::size_t& match_end,
+        std::vector<std::pair<std::size_t, std::size_t>>* captures = nullptr) const;
+    // Number of capturing groups in the pattern.
+    std::size_t group_count() const;
     bool test(std::string const& text) const;
 
     std::string const& source() const;

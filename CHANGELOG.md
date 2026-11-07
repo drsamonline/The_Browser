@@ -48,6 +48,8 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 - Added element-level events: element handles expose `addEventListener` and `on<type>` handlers, and `--render ... --dispatch <id> <type>` fires an event on a named element after load (with `this` bound to the element).
 - Added geometry-based event dispatch: `--render ... --click <x>,<y>` hit-tests the point (reusing `DocumentInteraction::hit_test`) and fires a click on the element there, then re-layouts. Added `RenderDocument::relayout()`. Also applied the inline `style` attribute in the cascade (previously ignored), so inline styles now affect layout and painting.
 - Networking completeness: `HttpClient` now follows redirects (301/302/303/307/308, up to five hops, resolving relative `Location` values) and keeps a host-scoped cookie jar (parses `Set-Cookie`, sends `Cookie` on matching requests).
+- Inline `<style>` blocks are extracted and applied in the cascade, so pages styled only by an inline block now render correctly.
+- Regular expressions gain capturing groups: `match`/`exec` expose them and `replace` expands `$1`–`$9` and `$&`; `(?:...)` is non-capturing.
 
 ### Fixed
 

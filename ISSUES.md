@@ -67,10 +67,10 @@ non-goals list.
   tree-walking interpreter (variables, operators, control flow, functions and
   recursion, arrays, objects and a few built-ins). It is not a conforming
   implementation: closures, constructors/`new`/`this`, prototypes and
-  `instanceof`, `class` syntax, `JSON`, a regular-expression subset and
-  `Promise`/`async`/`await` are supported, but there are no capture
-  groups/back-references in the regex engine and no event loop (microtasks
-  are drained synchronously). The DOM binding is minimal:
+  `instanceof`, `class` syntax, `JSON`, a regular-expression subset (including
+  capturing groups) and `Promise`/`async`/`await` are supported, but
+  back-references and look-around are not, and there is no event loop
+  (microtasks are drained synchronously). The DOM binding is minimal:
   `document.write`, `getElementById`, `createElement`/`appendChild`,
   `setAttribute`/`getAttribute`, `textContent`, and `addEventListener`/`on<type>`
   events on `window`, `document` and elements (`DOMContentLoaded`, `load`, and
