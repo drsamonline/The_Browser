@@ -234,3 +234,11 @@ if (OpenSSL_FOUND)
     target_link_libraries(TestAetherisTls PRIVATE AetherisRuntime OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
     add_test(NAME AetherisTls COMMAND TestAetherisTls)
 endif()
+
+# Drives the real binary: the JavaScript DOM host lives in main.cpp, so the
+# unit tests cannot reach it. This runs --render against a loopback page and
+# asserts both the output and a clean stderr (catching heap corruption).
+add_executable(TestAetherisDomHost TestAetherisDomHost.cpp)
+target_link_libraries(TestAetherisDomHost PRIVATE Threads::Threads)
+add_dependencies(TestAetherisDomHost aetheris)
+add_test(NAME AetherisDomHost COMMAND TestAetherisDomHost $<TARGET_FILE:aetheris>)
