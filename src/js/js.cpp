@@ -1406,6 +1406,19 @@ void Interpreter::setup_globals()
             return Value::undefined();
         return create_element(args[0].to_string());
     }));
+    document->properties["querySelector"] = Value::from_object(make_native([this](std::vector<Value> const& args) {
+        if (args.empty() || !query_selector)
+            return Value::null();
+        return query_selector(args[0].to_string());
+    }));
+    document->properties["querySelectorAll"] = Value::from_object(make_native([this](std::vector<Value> const& args) {
+        if (args.empty() || !query_selector_all) {
+            auto empty = std::make_shared<Object>();
+            empty->is_array = true;
+            return Value::from_object(empty);
+        }
+        return query_selector_all(args[0].to_string());
+    }));
     m_document = document;
     document->properties["addEventListener"] = make_listener_registrar(document);
     m_globals->variables["document"] = Value::from_object(document);

@@ -26,6 +26,7 @@ int main() { return 0; }
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -141,6 +142,54 @@ static uint16_t start_redirect_server(std::thread& server_thread, std::string& c
     return port;
 }
 
+// A server that answers any request with a cacheable 200 and counts connections.
+static uint16_t start_counting_server(std::thread& server_thread, int& request_count)
+{
+    int listener = ::socket(AF_INET, SOCK_STREAM, 0);
+    require(listener >= 0, "listener socket");
+
+    int reuse = 1;
+    ::setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+    struct sockaddr_in address {};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = 0;
+    require(::bind(listener, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) == 0, "bind");
+    require(::listen(listener, 4) == 0, "listen");
+
+    socklen_t length = sizeof(address);
+    require(::getsockname(listener, reinterpret_cast<struct sockaddr*>(&address), &length) == 0, "getsockname");
+    uint16_t port = ntohs(address.sin_port);
+
+    server_thread = std::thread([listener, &request_count]() {
+        while (true) {
+            fd_set readable;
+            FD_ZERO(&readable);
+            FD_SET(listener, &readable);
+            struct timeval timeout {};
+            timeout.tv_sec = 1;
+            if (::select(listener + 1, &readable, nullptr, nullptr, &timeout) <= 0)
+                break;
+            int connection = ::accept(listener, nullptr, nullptr);
+            if (connection < 0)
+                break;
+            char buffer[2048];
+            ::recv(connection, buffer, sizeof(buffer), 0);
+            ++request_count;
+            std::string body = "cached";
+            std::string response = "HTTP/1.1 200 OK\r\n";
+            response += "Cache-Control: max-age=60\r\n";
+            response += "Content-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
+            response += body;
+            ::send(connection, response.data(), response.size(), 0);
+            ::close(connection);
+        }
+        ::close(listener);
+    });
+    return port;
+}
+
 int main()
 {
     require(Socket::initialize() == SocketError::None, "socket init");
@@ -179,6 +228,21 @@ int main()
         require(response.status == 200, "redirect followed to 200");
         require(response.body == "final", "redirect target body");
         require(captured_cookie == "session=abc", "cookie carried on the redirect request");
+    }
+
+    // A Cache-Control: max-age response is served from the cache.
+    {
+        HttpClient::clear_cache();
+        std::thread server;
+        int requests = 0;
+        auto port = start_counting_server(server, requests);
+        auto url = "http://127.0.0.1:" + std::to_string(port) + "/cached";
+        auto first = HttpClient::get(url);
+        auto second = HttpClient::get(url);
+        server.join();
+        require(first.body == "cached", "cache: first body");
+        require(second.body == "cached", "cache: second body");
+        require(requests == 1, "cache: only one network request");
     }
 
     Socket::cleanup();

@@ -233,6 +233,8 @@ public:
     std::function<void(std::string const&)> write_handler; // document.write
     std::function<Value(std::string const&)> element_lookup; // document.getElementById
     std::function<Value(std::string const&)> create_element; // document.createElement
+    std::function<Value(std::string const&)> query_selector; // document.querySelector
+    std::function<Value(std::string const&)> query_selector_all; // document.querySelectorAll
 
 private:
     struct Completion {

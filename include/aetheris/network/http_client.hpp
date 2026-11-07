@@ -16,6 +16,7 @@
 #include "aetheris/network/tls.hpp"
 
 #include <cctype>
+#include <chrono>
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
@@ -190,6 +191,44 @@ inline std::string http_cookie_header(std::string const& host)
     return result;
 }
 
+// --- Response cache --------------------------------------------------------
+
+struct HttpCacheEntry {
+    std::string url;
+    HttpResponseData response;
+    std::int64_t expiry { 0 };
+};
+
+inline std::vector<HttpCacheEntry>& http_cache_entries()
+{
+    static std::vector<HttpCacheEntry> entries;
+    return entries;
+}
+
+inline std::int64_t http_now_seconds()
+{
+    using namespace std::chrono;
+    return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
+}
+
+// Returns the max-age in seconds from Cache-Control, or -1 when absent.
+inline std::int64_t http_max_age(HttpResponseData const& response)
+{
+    auto control = response.header("Cache-Control");
+    auto position = control.find("max-age=");
+    if (position == std::string::npos)
+        return -1;
+    position += 8;
+    std::int64_t value = 0;
+    bool digits = false;
+    while (position < control.size() && std::isdigit(static_cast<unsigned char>(control[position]))) {
+        value = value * 10 + (control[position] - '0');
+        ++position;
+        digits = true;
+    }
+    return digits ? value : -1;
+}
+
 // A minimal send/recv transport over either a plain socket or a TLS stream.
 struct HttpTransport {
     Socket* socket { nullptr };
@@ -247,12 +286,19 @@ public:
     }
 
     static void clear_cookies() { http_cookie_jar().clear(); }
+    static void clear_cache() { http_cache_entries().clear(); }
 
 private:
     static HttpResponseData request_once(std::string const& url, std::string const& method,
         std::vector<HttpHeader> headers, std::string const& body, int timeout_ms)
     {
         HttpResponseData response;
+
+        // Serve a fresh cached response when the server allowed it.
+        auto now = http_now_seconds();
+        for (auto const& entry : http_cache_entries())
+            if (entry.url == url && entry.expiry > now)
+                return entry.response;
 
         auto parsed = parse_http_url(url);
         if (!parsed.valid) {
@@ -345,6 +391,21 @@ private:
         }
 
         http_store_cookies(parsed.host, response);
+
+        auto max_age = http_max_age(response);
+        if (max_age > 0) {
+            auto& entries = http_cache_entries();
+            auto expiry = http_now_seconds() + max_age;
+            bool replaced = false;
+            for (auto& entry : entries)
+                if (entry.url == url) {
+                    entry.response = response;
+                    entry.expiry = expiry;
+                    replaced = true;
+                }
+            if (!replaced)
+                entries.push_back({ url, response, expiry });
+        }
         return response;
     }
 

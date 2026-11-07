@@ -72,9 +72,10 @@ non-goals list.
   back-references and look-around are not, and there is no event loop
   (microtasks are drained synchronously). The DOM binding is minimal:
   `document.write`, `getElementById`, `createElement`/`appendChild`,
-  `setAttribute`/`getAttribute`, `textContent`, and `addEventListener`/`on<type>`
-  events on `window`, `document` and elements (`DOMContentLoaded`, `load`, and
-  host-dispatched element events).
+  `setAttribute`/`getAttribute`, `textContent`, `classList`, `parentNode`/`children`,
+  `querySelector`/`querySelectorAll`, and `addEventListener`/`on<type>` events on
+  `window`, `document` and elements (`DOMContentLoaded`, `load`, and
+  host-dispatched element events that bubble).
   The full LibJS engine in the tree needs Rust, a clang GC plugin and ICU and
   is not built in the standalone profile.
 - **Prototype runtime cluster** (`src/cache`, `src/network`, `src/ui`,
@@ -94,9 +95,10 @@ non-goals list.
   font, font selection, kerning or shaping.
 - **Standards coverage is partial.** Flex and Grid are foundational; many CSS
   properties and HTML behaviours are unimplemented.
-- **Networking is not production-ready.** Redirects and a host-scoped cookie
-  jar are handled, but TLS/certificate validation is not complete and cookies
-  are not RFC-complete (Domain/Expires/Secure/HttpOnly attributes are ignored).
+- **Networking is not production-ready.** Redirects, a host-scoped cookie jar
+  and a `Cache-Control: max-age` response cache are handled, but there is no
+  keep-alive/connection pooling, TLS/certificate validation is not complete,
+  and cookies are not RFC-complete (Domain/Expires/Secure/HttpOnly are ignored).
 - **Provenance.** The repository contains upstream-derived Ladybird/SerenityOS
   infrastructure; see [UPSTREAM_ATTRIBUTION.md](UPSTREAM_ATTRIBUTION.md) before
   making licensing or commercial-use claims.

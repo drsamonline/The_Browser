@@ -171,6 +171,16 @@ static void set_node_text(rendering::DomNode& node, std::string const& text)
     node.append_child(std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", text));
 }
 
+// Builds a native JS function from a callable.
+static std::shared_ptr<aetheris::js::Object> make_native_like(std::function<aetheris::js::Value(std::vector<aetheris::js::Value> const&)> function)
+{
+    auto object = std::make_shared<aetheris::js::Object>();
+    object->is_function = true;
+    object->is_native = true;
+    object->native = std::move(function);
+    return object;
+}
+
 // ---- JavaScript DOM host -----------------------------------------------------
 // Owns the mapping between JS element handles and DOM nodes, including nodes
 // created with document.createElement that are not yet in the tree.
@@ -289,6 +299,84 @@ std::shared_ptr<aetheris::js::Object> DomHost::handle_for(rendering::DomNode* no
     };
     handle->properties["addEventListener"] = aetheris::js::Value::from_object(add_listener);
 
+    // classList: add/remove/contains/toggle over the class attribute.
+    auto read_classes = [node]() {
+        std::vector<std::string> out;
+        if (auto* value = node->attribute("class")) {
+            std::string current;
+            for (char c : *value) {
+                if (std::isspace(static_cast<unsigned char>(c))) {
+                    if (!current.empty()) { out.push_back(current); current.clear(); }
+                } else {
+                    current += c;
+                }
+            }
+            if (!current.empty())
+                out.push_back(current);
+        }
+        return out;
+    };
+    auto write_classes = [node](std::vector<std::string> const& values) {
+        std::string joined;
+        for (auto const& value : values) {
+            if (!joined.empty())
+                joined += ' ';
+            joined += value;
+        }
+        node->attributes["class"] = joined;
+    };
+    auto class_list = std::make_shared<aetheris::js::Object>();
+    class_list->properties["add"] = aetheris::js::Value::from_object(make_native_like([read_classes, write_classes](std::vector<aetheris::js::Value> const& args) {
+        auto classes = read_classes();
+        for (auto const& arg : args) {
+            std::string name = arg.to_string();
+            if (name.empty())
+                continue;
+            bool found = false;
+            for (auto const& existing : classes)
+                if (existing == name) found = true;
+            if (!found) classes.push_back(name);
+        }
+        write_classes(classes);
+        return aetheris::js::Value::undefined();
+    }));
+    class_list->properties["remove"] = aetheris::js::Value::from_object(make_native_like([read_classes, write_classes](std::vector<aetheris::js::Value> const& args) {
+        auto classes = read_classes();
+        for (auto const& arg : args) {
+            std::string name = arg.to_string();
+            for (auto it = classes.begin(); it != classes.end();) {
+                if (*it == name) it = classes.erase(it); else ++it;
+            }
+        }
+        write_classes(classes);
+        return aetheris::js::Value::undefined();
+    }));
+    class_list->properties["contains"] = aetheris::js::Value::from_object(make_native_like([read_classes](std::vector<aetheris::js::Value> const& args) {
+        if (args.empty()) return aetheris::js::Value::from_boolean(false);
+        std::string name = args[0].to_string();
+        for (auto const& existing : read_classes())
+            if (existing == name) return aetheris::js::Value::from_boolean(true);
+        return aetheris::js::Value::from_boolean(false);
+    }));
+    class_list->properties["toggle"] = aetheris::js::Value::from_object(make_native_like([read_classes, write_classes](std::vector<aetheris::js::Value> const& args) {
+        if (args.empty()) return aetheris::js::Value::from_boolean(false);
+        std::string name = args[0].to_string();
+        auto classes = read_classes();
+        bool present = false;
+        for (auto const& existing : classes)
+            if (existing == name) present = true;
+        if (present) {
+            for (auto it = classes.begin(); it != classes.end();) {
+                if (*it == name) it = classes.erase(it); else ++it;
+            }
+        } else {
+            classes.push_back(name);
+        }
+        write_classes(classes);
+        return aetheris::js::Value::from_boolean(!present);
+    }));
+    handle->properties["classList"] = aetheris::js::Value::from_object(class_list);
+
     handle_by_node[node] = handle;
     if (id)
         handle_by_id[*id] = handle;
@@ -304,6 +392,177 @@ static void build_handles(rendering::DomNode& node, DomHost& dom, std::vector<st
         handles.push_back(dom.handle_for(&node));
     for (auto& child : node.children)
         build_handles(*child, dom, handles);
+}
+
+// Links each element handle to its parent handle and its child elements.
+static void wire_tree(DomHost& dom, rendering::DomNode& node, std::shared_ptr<aetheris::js::Object> parent)
+{
+    std::shared_ptr<aetheris::js::Object> current;
+    if (node.type == rendering::DomNodeType::Element) {
+        auto it = dom.handle_by_node.find(&node);
+        if (it != dom.handle_by_node.end())
+            current = it->second;
+    }
+    if (current) {
+        if (parent)
+            current->properties["parentNode"] = aetheris::js::Value::from_object(parent);
+        auto children = std::make_shared<aetheris::js::Object>();
+        children->is_array = true;
+        for (auto& child : node.children) {
+            if (child->type != rendering::DomNodeType::Element)
+                continue;
+            auto it = dom.handle_by_node.find(child.get());
+            if (it != dom.handle_by_node.end())
+                children->elements.push_back(aetheris::js::Value::from_object(it->second));
+        }
+        current->properties["children"] = aetheris::js::Value::from_object(children);
+    }
+    for (auto& child : node.children)
+        wire_tree(dom, *child, current ? current : parent);
+}
+
+// Dispatches an event to the target and then up its ancestor chain.
+static void dispatch_bubbling(aetheris::js::Interpreter& js, DomHost& dom, rendering::DomNode* node, std::string const& type)
+{
+    for (auto* current = node; current;) {
+        auto it = dom.handle_by_node.find(current);
+        if (it != dom.handle_by_node.end())
+            js.dispatch_event_to(aetheris::js::Value::from_object(it->second), type);
+        auto parent = dom.parent_of.find(current);
+        current = parent != dom.parent_of.end() ? parent->second : nullptr;
+    }
+}
+
+// --- Minimal selector support for querySelector/querySelectorAll -----------
+
+struct SimpleSelector {
+    std::string tag;
+    std::string id;
+    std::vector<std::string> classes;
+};
+
+static bool parse_simple_selector(std::string const& text, SimpleSelector& out)
+{
+    std::size_t i = 0;
+    while (i < text.size() && (std::isalnum(static_cast<unsigned char>(text[i])) || text[i] == '-' || text[i] == '*')) {
+        if (text[i] != '*')
+            out.tag += text[i];
+        ++i;
+    }
+    while (i < text.size()) {
+        if (text[i] == '#') {
+            ++i;
+            while (i < text.size() && (std::isalnum(static_cast<unsigned char>(text[i])) || text[i] == '-'))
+                out.id += text[i++];
+        } else if (text[i] == '.') {
+            ++i;
+            std::string name;
+            while (i < text.size() && (std::isalnum(static_cast<unsigned char>(text[i])) || text[i] == '-'))
+                name += text[i++];
+            if (name.empty())
+                return false;
+            out.classes.push_back(name);
+        } else {
+            return false; // unsupported syntax (attributes, pseudo-classes, ...)
+        }
+    }
+    return true;
+}
+
+static bool element_matches(rendering::DomNode const& node, SimpleSelector const& selector)
+{
+    if (node.type != rendering::DomNodeType::Element)
+        return false;
+    if (!selector.tag.empty() && node.name != selector.tag)
+        return false;
+    if (!selector.id.empty()) {
+        auto* id = node.attribute("id");
+        if (!id || *id != selector.id)
+            return false;
+    }
+    for (auto const& wanted : selector.classes) {
+        auto* classes = node.attribute("class");
+        if (!classes)
+            return false;
+        bool found = false;
+        std::string current;
+        std::string text = *classes;
+        text.push_back(' ');
+        for (char c : text) {
+            if (std::isspace(static_cast<unsigned char>(c))) {
+                if (current == wanted)
+                    found = true;
+                current.clear();
+            } else {
+                current += c;
+            }
+        }
+        if (!found)
+            return false;
+    }
+    return true;
+}
+
+static bool matches_chain(rendering::DomNode const& node, std::vector<SimpleSelector> const& chain, std::size_t index, DomHost& dom)
+{
+    if (!element_matches(node, chain[index]))
+        return false;
+    if (index == 0)
+        return true;
+    auto parent = dom.parent_of.find(const_cast<rendering::DomNode*>(&node));
+    for (auto* ancestor = parent != dom.parent_of.end() ? parent->second : nullptr; ancestor;) {
+        if (matches_chain(*ancestor, chain, index - 1, dom))
+            return true;
+        auto up = dom.parent_of.find(ancestor);
+        ancestor = up != dom.parent_of.end() ? up->second : nullptr;
+    }
+    return false;
+}
+
+// Splits "div .a, #b" into chains of simple selectors.
+static bool parse_selector(std::string const& selector, std::vector<std::vector<SimpleSelector>>& chains)
+{
+    std::size_t start = 0;
+    while (start <= selector.size()) {
+        auto comma = selector.find(',', start);
+        std::string group = selector.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        std::vector<SimpleSelector> chain;
+        std::size_t position = 0;
+        while (position < group.size()) {
+            while (position < group.size() && std::isspace(static_cast<unsigned char>(group[position])))
+                ++position;
+            std::size_t token_start = position;
+            while (position < group.size() && !std::isspace(static_cast<unsigned char>(group[position])))
+                ++position;
+            if (position == token_start)
+                break;
+            SimpleSelector simple;
+            if (!parse_simple_selector(group.substr(token_start, position - token_start), simple))
+                return false;
+            chain.push_back(simple);
+        }
+        if (chain.empty())
+            return false;
+        chains.push_back(chain);
+        if (comma == std::string::npos)
+            break;
+        start = comma + 1;
+    }
+    return !chains.empty();
+}
+
+static void collect_selector_matches(rendering::DomNode& node, DomHost& dom, std::vector<std::vector<SimpleSelector>> const& chains, std::vector<rendering::DomNode*>& out)
+{
+    if (node.type == rendering::DomNodeType::Element) {
+        for (auto const& chain : chains) {
+            if (matches_chain(node, chain, chain.size() - 1, dom)) {
+                out.push_back(&node);
+                break;
+            }
+        }
+    }
+    for (auto& child : node.children)
+        collect_selector_matches(*child, dom, chains, out);
 }
 
 // Collects the bodies of inline <script> elements.
@@ -432,6 +691,7 @@ static int run_render(std::string const& url, std::string const& output_path, st
     // Handles are built for every element so a hit-test can find any of them.
     std::vector<std::shared_ptr<aetheris::js::Object>> handles;
     build_handles(document.root(), dom, handles);
+    wire_tree(dom, document.root(), nullptr);
 
     std::string script_output;
     aetheris::js::Interpreter js;
@@ -449,6 +709,33 @@ static int run_render(std::string const& url, std::string const& output_path, st
         handles.push_back(handle);
         return aetheris::js::Value::from_object(handle);
     };
+    js.query_selector = [&dom, &document](std::string const& selector) -> aetheris::js::Value {
+        std::vector<std::vector<SimpleSelector>> chains;
+        if (!parse_selector(selector, chains))
+            return aetheris::js::Value::null();
+        std::vector<rendering::DomNode*> matches;
+        collect_selector_matches(document.root(), dom, chains, matches);
+        if (matches.empty())
+            return aetheris::js::Value::null();
+        auto it = dom.handle_by_node.find(matches.front());
+        return it != dom.handle_by_node.end() ? aetheris::js::Value::from_object(it->second) : aetheris::js::Value::null();
+    };
+    js.query_selector_all = [&dom, &document](std::string const& selector) -> aetheris::js::Value {
+        auto array = std::make_shared<aetheris::js::Object>();
+        array->is_array = true;
+        std::vector<std::vector<SimpleSelector>> chains;
+        if (!parse_selector(selector, chains))
+            return aetheris::js::Value::from_object(array);
+        std::vector<rendering::DomNode*> matches;
+        collect_selector_matches(document.root(), dom, chains, matches);
+        for (auto* node : matches) {
+            auto it = dom.handle_by_node.find(node);
+            if (it != dom.handle_by_node.end())
+                array->elements.push_back(aetheris::js::Value::from_object(it->second));
+        }
+        return aetheris::js::Value::from_object(array);
+    };
+
     for (auto const& script : extract_scripts(html)) {
         js.run(script);
         if (js.has_error()) {
@@ -462,8 +749,9 @@ static int run_render(std::string const& url, std::string const& output_path, st
     }
     if (!js.has_error() && !dispatch_id.empty() && !dispatch_type.empty()) {
         auto it = dom.handle_by_id.find(dispatch_id);
-        if (it != dom.handle_by_id.end())
-            js.dispatch_event_to(aetheris::js::Value::from_object(it->second), dispatch_type);
+        auto node_it = it != dom.handle_by_id.end() ? dom.node_by_handle.find(it->second.get()) : dom.node_by_handle.end();
+        if (node_it != dom.node_by_handle.end())
+            dispatch_bubbling(js, dom, node_it->second, dispatch_type);
         else
             std::cerr << "  [js] no element with id '" << dispatch_id << "'" << std::endl;
     }
@@ -509,7 +797,7 @@ static int run_render(std::string const& url, std::string const& output_path, st
             }
         }
         if (target) {
-            js.dispatch_event_to(aetheris::js::Value::from_object(target), "click");
+            dispatch_bubbling(js, dom, node, "click");
             apply_text_content();
             rendered.relayout();
         } else {
