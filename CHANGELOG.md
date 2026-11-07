@@ -4,7 +4,7 @@
 
 All notable Aetheris-specific changes should be documented here. Upstream-derived changes should retain their original provenance and must not be presented as newly authored Aetheris work.
 
-## Unreleased — v0.1 candidate
+## v0.2 — 2026-11-07
 
 ### Added
 
