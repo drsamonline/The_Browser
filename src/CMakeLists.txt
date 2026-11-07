@@ -130,8 +130,10 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(AetherisJS STATIC
     js/js.cpp
-    js/regex.cpp
 )
+
+# The engine itself is the vendored QuickJS.
+target_link_libraries(AetherisJS PUBLIC AetherisQuickJS)
 
 target_include_directories(AetherisJS
     PUBLIC

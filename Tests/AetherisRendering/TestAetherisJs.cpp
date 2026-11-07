@@ -25,7 +25,7 @@ struct Harness {
         interpreter.write_handler = [this](std::string const& text) { written += text; };
     }
 
-    Value run(std::string const& source)
+    bool run(std::string const& source)
     {
         return interpreter.run(source);
     }
@@ -212,14 +212,15 @@ int main()
     // Class inheritance via prototype assignment.
     {
         Harness h;
+        // A class's `prototype` is non-writable, so inheritance must use
+        // `extends` (the old engine wrongly allowed reassigning it).
         h.run("class Base { constructor() { this.kind = 'base'; } describe() { return this.kind; } }"
-              "class Derived { constructor() { this.kind = 'derived'; } }"
-              "Derived.prototype = new Base();"
+              "class Derived extends Base { constructor() { super(); this.kind = 'derived'; } }"
               "var d = new Derived();"
               "console.log(d.describe());"
               "console.log(d instanceof Base);");
         require(!h.has_error(), h.error().c_str());
-        require(h.output == "derived\ntrue\n", "class prototype inheritance");
+        require(h.output == "derived\ntrue\n", "class inheritance");
     }
 
     // for...of over arrays and strings.
@@ -289,8 +290,7 @@ int main()
               "  var b = await Promise.resolve(2).then(function (v) { return v * 10; });"
               "  result = a + b;"
               "}"
-              "run();"
-              "console.log(result);");
+              "run().then(function () { console.log(result); });");
         require(!h.has_error(), h.error().c_str());
         require(h.output == "27\n", "async/await and chaining");
     }

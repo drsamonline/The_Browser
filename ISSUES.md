@@ -63,22 +63,15 @@ Aetheris is experimental. The following are known limitations rather than
 regressions — see [V0.1_ACCEPTANCE.md](V0.1_ACCEPTANCE.md) for the full
 non-goals list.
 
-- **The JavaScript engine is a small subset.** `src/js/` is a self-contained
-  tree-walking interpreter (variables, operators, control flow, functions and
-  recursion, arrays, objects and a few built-ins). It is not a conforming
-  implementation: closures, constructors/`new`/`this`, prototypes and
-  `instanceof`, `class` syntax, `JSON`, a regular-expression subset (capturing
-  groups, back-references and look-around) and `Promise`/`async`/`await` are
-  supported, but named groups are not, and there is no event loop (microtasks
-  are drained synchronously). The DOM binding is minimal:
+- **JavaScript is QuickJS, not LibJS.** The engine is the vendored QuickJS
+  (quickjs-ng, MIT) in `third_party/quickjs/`, embedded from `src/js/`. That
+  gives ES2025 without Rust, ICU or a clang plugin, at the cost of roughly
+  0.9 MB of binary. There is still no event loop: promise jobs are drained
+  after each script and after events. The DOM binding is minimal:
   `document.write`, `getElementById`, `createElement`/`appendChild`,
   `setAttribute`/`getAttribute`, `textContent`, `innerHTML`, `style`,
-  `classList`, `parentNode`/`children`, `querySelector`/`querySelectorAll`, and
-  `addEventListener`/`on<type>` events on
-  `window`, `document` and elements (`DOMContentLoaded`, `load`, and
-  host-dispatched element events that bubble).
-  The full LibJS engine in the tree needs Rust, a clang GC plugin and ICU and
-  is not built in the standalone profile.
+  `classList`, `parentNode`/`children`, `querySelector`/`querySelectorAll`,
+  and `addEventListener`/`on<type>` events that bubble.
 - **Prototype runtime cluster** (`src/cache`, `src/network`, `src/ui`,
   `include/aetheris/`): the socket layer resolves hostnames via `getaddrinfo`
   and connects with a bounded timeout, and there is a minimal HTTP/1.1 client

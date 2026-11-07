@@ -171,14 +171,16 @@ static void set_node_text(rendering::DomNode& node, std::string const& text)
     node.append_child(std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", text));
 }
 
-// Builds a native JS function from a callable.
-static std::shared_ptr<aetheris::js::Object> make_native_like(std::function<aetheris::js::Value(std::vector<aetheris::js::Value> const&)> function)
+std::unique_ptr<rendering::DomNode> detach_child(rendering::DomNode& parent, rendering::DomNode* child)
 {
-    auto object = std::make_shared<aetheris::js::Object>();
-    object->is_function = true;
-    object->is_native = true;
-    object->native = std::move(function);
-    return object;
+    for (auto it = parent.children.begin(); it != parent.children.end(); ++it) {
+        if (it->get() == child) {
+            auto node = std::move(*it);
+            parent.children.erase(it);
+            return node;
+        }
+    }
+    return nullptr;
 }
 
 // Serialises a DOM subtree back to HTML (for innerHTML).
@@ -240,10 +242,12 @@ static void apply_style_property(rendering::DomNode* node, std::string const& pr
             entry.second = value;
             replaced = true;
         }
-    if (!replaced)
+    if (!replaced && !value.empty())
         declarations.emplace_back(property, value);
     std::string joined;
     for (auto const& entry : declarations) {
+        if (entry.second.empty())
+            continue;
         if (!joined.empty())
             joined += "; ";
         joined += entry.first + ": " + entry.second;
@@ -252,343 +256,533 @@ static void apply_style_property(rendering::DomNode* node, std::string const& pr
 }
 
 // ---- JavaScript DOM host -----------------------------------------------------
-// Owns the mapping between JS element handles and DOM nodes, including nodes
-// created with document.createElement that are not yet in the tree.
+// Element handles are real QuickJS objects that carry the DomNode* as opaque
+// data, so scripts interact with genuine JS values rather than a bespoke model.
+
 namespace {
 
-std::unique_ptr<rendering::DomNode> detach_child(rendering::DomNode& parent, rendering::DomNode* child)
-{
-    for (auto it = parent.children.begin(); it != parent.children.end(); ++it) {
-        if (it->get() == child) {
-            auto node = std::move(*it);
-            parent.children.erase(it);
-            return node;
-        }
-    }
-    return nullptr;
-}
+// One browser per process, so the class id and host are file-static.
+JSClassID g_dom_node_class { 0 };
+struct DomHost;
+DomHost* g_dom_host { nullptr };
 
 struct DomHost {
-    std::map<aetheris::js::Object*, rendering::DomNode*> node_by_handle;
-    std::map<rendering::DomNode*, std::shared_ptr<aetheris::js::Object>> handle_by_node;
-    std::map<std::string, std::shared_ptr<aetheris::js::Object>> handle_by_id;
+    JSContext* context { nullptr };
+    std::map<rendering::DomNode*, JSValue> handle_by_node; // owned references
+    std::map<std::string, JSValue> handle_by_id;           // owned references
     std::map<rendering::DomNode*, rendering::DomNode*> parent_of;
     std::map<rendering::DomNode*, std::unique_ptr<rendering::DomNode>> pending;
 
-    std::shared_ptr<aetheris::js::Object> handle_for(rendering::DomNode* node);
-
-    void collect(rendering::DomNode& node)
+    void initialize(JSContext* ctx)
     {
-        for (auto& child : node.children) {
-            parent_of[child.get()] = &node;
-            collect(*child);
+        context = ctx;
+        g_dom_host = this;
+        if (g_dom_node_class == 0) {
+            JS_NewClassID(JS_GetRuntime(ctx), &g_dom_node_class);
+            JSClassDef definition {};
+            definition.class_name = "DomNode";
+            definition.finalizer = nullptr;
+            JS_NewClass(JS_GetRuntime(ctx), g_dom_node_class, &definition);
         }
     }
 
-    // Drops registry entries for a subtree that is about to be freed, so no
-    // handle is left pointing at deleted nodes.
-    void purge_subtree(rendering::DomNode& node)
-    {
-        for (auto& child : node.children) {
-            auto handle_it = handle_by_node.find(child.get());
-            if (handle_it != handle_by_node.end()) {
-                node_by_handle.erase(handle_it->second.get());
-                for (auto id_it = handle_by_id.begin(); id_it != handle_by_id.end();) {
-                    if (id_it->second == handle_it->second)
-                        id_it = handle_by_id.erase(id_it);
-                    else
-                        ++id_it;
-                }
-                handle_by_node.erase(handle_it);
-            }
-            parent_of.erase(child.get());
-            purge_subtree(*child);
-        }
-    }
+    JSValue handle_for(rendering::DomNode* node);
+    void collect(rendering::DomNode& node);
+    void register_subtree(rendering::DomNode& node);
+    void purge_subtree(rendering::DomNode& node);
+    void adopt(rendering::DomNode* parent, rendering::DomNode* child);
 
-    // Creates handles for a freshly grafted subtree.
-    void register_subtree(rendering::DomNode& node)
+    void release()
     {
-        for (auto& child : node.children) {
-            parent_of[child.get()] = &node;
-            if (child->type == rendering::DomNodeType::Element)
-                handle_for(child.get());
-            register_subtree(*child);
-        }
-    }
-
-    void adopt(rendering::DomNode* parent, rendering::DomNode* child)
-    {
-        std::unique_ptr<rendering::DomNode> node;
-        auto pit = pending.find(child);
-        if (pit != pending.end()) {
-            node = std::move(pit->second);
-            pending.erase(pit);
-        } else {
-            auto par = parent_of.find(child);
-            if (par != parent_of.end())
-                node = detach_child(*par->second, child);
-            if (!node)
-                return;
-        }
-        parent->append_child(std::move(node));
-        parent_of[child] = parent;
+        if (!context)
+            return;
+        for (auto& [node, value] : handle_by_node)
+            JS_FreeValue(context, value);
+        handle_by_node.clear();
+        // handle_by_id holds its own references, so they must be released too.
+        for (auto& [id, value] : handle_by_id)
+            JS_FreeValue(context, value);
+        handle_by_id.clear();
+        if (g_dom_host == this)
+            g_dom_host = nullptr;
     }
 };
 
-std::shared_ptr<aetheris::js::Object> DomHost::handle_for(rendering::DomNode* node)
+rendering::DomNode* node_of(JSContext* context, JSValueConst value)
 {
-    auto handle = std::make_shared<aetheris::js::Object>();
-    node_by_handle[handle.get()] = node;
-    auto* id = node->attribute("id");
-    handle->properties["id"] = aetheris::js::Value::from_string(id ? *id : "");
-    handle->accessors["textContent"] = {
-        aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const&) {
-            return aetheris::js::Value::from_string(node_text(*node));
-        })),
-        aetheris::js::Value::from_object(make_native_like([this, node](std::vector<aetheris::js::Value> const& args) {
-            purge_subtree(*node);
-            set_node_text(*node, args.empty() ? std::string() : args[0].to_string());
-            return aetheris::js::Value::undefined();
-        }))
-    };
+    (void)context;
+    return static_cast<rendering::DomNode*>(JS_GetOpaque(value, g_dom_node_class));
+}
 
-    auto set_attribute = std::make_shared<aetheris::js::Object>();
-    set_attribute->is_function = true;
-    set_attribute->is_native = true;
-    set_attribute->native = [node](std::vector<aetheris::js::Value> const& args) {
-        if (args.size() >= 2)
-            node->attributes[args[0].to_string()] = args[1].to_string();
-        return aetheris::js::Value::undefined();
-    };
-    handle->properties["setAttribute"] = aetheris::js::Value::from_object(set_attribute);
+// ---- element methods -------------------------------------------------------
 
-    auto get_attribute = std::make_shared<aetheris::js::Object>();
-    get_attribute->is_function = true;
-    get_attribute->is_native = true;
-    get_attribute->native = [node](std::vector<aetheris::js::Value> const& args) {
-        if (args.empty())
-            return aetheris::js::Value::undefined();
-        auto* value = node->attribute(args[0].to_string());
-        return value ? aetheris::js::Value::from_string(*value) : aetheris::js::Value::undefined();
-    };
-    handle->properties["getAttribute"] = aetheris::js::Value::from_object(get_attribute);
+JSValue js_set_attribute(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 2)
+        return JS_UNDEFINED;
+    const char* name = JS_ToCString(context, argv[0]);
+    const char* value = JS_ToCString(context, argv[1]);
+    if (name && value)
+        node->attributes[name] = value;
+    if (name)
+        JS_FreeCString(context, name);
+    if (value)
+        JS_FreeCString(context, value);
+    return JS_UNDEFINED;
+}
 
-    auto* self = this;
-    auto append_child = std::make_shared<aetheris::js::Object>();
-    append_child->is_function = true;
-    append_child->is_native = true;
-    append_child->native = [self, node](std::vector<aetheris::js::Value> const& args) {
-        if (!args.empty() && args[0].is_object() && args[0].object) {
-            auto it = self->node_by_handle.find(args[0].object.get());
-            if (it != self->node_by_handle.end())
-                self->adopt(node, it->second);
-        }
-        return aetheris::js::Value::undefined();
-    };
-    handle->properties["appendChild"] = aetheris::js::Value::from_object(append_child);
+JSValue js_get_attribute(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 1)
+        return JS_NULL;
+    const char* name = JS_ToCString(context, argv[0]);
+    auto* value = name ? node->attribute(name) : nullptr;
+    JSValue result = value ? JS_NewString(context, value->c_str()) : JS_NULL;
+    if (name)
+        JS_FreeCString(context, name);
+    return result;
+}
 
-    auto* raw_handle = handle.get();
-    auto add_listener = std::make_shared<aetheris::js::Object>();
-    add_listener->is_function = true;
-    add_listener->is_native = true;
-    add_listener->native = [raw_handle](std::vector<aetheris::js::Value> const& args) {
-        if (args.size() < 2)
-            return aetheris::js::Value::undefined();
-        std::string key = "__handlers_" + args[0].to_string();
-        auto it = raw_handle->properties.find(key);
-        std::shared_ptr<aetheris::js::Object> array;
-        if (it != raw_handle->properties.end() && it->second.is_object() && it->second.object) {
-            array = it->second.object;
+JSValue js_append_child(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 1)
+        return JS_UNDEFINED;
+    auto* child = node_of(context, argv[0]);
+    if (child && g_dom_host)
+        g_dom_host->adopt(node, child);
+    return JS_UNDEFINED;
+}
+
+JSValue js_element_add_event_listener(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    if (argc < 2 || !JS_IsFunction(context, argv[1]))
+        return JS_UNDEFINED;
+    const char* type = JS_ToCString(context, argv[0]);
+    std::string key = "__handlers_";
+    key += type ? type : "";
+    if (type)
+        JS_FreeCString(context, type);
+
+    JSValue existing = JS_GetPropertyStr(context, this_value, key.c_str());
+    JSValue list = existing;
+    if (!JS_IsArray(list)) {
+        JS_FreeValue(context, existing);
+        list = JS_NewArray(context);
+        JS_SetPropertyStr(context, this_value, key.c_str(), JS_DupValue(context, list));
+    }
+    JSValue length_value = JS_GetPropertyStr(context, list, "length");
+    uint32_t length = 0;
+    JS_ToUint32(context, &length, length_value);
+    JS_FreeValue(context, length_value);
+    JS_SetPropertyUint32(context, list, length, JS_DupValue(context, argv[1]));
+    JS_FreeValue(context, list);
+    return JS_UNDEFINED;
+}
+
+// ---- classList -------------------------------------------------------------
+
+std::vector<std::string> read_classes(rendering::DomNode* node)
+{
+    std::vector<std::string> out;
+    auto* value = node->attribute("class");
+    if (!value)
+        return out;
+    std::string current;
+    for (char c : *value) {
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            if (!current.empty()) {
+                out.push_back(current);
+                current.clear();
+            }
         } else {
-            array = std::make_shared<aetheris::js::Object>();
-            array->is_array = true;
-            raw_handle->properties[key] = aetheris::js::Value::from_object(array);
+            current += c;
         }
-        array->elements.push_back(args[1]);
-        return aetheris::js::Value::undefined();
-    };
-    handle->properties["addEventListener"] = aetheris::js::Value::from_object(add_listener);
+    }
+    if (!current.empty())
+        out.push_back(current);
+    return out;
+}
 
-    // classList: add/remove/contains/toggle over the class attribute.
-    auto read_classes = [node]() {
-        std::vector<std::string> out;
-        if (auto* value = node->attribute("class")) {
-            std::string current;
-            for (char c : *value) {
-                if (std::isspace(static_cast<unsigned char>(c))) {
-                    if (!current.empty()) { out.push_back(current); current.clear(); }
+void write_classes(rendering::DomNode* node, std::vector<std::string> const& classes)
+{
+    std::string joined;
+    for (auto const& name : classes) {
+        if (!joined.empty())
+            joined += ' ';
+        joined += name;
+    }
+    node->attributes["class"] = joined;
+}
+
+JSValue js_class_add(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    auto classes = read_classes(node);
+    for (int i = 0; i < argc; ++i) {
+        std::string name = JS_ToCString(context, argv[i]) ? JS_ToCString(context, argv[i]) : "";
+        const char* raw = JS_ToCString(context, argv[i]);
+        name = raw ? raw : "";
+        if (raw)
+            JS_FreeCString(context, raw);
+        if (name.empty())
+            continue;
+        bool found = false;
+        for (auto const& existing : classes)
+            if (existing == name)
+                found = true;
+        if (!found)
+            classes.push_back(name);
+    }
+    write_classes(node, classes);
+    return JS_UNDEFINED;
+}
+
+JSValue js_class_remove(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    auto classes = read_classes(node);
+    for (int i = 0; i < argc; ++i) {
+        const char* raw = JS_ToCString(context, argv[i]);
+        std::string name = raw ? raw : "";
+        if (raw)
+            JS_FreeCString(context, raw);
+        for (auto it = classes.begin(); it != classes.end();) {
+            if (*it == name)
+                it = classes.erase(it);
+            else
+                ++it;
+        }
+    }
+    write_classes(node, classes);
+    return JS_UNDEFINED;
+}
+
+JSValue js_class_contains(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 1)
+        return JS_FALSE;
+    const char* raw = JS_ToCString(context, argv[0]);
+    std::string name = raw ? raw : "";
+    if (raw)
+        JS_FreeCString(context, raw);
+    for (auto const& existing : read_classes(node))
+        if (existing == name)
+            return JS_TRUE;
+    return JS_FALSE;
+}
+
+JSValue js_class_toggle(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 1)
+        return JS_FALSE;
+    const char* raw = JS_ToCString(context, argv[0]);
+    std::string name = raw ? raw : "";
+    if (raw)
+        JS_FreeCString(context, raw);
+
+    auto classes = read_classes(node);
+    bool present = false;
+    for (auto const& existing : classes)
+        if (existing == name)
+            present = true;
+    if (present) {
+        for (auto it = classes.begin(); it != classes.end();) {
+            if (*it == name)
+                it = classes.erase(it);
+            else
+                ++it;
+        }
+    } else {
+        classes.push_back(name);
+    }
+    write_classes(node, classes);
+    return present ? JS_FALSE : JS_TRUE;
+}
+
+// ---- accessors -------------------------------------------------------------
+
+JSValue js_text_content_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    return JS_NewString(context, node_text(*node).c_str());
+}
+
+JSValue js_text_content_set(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    const char* raw = argc > 0 ? JS_ToCString(context, argv[0]) : nullptr;
+    std::string text = raw ? raw : "";
+    if (raw)
+        JS_FreeCString(context, raw);
+    if (g_dom_host)
+        g_dom_host->purge_subtree(*node);
+    set_node_text(*node, text);
+    return JS_UNDEFINED;
+}
+
+JSValue js_inner_html_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    std::string out;
+    for (auto const& child : node->children)
+        serialize_html(*child, out);
+    return JS_NewString(context, out.c_str());
+}
+
+JSValue js_inner_html_set(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    const char* raw = argc > 0 ? JS_ToCString(context, argv[0]) : nullptr;
+    std::string html = raw ? raw : "";
+    if (raw)
+        JS_FreeCString(context, raw);
+
+    if (g_dom_host)
+        g_dom_host->purge_subtree(*node);
+    node->children.clear();
+    if (!html.empty()) {
+        auto fragment = rendering::Document::parse_html(html);
+        for (auto& child : fragment.root().children)
+            node->children.push_back(std::move(child));
+    }
+    if (g_dom_host)
+        g_dom_host->register_subtree(*node);
+    return JS_UNDEFINED;
+}
+
+JSValue js_style_set_property(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 2)
+        return JS_UNDEFINED;
+    const char* property = JS_ToCString(context, argv[0]);
+    const char* value = JS_ToCString(context, argv[1]);
+    if (property && value)
+        apply_style_property(node, property, value);
+    if (property)
+        JS_FreeCString(context, property);
+    if (value)
+        JS_FreeCString(context, value);
+    return JS_UNDEFINED;
+}
+
+JSValue js_style_remove_property(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 1)
+        return JS_UNDEFINED;
+    const char* property = JS_ToCString(context, argv[0]);
+    if (property)
+        apply_style_property(node, property, "");
+    if (property)
+        JS_FreeCString(context, property);
+    return JS_UNDEFINED;
+}
+
+JSValue js_style_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    JSValue style = JS_NewObjectClass(context, g_dom_node_class);
+    JS_SetOpaque(style, node);
+    JS_SetPropertyStr(context, style, "setProperty", JS_NewCFunction(context, js_style_set_property, "setProperty", 2));
+    JS_SetPropertyStr(context, style, "removeProperty", JS_NewCFunction(context, js_style_remove_property, "removeProperty", 1));
+    return style;
+}
+
+JSValue js_style_set(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 1)
+        return JS_UNDEFINED;
+    const char* raw = JS_ToCString(context, argv[0]);
+    if (raw)
+        node->attributes["style"] = raw;
+    if (raw)
+        JS_FreeCString(context, raw);
+    return JS_UNDEFINED;
+}
+
+// ---- host ------------------------------------------------------------------
+
+JSValue DomHost::handle_for(rendering::DomNode* node)
+{
+    auto existing = handle_by_node.find(node);
+    if (existing != handle_by_node.end())
+        return JS_DupValue(context, existing->second);
+
+    JSValue handle = JS_NewObjectClass(context, g_dom_node_class);
+    JS_SetOpaque(handle, node);
+
+    auto* id = node->attribute("id");
+    JS_SetPropertyStr(context, handle, "id", JS_NewString(context, id ? id->c_str() : ""));
+
+    JSValue class_list = JS_NewObjectClass(context, g_dom_node_class);
+    JS_SetOpaque(class_list, node);
+    JS_SetPropertyStr(context, class_list, "add", JS_NewCFunction(context, js_class_add, "add", 1));
+    JS_SetPropertyStr(context, class_list, "remove", JS_NewCFunction(context, js_class_remove, "remove", 1));
+    JS_SetPropertyStr(context, class_list, "contains", JS_NewCFunction(context, js_class_contains, "contains", 1));
+    JS_SetPropertyStr(context, class_list, "toggle", JS_NewCFunction(context, js_class_toggle, "toggle", 1));
+    JS_SetPropertyStr(context, handle, "classList", class_list);
+
+    JS_SetPropertyStr(context, handle, "setAttribute", JS_NewCFunction(context, js_set_attribute, "setAttribute", 2));
+    JS_SetPropertyStr(context, handle, "getAttribute", JS_NewCFunction(context, js_get_attribute, "getAttribute", 1));
+    JS_SetPropertyStr(context, handle, "appendChild", JS_NewCFunction(context, js_append_child, "appendChild", 1));
+    JS_SetPropertyStr(context, handle, "addEventListener", JS_NewCFunction(context, js_element_add_event_listener, "addEventListener", 2));
+
+    auto define_accessor = [&](char const* name, JSCFunction* getter, JSCFunction* setter) {
+        JSAtom atom = JS_NewAtom(context, name);
+        JS_DefinePropertyGetSet(context, handle, atom,
+            JS_NewCFunction(context, getter, name, 0),
+            JS_NewCFunction(context, setter, name, 1),
+            JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE);
+        JS_FreeAtom(context, atom);
+    };
+    define_accessor("textContent", js_text_content_get, js_text_content_set);
+    define_accessor("innerHTML", js_inner_html_get, js_inner_html_set);
+    define_accessor("style", js_style_get, js_style_set);
+
+    handle_by_node[node] = JS_DupValue(context, handle);
+    if (id)
+        handle_by_id[*id] = JS_DupValue(context, handle);
+    return handle;
+}
+
+void DomHost::collect(rendering::DomNode& node)
+{
+    for (auto& child : node.children) {
+        parent_of[child.get()] = &node;
+        collect(*child);
+    }
+}
+
+void DomHost::register_subtree(rendering::DomNode& node)
+{
+    for (auto& child : node.children) {
+        parent_of[child.get()] = &node;
+        if (child->type == rendering::DomNodeType::Element) {
+            JSValue handle = handle_for(child.get());
+            JS_FreeValue(context, handle);
+        }
+        register_subtree(*child);
+    }
+}
+
+void DomHost::purge_subtree(rendering::DomNode& node)
+{
+    for (auto& child : node.children) {
+        auto it = handle_by_node.find(child.get());
+        if (it != handle_by_node.end()) {
+            for (auto id_it = handle_by_id.begin(); id_it != handle_by_id.end();) {
+                if (JS_VALUE_GET_PTR(id_it->second) == JS_VALUE_GET_PTR(it->second)) {
+                    JS_FreeValue(context, id_it->second);
+                    id_it = handle_by_id.erase(id_it);
                 } else {
-                    current += c;
+                    ++id_it;
                 }
             }
-            if (!current.empty())
-                out.push_back(current);
+            JS_FreeValue(context, it->second);
+            handle_by_node.erase(it);
         }
-        return out;
-    };
-    auto write_classes = [node](std::vector<std::string> const& values) {
-        std::string joined;
-        for (auto const& value : values) {
-            if (!joined.empty())
-                joined += ' ';
-            joined += value;
-        }
-        node->attributes["class"] = joined;
-    };
-    auto class_list = std::make_shared<aetheris::js::Object>();
-    class_list->properties["add"] = aetheris::js::Value::from_object(make_native_like([read_classes, write_classes](std::vector<aetheris::js::Value> const& args) {
-        auto classes = read_classes();
-        for (auto const& arg : args) {
-            std::string name = arg.to_string();
-            if (name.empty())
-                continue;
-            bool found = false;
-            for (auto const& existing : classes)
-                if (existing == name) found = true;
-            if (!found) classes.push_back(name);
-        }
-        write_classes(classes);
-        return aetheris::js::Value::undefined();
-    }));
-    class_list->properties["remove"] = aetheris::js::Value::from_object(make_native_like([read_classes, write_classes](std::vector<aetheris::js::Value> const& args) {
-        auto classes = read_classes();
-        for (auto const& arg : args) {
-            std::string name = arg.to_string();
-            for (auto it = classes.begin(); it != classes.end();) {
-                if (*it == name) it = classes.erase(it); else ++it;
-            }
-        }
-        write_classes(classes);
-        return aetheris::js::Value::undefined();
-    }));
-    class_list->properties["contains"] = aetheris::js::Value::from_object(make_native_like([read_classes](std::vector<aetheris::js::Value> const& args) {
-        if (args.empty()) return aetheris::js::Value::from_boolean(false);
-        std::string name = args[0].to_string();
-        for (auto const& existing : read_classes())
-            if (existing == name) return aetheris::js::Value::from_boolean(true);
-        return aetheris::js::Value::from_boolean(false);
-    }));
-    class_list->properties["toggle"] = aetheris::js::Value::from_object(make_native_like([read_classes, write_classes](std::vector<aetheris::js::Value> const& args) {
-        if (args.empty()) return aetheris::js::Value::from_boolean(false);
-        std::string name = args[0].to_string();
-        auto classes = read_classes();
-        bool present = false;
-        for (auto const& existing : classes)
-            if (existing == name) present = true;
-        if (present) {
-            for (auto it = classes.begin(); it != classes.end();) {
-                if (*it == name) it = classes.erase(it); else ++it;
-            }
-        } else {
-            classes.push_back(name);
-        }
-        write_classes(classes);
-        return aetheris::js::Value::from_boolean(!present);
-    }));
-    handle->properties["classList"] = aetheris::js::Value::from_object(class_list);
+        parent_of.erase(child.get());
+        purge_subtree(*child);
+    }
+}
 
-    // innerHTML (get serialises; set re-parses and grafts the fragment).
-    handle->accessors["innerHTML"] = {
-        aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const&) {
-            std::string out;
-            for (auto const& child : node->children)
-                serialize_html(*child, out);
-            return aetheris::js::Value::from_string(out);
-        })),
-        aetheris::js::Value::from_object(make_native_like([this, node](std::vector<aetheris::js::Value> const& args) {
-            purge_subtree(*node);
-            node->children.clear();
-            if (!args.empty() && !args[0].to_string().empty()) {
-                auto fragment = rendering::Document::parse_html(args[0].to_string());
-                for (auto& child : fragment.root().children)
-                    node->children.push_back(std::move(child));
-            }
-            register_subtree(*node);
-            return aetheris::js::Value::undefined();
-        }))
-    };
-
-    // style: element.style = "..." plus setProperty/removeProperty/cssText.
-    handle->accessors["style"] = {
-        aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const&) {
-            auto style = std::make_shared<aetheris::js::Object>();
-            style->properties["setProperty"] = aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const& args) {
-                if (args.size() >= 2)
-                    apply_style_property(node, args[0].to_string(), args[1].to_string());
-                return aetheris::js::Value::undefined();
-            }));
-            style->properties["removeProperty"] = aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const& args) {
-                if (!args.empty())
-                    apply_style_property(node, args[0].to_string(), std::string());
-                return aetheris::js::Value::undefined();
-            }));
-            return aetheris::js::Value::from_object(style);
-        })),
-        aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const& args) {
-            if (!args.empty())
-                node->attributes["style"] = args[0].to_string();
-            return aetheris::js::Value::undefined();
-        }))
-    };
-
-    handle_by_node[node] = handle;
-    if (id)
-        handle_by_id[*id] = handle;
-
-    return handle;
+void DomHost::adopt(rendering::DomNode* parent, rendering::DomNode* child)
+{
+    std::unique_ptr<rendering::DomNode> moved;
+    auto pending_it = pending.find(child);
+    if (pending_it != pending.end()) {
+        moved = std::move(pending_it->second);
+        pending.erase(pending_it);
+    } else {
+        auto parent_it = parent_of.find(child);
+        if (parent_it != parent_of.end())
+            moved = detach_child(*parent_it->second, child);
+        if (!moved)
+            return;
+    }
+    parent->append_child(std::move(moved));
+    parent_of[child] = parent;
 }
 
 } // namespace
 
-static void build_handles(rendering::DomNode& node, DomHost& dom, std::vector<std::shared_ptr<aetheris::js::Object>>& handles)
+// Builds a JavaScript handle for every element in the tree.
+static void build_handles(rendering::DomNode& node, DomHost& dom)
 {
-    if (node.type == rendering::DomNodeType::Element)
-        handles.push_back(dom.handle_for(&node));
+    if (node.type == rendering::DomNodeType::Element) {
+        JSValue handle = dom.handle_for(&node);
+        JS_FreeValue(dom.context, handle);
+    }
     for (auto& child : node.children)
-        build_handles(*child, dom, handles);
+        build_handles(*child, dom);
 }
 
 // Links each element handle to its parent handle and its child elements.
-static void wire_tree(DomHost& dom, rendering::DomNode& node, std::shared_ptr<aetheris::js::Object> parent)
+static void wire_tree(DomHost& dom, rendering::DomNode& node, JSValue parent)
 {
-    std::shared_ptr<aetheris::js::Object> current;
+    JSValue current = JS_UNDEFINED;
     if (node.type == rendering::DomNodeType::Element) {
         auto it = dom.handle_by_node.find(&node);
         if (it != dom.handle_by_node.end())
             current = it->second;
     }
-    if (current) {
-        if (parent)
-            current->properties["parentNode"] = aetheris::js::Value::from_object(parent);
-        auto children = std::make_shared<aetheris::js::Object>();
-        children->is_array = true;
+    if (!JS_IsUndefined(current)) {
+        if (!JS_IsUndefined(parent))
+            JS_SetPropertyStr(dom.context, current, "parentNode", JS_DupValue(dom.context, parent));
+        JSValue children = JS_NewArray(dom.context);
+        uint32_t index = 0;
         for (auto& child : node.children) {
             if (child->type != rendering::DomNodeType::Element)
                 continue;
             auto it = dom.handle_by_node.find(child.get());
             if (it != dom.handle_by_node.end())
-                children->elements.push_back(aetheris::js::Value::from_object(it->second));
+                JS_SetPropertyUint32(dom.context, children, index++, JS_DupValue(dom.context, it->second));
         }
-        current->properties["children"] = aetheris::js::Value::from_object(children);
+        JS_SetPropertyStr(dom.context, current, "children", children);
     }
     for (auto& child : node.children)
-        wire_tree(dom, *child, current ? current : parent);
+        wire_tree(dom, *child, JS_IsUndefined(current) ? parent : current);
 }
 
-// Dispatches an event to the target and then up its ancestor chain.
+// Fires an event at the node and up its ancestor chain.
 static void dispatch_bubbling(aetheris::js::Interpreter& js, DomHost& dom, rendering::DomNode* node, std::string const& type)
 {
-    for (auto* current = node; current;) {
-        auto it = dom.handle_by_node.find(current);
-        if (it != dom.handle_by_node.end())
-            js.dispatch_event_to(aetheris::js::Value::from_object(it->second), type);
-        auto parent = dom.parent_of.find(current);
-        current = parent != dom.parent_of.end() ? parent->second : nullptr;
-    }
+    auto handle_it = dom.handle_by_node.find(node);
+    if (handle_it == dom.handle_by_node.end())
+        return;
+    js.dispatch_event_to(JS_DupValue(dom.context, handle_it->second), type, [&dom](JSValue current) -> JSValue {
+        auto* current_node = static_cast<rendering::DomNode*>(JS_GetOpaque(current, g_dom_node_class));
+        JS_FreeValue(dom.context, current);
+        if (!current_node)
+            return JS_UNDEFINED;
+        auto parent = dom.parent_of.find(current_node);
+        if (parent == dom.parent_of.end())
+            return JS_UNDEFINED;
+        auto parent_handle = dom.handle_by_node.find(parent->second);
+        if (parent_handle == dom.handle_by_node.end())
+            return JS_UNDEFINED;
+        return JS_DupValue(dom.context, parent_handle->second);
+    });
 }
-
-// --- Minimal selector support for querySelector/querySelectorAll -----------
 
 struct SimpleSelector {
     std::string tag;
@@ -840,55 +1034,52 @@ static int run_render(std::string const& url, std::string const& output_path, st
     std::string html = response.body;
     rendering::Document document = rendering::Document::parse_html(html);
 
-    DomHost dom;
-    dom.collect(document.root());
-
-    // Handles are built for every element so a hit-test can find any of them.
-    std::vector<std::shared_ptr<aetheris::js::Object>> handles;
-    build_handles(document.root(), dom, handles);
-    wire_tree(dom, document.root(), nullptr);
-
     std::string script_output;
     aetheris::js::Interpreter js;
     js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
     js.write_handler = [&script_output](std::string const& text) { script_output += text; };
-    js.element_lookup = [&dom](std::string const& id) -> aetheris::js::Value {
+
+    DomHost dom;
+    dom.initialize(js.context());
+    dom.collect(document.root());
+    build_handles(document.root(), dom);
+    wire_tree(dom, document.root(), JS_UNDEFINED);
+
+    js.element_lookup = [&dom](std::string const& id) -> JSValue {
         auto it = dom.handle_by_id.find(id);
-        return it == dom.handle_by_id.end() ? aetheris::js::Value::undefined() : aetheris::js::Value::from_object(it->second);
+        return it == dom.handle_by_id.end() ? JS_NULL : JS_DupValue(dom.context, it->second);
     };
-    js.create_element = [&dom, &handles](std::string const& tag) -> aetheris::js::Value {
+    js.create_element = [&dom](std::string const& tag) -> JSValue {
         auto node = std::make_unique<rendering::DomNode>(rendering::DomNodeType::Element, tag, "");
         auto* raw = node.get();
         dom.pending[raw] = std::move(node);
-        auto handle = dom.handle_for(raw);
-        handles.push_back(handle);
-        return aetheris::js::Value::from_object(handle);
+        return dom.handle_for(raw);
     };
-    js.query_selector = [&dom, &document](std::string const& selector) -> aetheris::js::Value {
+    js.query_selector = [&dom, &document](std::string const& selector) -> JSValue {
         std::vector<std::vector<SimpleSelector>> chains;
         if (!parse_selector(selector, chains))
-            return aetheris::js::Value::null();
+            return JS_NULL;
         std::vector<rendering::DomNode*> matches;
         collect_selector_matches(document.root(), dom, chains, matches);
         if (matches.empty())
-            return aetheris::js::Value::null();
+            return JS_NULL;
         auto it = dom.handle_by_node.find(matches.front());
-        return it != dom.handle_by_node.end() ? aetheris::js::Value::from_object(it->second) : aetheris::js::Value::null();
+        return it != dom.handle_by_node.end() ? JS_DupValue(dom.context, it->second) : JS_NULL;
     };
-    js.query_selector_all = [&dom, &document](std::string const& selector) -> aetheris::js::Value {
-        auto array = std::make_shared<aetheris::js::Object>();
-        array->is_array = true;
+    js.query_selector_all = [&dom, &document](std::string const& selector) -> JSValue {
+        JSValue array = JS_NewArray(dom.context);
         std::vector<std::vector<SimpleSelector>> chains;
         if (!parse_selector(selector, chains))
-            return aetheris::js::Value::from_object(array);
+            return array;
         std::vector<rendering::DomNode*> matches;
         collect_selector_matches(document.root(), dom, chains, matches);
+        uint32_t index = 0;
         for (auto* node : matches) {
             auto it = dom.handle_by_node.find(node);
             if (it != dom.handle_by_node.end())
-                array->elements.push_back(aetheris::js::Value::from_object(it->second));
+                JS_SetPropertyUint32(dom.context, array, index++, JS_DupValue(dom.context, it->second));
         }
-        return aetheris::js::Value::from_object(array);
+        return array;
     };
 
     for (auto const& script : extract_scripts(html)) {
@@ -904,9 +1095,11 @@ static int run_render(std::string const& url, std::string const& output_path, st
     }
     if (!js.has_error() && !dispatch_id.empty() && !dispatch_type.empty()) {
         auto it = dom.handle_by_id.find(dispatch_id);
-        auto node_it = it != dom.handle_by_id.end() ? dom.node_by_handle.find(it->second.get()) : dom.node_by_handle.end();
-        if (node_it != dom.node_by_handle.end())
-            dispatch_bubbling(js, dom, node_it->second, dispatch_type);
+        auto* node = it != dom.handle_by_id.end()
+            ? static_cast<rendering::DomNode*>(JS_GetOpaque(it->second, g_dom_node_class))
+            : nullptr;
+        if (node)
+            dispatch_bubbling(js, dom, node, dispatch_type);
         else
             std::cerr << "  [js] no element with id '" << dispatch_id << "'" << std::endl;
     }
@@ -932,17 +1125,11 @@ static int run_render(std::string const& url, std::string const& output_path, st
         viewport.set_document_size(1024.0f, 768.0f);
         auto hit = interaction.hit_test(rendered, viewport, click_x, click_y);
         auto* node = hit.dom_node ? const_cast<rendering::DomNode*>(hit.dom_node) : nullptr;
-        std::shared_ptr<aetheris::js::Object> target;
-        while (node && !target) {
-            auto it = dom.handle_by_node.find(node);
-            if (it != dom.handle_by_node.end()) {
-                target = it->second;
-            } else {
-                auto parent = dom.parent_of.find(node);
-                node = parent != dom.parent_of.end() ? parent->second : nullptr;
-            }
+        while (node && dom.handle_by_node.find(node) == dom.handle_by_node.end()) {
+            auto parent = dom.parent_of.find(node);
+            node = parent != dom.parent_of.end() ? parent->second : nullptr;
         }
-        if (target) {
+        if (node) {
             dispatch_bubbling(js, dom, node, "click");
             rendered.relayout();
         } else {
@@ -960,6 +1147,9 @@ static int run_render(std::string const& url, std::string const& output_path, st
     std::cout << "Rendered " << response.body.size() << " bytes of HTML and "
               << css.size() << " bytes of CSS (" << fetched_count << " linked resources) to "
               << output_path << std::endl;
+
+    // Drop the host's references before the JS runtime goes away.
+    dom.release();
     return 0;
 }
 
