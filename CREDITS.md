@@ -75,6 +75,7 @@ without them.
 | --- | --- | --- |
 | OpenSSL (`libssl`, `libcrypto`) | HTTPS/TLS transport (`AETHERIS_HAS_TLS`) | Apache-2.0 |
 | libwebp | WebP decoding (`AETHERIS_HAS_WEBP`) | BSD-3-Clause |
+| QuickJS (quickjs-ng, vendored in `third_party/quickjs/`) | JavaScript engine for the standalone profile | MIT |
 | LZ4 | Ghost-cache compression (optional) | BSD-2-Clause |
 | X11 | Window-manager backend (optional) | MIT |
 

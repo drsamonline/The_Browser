@@ -141,6 +141,30 @@ target_include_directories(AetherisJS
 target_compile_features(AetherisJS PUBLIC cxx_std_20)
 
 # ---------------------------------------------------------------------------
+# QuickJS: the JavaScript engine for the standalone profile (vendored, MIT).
+# Builds with a C compiler only, which is why it can replace the upstream LibJS
+# engine (that one needs Rust, a clang GC plugin and ICU).
+# ---------------------------------------------------------------------------
+add_library(AetherisQuickJS STATIC
+    ${CMAKE_SOURCE_DIR}/third_party/quickjs/quickjs.c
+    ${CMAKE_SOURCE_DIR}/third_party/quickjs/libregexp.c
+    ${CMAKE_SOURCE_DIR}/third_party/quickjs/libunicode.c
+    ${CMAKE_SOURCE_DIR}/third_party/quickjs/dtoa.c
+)
+
+target_include_directories(AetherisQuickJS
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/third_party/quickjs>
+)
+
+set_target_properties(AetherisQuickJS PROPERTIES
+    C_STANDARD 11
+    C_STANDARD_REQUIRED ON
+)
+
+target_link_libraries(AetherisQuickJS PUBLIC m)
+
+# ---------------------------------------------------------------------------
 # The Aetheris browser executable: main entry point over the prototype runtime.
 # ---------------------------------------------------------------------------
 add_executable(aetheris

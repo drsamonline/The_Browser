@@ -242,3 +242,7 @@ add_executable(TestAetherisDomHost TestAetherisDomHost.cpp)
 target_link_libraries(TestAetherisDomHost PRIVATE Threads::Threads)
 add_dependencies(TestAetherisDomHost aetheris)
 add_test(NAME AetherisDomHost COMMAND TestAetherisDomHost $<TARGET_FILE:aetheris>)
+
+add_executable(TestAetherisQuickJS TestAetherisQuickJS.cpp)
+target_link_libraries(TestAetherisQuickJS PRIVATE AetherisQuickJS)
+add_test(NAME AetherisQuickJS COMMAND TestAetherisQuickJS)
