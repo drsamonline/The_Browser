@@ -5,6 +5,19 @@ from, the work of the **Ladybird** project and its predecessor **SerenityOS**.
 We are grateful to those projects and their contributors. This file records what
 came from where, so the provenance of every part of the tree is clear.
 
+## Licensing scope
+
+The root `LICENSE` (MIT) covers the Aetheris-authored code — the standalone
+rendering foundation in `src/rendering/`, the prototype runtime in `src/`, the
+mini JavaScript engine in `src/js/`, the `Tests/AetherisRendering/` suite and the
+build glue.
+
+**Upstream-derived code is not relicensed by that file.** The Ladybird and
+SerenityOS components in `AK/`, `Libraries/`, `Base/`, `Meta/` and `Tests/`
+remain under their original **BSD-2-Clause** licence, and their per-file SPDX
+identifiers and copyright notices must be preserved. MIT and BSD-2-Clause are
+compatible for redistribution on that basis, provided those notices are kept.
+
 ## Upstream projects
 
 ### Ladybird
