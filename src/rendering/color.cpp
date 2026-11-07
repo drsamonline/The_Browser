@@ -5,6 +5,8 @@
 #include <charconv>
 #include <string>
 
+#include "named_colors.inc"
+
 namespace aetheris::rendering {
 
 static std::optional<uint8_t> hex_byte(std::string_view value)
@@ -23,20 +25,15 @@ std::optional<Color> Color::parse(std::string_view value)
     if (value == "transparent")
         return Color { 0, 0, 0, 0 };
 
-    constexpr std::array named_colors {
-        std::pair { "black", Color { 0, 0, 0, 255 } },
-        std::pair { "white", Color { 255, 255, 255, 255 } },
-        std::pair { "red", Color { 255, 0, 0, 255 } },
-        std::pair { "green", Color { 0, 128, 0, 255 } },
-        std::pair { "blue", Color { 0, 0, 255, 255 } },
-        std::pair { "yellow", Color { 255, 255, 0, 255 } },
-        std::pair { "gray", Color { 128, 128, 128, 255 } },
-        std::pair { "grey", Color { 128, 128, 128, 255 } },
-    };
-
-    for (auto const& [name, color] : named_colors) {
-        if (value == name)
-            return color;
+    for (auto const& entry : s_named_colors) {
+        if (value == entry.name) {
+            return Color {
+                static_cast<uint8_t>((entry.rgb >> 16) & 0xFF),
+                static_cast<uint8_t>((entry.rgb >> 8) & 0xFF),
+                static_cast<uint8_t>(entry.rgb & 0xFF),
+                255
+            };
+        }
     }
 
     if (value.size() == 4 && value[0] == '#') {

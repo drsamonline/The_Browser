@@ -77,5 +77,15 @@ int main()
         require(tokens[2].data == " b", "text after malformed tag opener");
     }
 
+    // Character references decode in text and attribute values.
+    {
+        auto tokens = tokenize("&amp; &lt;tag&gt; &#65;&#x42; &copy;");
+        require(tokens[0].data == "& <tag> AB \xc2\xa9", "named and numeric character references decode");
+    }
+    {
+        auto tokens = tokenize("<a href=\"?a=1&amp;b=2\">x</a>");
+        require(tokens[0].attributes.at("href") == "?a=1&b=2", "character references decode in attributes");
+    }
+
     return 0;
 }

@@ -63,6 +63,8 @@ informed `src/js/`, credit is due to the Ladybird/LibJS authors.
 | --- | --- | --- |
 | 8x8 bitmap font (`src/rendering/bitmap_font.cpp`) | `font8x8` by Daniel Hepper, based on the IBM VGA public-domain fonts | Public domain |
 | DEFLATE inflater (`src/rendering/png.cpp`) | adapted from the public-domain `puff` reference decoder by Mark Adler | Public domain |
+| HTML character-reference table (`src/rendering/html_entities.inc`) | generated from `Libraries/LibWeb/HTML/Parser/Entities.json` (Ladybird / SerenityOS) | BSD-2-Clause |
+| CSS named colours (`src/rendering/named_colors.inc`) | generated from `Libraries/LibGfx/Color.cpp` (Ladybird / SerenityOS) | BSD-2-Clause |
 
 ## Optional external libraries
 
