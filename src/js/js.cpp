@@ -1475,6 +1475,13 @@ Value Interpreter::get_property_from_chain(std::shared_ptr<Object> const& object
 
 Value Interpreter::get_property(Value const& object, std::string const& name)
 {
+    if (object.is_object() && object.object) {
+        auto accessor = object.object->accessors.find(name);
+        if (accessor != object.object->accessors.end()
+            && accessor->second.getter.is_object() && accessor->second.getter.object && accessor->second.getter.object->is_function)
+            return call(accessor->second.getter, {}, object);
+    }
+
     if (object.is_string()) {
         if (name == "length")
             return Value::from_number(static_cast<double>(object.string.size()));
@@ -1895,6 +1902,12 @@ void Interpreter::set_property(Value const& object, std::string const& name, Val
             object.object->elements[index] = std::move(value);
             return;
         }
+    }
+    auto accessor = object.object->accessors.find(name);
+    if (accessor != object.object->accessors.end()
+        && accessor->second.setter.is_object() && accessor->second.setter.object && accessor->second.setter.object->is_function) {
+        call(accessor->second.setter, { value }, object);
+        return;
     }
     object.object->properties[name] = std::move(value);
 }

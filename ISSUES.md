@@ -72,8 +72,9 @@ non-goals list.
   back-references and look-around are not, and there is no event loop
   (microtasks are drained synchronously). The DOM binding is minimal:
   `document.write`, `getElementById`, `createElement`/`appendChild`,
-  `setAttribute`/`getAttribute`, `textContent`, `classList`, `parentNode`/`children`,
-  `querySelector`/`querySelectorAll`, and `addEventListener`/`on<type>` events on
+  `setAttribute`/`getAttribute`, `textContent`, `innerHTML`, `style`,
+  `classList`, `parentNode`/`children`, `querySelector`/`querySelectorAll`, and
+  `addEventListener`/`on<type>` events on
   `window`, `document` and elements (`DOMContentLoaded`, `load`, and
   host-dispatched element events that bubble).
   The full LibJS engine in the tree needs Rust, a clang GC plugin and ICU and

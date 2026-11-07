@@ -181,6 +181,76 @@ static std::shared_ptr<aetheris::js::Object> make_native_like(std::function<aeth
     return object;
 }
 
+// Serialises a DOM subtree back to HTML (for innerHTML).
+static void serialize_html(rendering::DomNode const& node, std::string& out)
+{
+    switch (node.type) {
+    case rendering::DomNodeType::Text:
+        out += node.data;
+        break;
+    case rendering::DomNodeType::Comment:
+        out += "<!--" + node.data + "-->";
+        break;
+    case rendering::DomNodeType::Doctype:
+        out += "<!DOCTYPE html>";
+        break;
+    case rendering::DomNodeType::Element:
+        out += "<" + node.name;
+        for (auto const& [name, value] : node.attributes)
+            out += " " + name + "=\"" + value + "\"";
+        out += ">";
+        for (auto const& child : node.children)
+            serialize_html(*child, out);
+        out += "</" + node.name + ">";
+        break;
+    default:
+        for (auto const& child : node.children)
+            serialize_html(*child, out);
+        break;
+    }
+}
+
+// Sets one declaration in an element's style attribute, preserving the rest.
+static void apply_style_property(rendering::DomNode* node, std::string const& property, std::string const& value)
+{
+    std::vector<std::pair<std::string, std::string>> declarations;
+    if (auto* existing = node->attribute("style")) {
+        std::istringstream stream(*existing);
+        std::string declaration;
+        while (std::getline(stream, declaration, ';')) {
+            auto colon = declaration.find(':');
+            if (colon == std::string::npos)
+                continue;
+            std::string name = declaration.substr(0, colon);
+            std::string text = declaration.substr(colon + 1);
+            auto trim = [](std::string& s) {
+                auto b = s.find_first_not_of(" \t\r\n");
+                auto e = s.find_last_not_of(" \t\r\n");
+                s = b == std::string::npos ? std::string() : s.substr(b, e - b + 1);
+            };
+            trim(name);
+            trim(text);
+            if (!name.empty())
+                declarations.emplace_back(name, text);
+        }
+    }
+    bool replaced = false;
+    for (auto& entry : declarations)
+        if (entry.first == property) {
+            entry.second = value;
+            replaced = true;
+        }
+    if (!replaced)
+        declarations.emplace_back(property, value);
+    std::string joined;
+    for (auto const& entry : declarations) {
+        if (!joined.empty())
+            joined += "; ";
+        joined += entry.first + ": " + entry.second;
+    }
+    node->attributes["style"] = joined;
+}
+
 // ---- JavaScript DOM host -----------------------------------------------------
 // Owns the mapping between JS element handles and DOM nodes, including nodes
 // created with document.createElement that are not yet in the tree.
@@ -215,6 +285,38 @@ struct DomHost {
         }
     }
 
+    // Drops registry entries for a subtree that is about to be freed, so no
+    // handle is left pointing at deleted nodes.
+    void purge_subtree(rendering::DomNode& node)
+    {
+        for (auto& child : node.children) {
+            auto handle_it = handle_by_node.find(child.get());
+            if (handle_it != handle_by_node.end()) {
+                node_by_handle.erase(handle_it->second.get());
+                for (auto id_it = handle_by_id.begin(); id_it != handle_by_id.end();) {
+                    if (id_it->second == handle_it->second)
+                        id_it = handle_by_id.erase(id_it);
+                    else
+                        ++id_it;
+                }
+                handle_by_node.erase(handle_it);
+            }
+            parent_of.erase(child.get());
+            purge_subtree(*child);
+        }
+    }
+
+    // Creates handles for a freshly grafted subtree.
+    void register_subtree(rendering::DomNode& node)
+    {
+        for (auto& child : node.children) {
+            parent_of[child.get()] = &node;
+            if (child->type == rendering::DomNodeType::Element)
+                handle_for(child.get());
+            register_subtree(*child);
+        }
+    }
+
     void adopt(rendering::DomNode* parent, rendering::DomNode* child)
     {
         std::unique_ptr<rendering::DomNode> node;
@@ -240,7 +342,16 @@ std::shared_ptr<aetheris::js::Object> DomHost::handle_for(rendering::DomNode* no
     node_by_handle[handle.get()] = node;
     auto* id = node->attribute("id");
     handle->properties["id"] = aetheris::js::Value::from_string(id ? *id : "");
-    handle->properties["textContent"] = aetheris::js::Value::from_string(node_text(*node));
+    handle->accessors["textContent"] = {
+        aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const&) {
+            return aetheris::js::Value::from_string(node_text(*node));
+        })),
+        aetheris::js::Value::from_object(make_native_like([this, node](std::vector<aetheris::js::Value> const& args) {
+            purge_subtree(*node);
+            set_node_text(*node, args.empty() ? std::string() : args[0].to_string());
+            return aetheris::js::Value::undefined();
+        }))
+    };
 
     auto set_attribute = std::make_shared<aetheris::js::Object>();
     set_attribute->is_function = true;
@@ -376,6 +487,50 @@ std::shared_ptr<aetheris::js::Object> DomHost::handle_for(rendering::DomNode* no
         return aetheris::js::Value::from_boolean(!present);
     }));
     handle->properties["classList"] = aetheris::js::Value::from_object(class_list);
+
+    // innerHTML (get serialises; set re-parses and grafts the fragment).
+    handle->accessors["innerHTML"] = {
+        aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const&) {
+            std::string out;
+            for (auto const& child : node->children)
+                serialize_html(*child, out);
+            return aetheris::js::Value::from_string(out);
+        })),
+        aetheris::js::Value::from_object(make_native_like([this, node](std::vector<aetheris::js::Value> const& args) {
+            purge_subtree(*node);
+            node->children.clear();
+            if (!args.empty() && !args[0].to_string().empty()) {
+                auto fragment = rendering::Document::parse_html(args[0].to_string());
+                for (auto& child : fragment.root().children)
+                    node->children.push_back(std::move(child));
+            }
+            register_subtree(*node);
+            return aetheris::js::Value::undefined();
+        }))
+    };
+
+    // style: element.style = "..." plus setProperty/removeProperty/cssText.
+    handle->accessors["style"] = {
+        aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const&) {
+            auto style = std::make_shared<aetheris::js::Object>();
+            style->properties["setProperty"] = aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const& args) {
+                if (args.size() >= 2)
+                    apply_style_property(node, args[0].to_string(), args[1].to_string());
+                return aetheris::js::Value::undefined();
+            }));
+            style->properties["removeProperty"] = aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const& args) {
+                if (!args.empty())
+                    apply_style_property(node, args[0].to_string(), std::string());
+                return aetheris::js::Value::undefined();
+            }));
+            return aetheris::js::Value::from_object(style);
+        })),
+        aetheris::js::Value::from_object(make_native_like([node](std::vector<aetheris::js::Value> const& args) {
+            if (!args.empty())
+                node->attributes["style"] = args[0].to_string();
+            return aetheris::js::Value::undefined();
+        }))
+    };
 
     handle_by_node[node] = handle;
     if (id)
@@ -756,18 +911,9 @@ static int run_render(std::string const& url, std::string const& output_path, st
             std::cerr << "  [js] no element with id '" << dispatch_id << "'" << std::endl;
     }
 
-    // Apply textContent changes the scripts made back onto the DOM.
-    auto apply_text_content = [&dom]() {
-        for (auto& [handle, node] : dom.node_by_handle) {
-            auto it = handle->properties.find("textContent");
-            if (it == handle->properties.end())
-                continue;
-            std::string updated = it->second.to_string();
-            if (updated != node_text(*node))
-                set_node_text(*node, updated);
-        }
-    };
-    apply_text_content();
+    // textContent writes go straight to the DOM through its accessor, so no
+    // post-script reconciliation pass is needed (an earlier pass compared a
+    // stale snapshot and could free nodes whose handles were still live).
 
     // document.write output is appended to the body.
     if (!script_output.empty()) {
@@ -798,7 +944,6 @@ static int run_render(std::string const& url, std::string const& output_path, st
         }
         if (target) {
             dispatch_bubbling(js, dom, node, "click");
-            apply_text_content();
             rendered.relayout();
         } else {
             std::cerr << "  [js] no element handle at the click point" << std::endl;

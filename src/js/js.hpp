@@ -175,7 +175,12 @@ struct PromiseData {
 };
 
 struct Object {
+    struct Accessor {
+        Value getter;
+        Value setter;
+    };
     std::map<std::string, Value> properties;
+    std::map<std::string, Accessor> accessors; // property getters/setters
     std::vector<Value> elements;
     std::shared_ptr<Object> prototype; // [[Prototype]] chain link
     std::shared_ptr<Regex> regex;      // set for RegExp objects
