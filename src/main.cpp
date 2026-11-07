@@ -327,6 +327,27 @@ static std::vector<std::string> extract_scripts(std::string const& html)
     return scripts;
 }
 
+// Collects the bodies of inline <style> elements.
+static std::vector<std::string> extract_styles(std::string const& html)
+{
+    std::vector<std::string> styles;
+    std::size_t position = 0;
+    while (true) {
+        auto open = html.find("<style", position);
+        if (open == std::string::npos)
+            break;
+        auto tag_end = html.find('>', open);
+        if (tag_end == std::string::npos)
+            break;
+        auto close = html.find("</style", tag_end);
+        if (close == std::string::npos)
+            break;
+        styles.push_back(html.substr(tag_end + 1, close - tag_end - 1));
+        position = close + 7;
+    }
+    return styles;
+}
+
 // Headless script evaluation: run a snippet and print console output.
 static int run_eval(std::string const& source)
 {
@@ -392,6 +413,13 @@ static int run_render(std::string const& url, std::string const& output_path, st
             resources.put({ rendering::ResourceType::Image, dependency.serialized(), std::move(bytes) });
         }
     }
+    // Inline <style> blocks join the cascade after the linked stylesheets.
+    for (auto const& block : extract_styles(response.body)) {
+        if (!css.empty())
+            css.push_back('\n');
+        css += block;
+    }
+
     network::Socket::cleanup();
 
     // Parse the document so inline scripts can read and mutate it.
