@@ -320,6 +320,19 @@ int main()
         require(h.output == "22/10/2026\nabc 123\n1a 2b\n42 42 1\n", "regex capture groups");
     }
 
+    // Regex back-references and look-around.
+    {
+        Harness h;
+        h.run("console.log(/([a-z])\\1/.test('aa'), /([a-z])\\1/.test('ab'));"
+              "console.log('hello'.match(/(l)\\1/)[0]);"
+              "console.log('foobar'.match(/foo(?=bar)/)[0], 'foobaz'.match(/foo(?=bar)/));"
+              "console.log(/foo(?!bar)/.test('foobaz'), /foo(?!bar)/.test('foobar'));"
+              "console.log('price: 42'.match(/(?<=: )([0-9]+)/)[0]);"
+              "console.log(/(?<!a)b/.test('cb'), /(?<!a)b/.test('ab'));");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "true false\nll\nfoo null\ntrue false\n42\ntrue false\n", "regex back-references and look-around");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;

@@ -13,7 +13,7 @@ struct Node;
 using NodePtr = std::shared_ptr<Node>;
 
 struct Node {
-    enum class Kind { Literal, Any, Class, Start, End, Concat, Alt, Repeat, Group } kind { Kind::Literal };
+    enum class Kind { Literal, Any, Class, Start, End, Concat, Alt, Repeat, Group, BackReference, Lookahead, Lookbehind } kind { Kind::Literal };
     char literal { 0 };
     bool negated { false };
     std::vector<std::pair<char, char>> ranges;
@@ -91,6 +91,37 @@ bool match_node(NodePtr const& node, std::string const& text, std::size_t positi
             });
         }
         return match_node(node->child, text, position, ignore_case, captures, continuation);
+    }
+    case Node::Kind::BackReference: {
+        if (!captures)
+            return false;
+        auto index = static_cast<std::size_t>(node->group_index);
+        if (index >= captures->size())
+            return false;
+        auto captured = (*captures)[index];
+        if (captured.first == std::string::npos)
+            return false;
+        auto length = captured.second - captured.first;
+        if (position + length > text.size())
+            return false;
+        for (std::size_t i = 0; i < length; ++i)
+            if (!equal_char(text[position + i], text[captured.first + i], ignore_case))
+                return false;
+        return continuation(position + length);
+    }
+    case Node::Kind::Lookahead: {
+        bool matched = match_node(node->child, text, position, ignore_case, captures, [](std::size_t) { return true; });
+        if (matched == node->negated)
+            return false;
+        return continuation(position);
+    }
+    case Node::Kind::Lookbehind: {
+        bool matched = false;
+        for (std::size_t start = 0; start <= position && !matched; ++start)
+            matched = match_node(node->child, text, start, ignore_case, captures, [&](std::size_t end) { return end == position; });
+        if (matched == node->negated)
+            return false;
+        return continuation(position);
     }
     case Node::Kind::Concat: {
         std::function<bool(std::size_t, std::size_t)> step = [&](std::size_t index, std::size_t at) -> bool {
@@ -306,11 +337,31 @@ struct Parser {
         if (c == '(') {
             ++position;
             bool capturing = true;
+            bool lookahead = false;
+            bool lookbehind = false;
+            bool negative = false;
             if (peek() == '?') {
-                // (?:...) is non-capturing; other (?...) forms are unsupported.
                 ++position;
                 if (consume(':')) {
                     capturing = false;
+                } else if (consume('=')) {
+                    capturing = false;
+                    lookahead = true;
+                } else if (consume('!')) {
+                    capturing = false;
+                    lookahead = true;
+                    negative = true;
+                } else if (consume('<')) {
+                    if (consume('=')) {
+                        capturing = false;
+                        lookbehind = true;
+                    } else if (consume('!')) {
+                        capturing = false;
+                        lookbehind = true;
+                        negative = true;
+                    } else {
+                        ok = false; // named groups are unsupported
+                    }
                 } else {
                     ok = false;
                 }
@@ -318,6 +369,12 @@ struct Parser {
             auto inner = parse_alternation();
             if (!consume(')'))
                 ok = false;
+            if (lookahead || lookbehind) {
+                auto node = make_node(lookahead ? Node::Kind::Lookahead : Node::Kind::Lookbehind);
+                node->child = inner;
+                node->negated = negative;
+                return node;
+            }
             auto group = make_node(Node::Kind::Group);
             group->child = inner;
             if (capturing)
@@ -333,6 +390,11 @@ struct Parser {
             ++position;
             char escaped = peek();
             ++position;
+            if (escaped >= '1' && escaped <= '9') {
+                auto node = make_node(Node::Kind::BackReference);
+                node->group_index = escaped - '0';
+                return node;
+            }
             return class_for_escape(escaped);
         }
         if (c == '\0') {
