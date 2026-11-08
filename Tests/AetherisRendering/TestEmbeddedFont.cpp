@@ -1,10 +1,12 @@
 // The binary must render text without relying on the machine having fonts, so a
 // DejaVu Sans subset is embedded. This checks it parses and covers Latin.
 
+#include <font.hpp>
 #include <font_library.hpp>
 #include <ttf_font.hpp>
 
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 
 using namespace aetheris::rendering;
@@ -37,6 +39,20 @@ int main()
 
     // And a glyph really has an outline to draw.
     require(!font->outline(font->glyph_index('A')).empty(), "'A' has an outline");
+
+    // Kerning: "AV" must be narrower than "A" plus "V" on their own.
+    {
+        StyleProperties style;
+        style.set("font-size", "32");
+        Font measured = Font::from_style(style);
+        float av = measured.measure("AV");
+        float separate = measured.measure("A") + measured.measure("V");
+        require(av < separate - 0.5f, "kerning tightens 'AV'");
+        // A pair with no kerning must be unaffected.
+        float xy = measured.measure("xy");
+        float xy_separate = measured.measure("x") + measured.measure("y");
+        require(std::abs(xy - xy_separate) < 0.5f, "unrelated pairs are not kerned");
+    }
 
     std::printf("embedded font: %u glyphs, %u units/em\n", font->glyph_count(), font->units_per_em());
     return 0;

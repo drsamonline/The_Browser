@@ -15,4 +15,8 @@ TtfFont const* active_font();
 struct GlyphBitmap;
 GlyphBitmap const& cached_glyph(TtfFont const& font, uint16_t glyph, float pixel_size);
 
+// Kerning between two glyphs, in font units. Only the embedded font has a pair
+// table; any other font returns 0.
+int kerning_adjustment(TtfFont const& font, uint16_t left, uint16_t right);
+
 } // namespace aetheris::rendering

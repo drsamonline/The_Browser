@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "embedded_font.inc"
+#include "embedded_kern.inc"
 
 namespace aetheris::rendering {
 
@@ -78,6 +79,27 @@ TtfFont const* active_font()
 {
     static TtfFont* font = load_font();
     return font;
+}
+
+int kerning_adjustment(TtfFont const& font, uint16_t left, uint16_t right)
+{
+    // The pair table belongs to the embedded subset's glyph ids, so it only
+    // applies when that font is the active one.
+    if (&font != active_font())
+        return 0;
+    unsigned long low = 0;
+    unsigned long high = kEmbeddedKernPairCount;
+    while (low < high) {
+        auto middle = (low + high) / 2;
+        auto const& pair = kEmbeddedKernPairs[middle];
+        if (pair.left == left && pair.right == right)
+            return pair.value;
+        if (pair.left < left || (pair.left == left && pair.right < right))
+            low = middle + 1;
+        else
+            high = middle;
+    }
+    return 0;
 }
 
 } // namespace aetheris::rendering

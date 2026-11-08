@@ -165,8 +165,14 @@ void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, f
         float scale = font_size / static_cast<float>(font->units_per_em() > 0 ? font->units_per_em() : 1000);
         float pen_x = rect.x;
         int baseline = static_cast<int>(std::lround(rect.y + static_cast<float>(font->ascender()) * scale));
+        bool have_previous = false;
+        uint16_t previous_glyph = 0;
         for (unsigned char character : text) {
             auto glyph = font->glyph_index(character);
+            if (have_previous)
+                pen_x += static_cast<float>(kerning_adjustment(*font, previous_glyph, glyph)) * scale;
+            previous_glyph = glyph;
+            have_previous = true;
             auto const& bitmap = cached_glyph(*font, glyph, font_size);
             for (int y = 0; y < bitmap.height; ++y) {
                 for (int x = 0; x < bitmap.width; ++x) {
