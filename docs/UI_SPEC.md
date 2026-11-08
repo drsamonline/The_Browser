@@ -76,6 +76,29 @@ no display, so a backend written here could not be compiled or verified. The
 interface and the headless host are done and tested; the SDL2 implementation is
 the next step and needs a machine that can build and run it.
 
+## Input routing
+
+`src/ui/input_router.hpp` decides what an event means; the caller acts. It is a
+pure function of (event, focus state), so every binding is tested without a
+display.
+
+| Input | Action |
+| --- | --- |
+| `Ctrl+L` | focus the address bar |
+| `Ctrl+T` / `Ctrl+W` | new tab / close tab |
+| `Ctrl+R` | reload |
+| `Alt+←` / `Alt+→` | back / forward |
+| `F11` | toggle zen mode |
+| `Escape` | blur the address bar, or quit from the page |
+| Typing (address focused) | edits the address; `Enter` navigates, `Backspace` deletes |
+| Click above 34 px | chrome: address bar and navigation buttons |
+| Click below 34 px | page, with coordinates for hit-testing |
+| Hover | page only |
+
+The chrome/page boundary is the strip height, and the button positions come from
+the same constants the chrome is drawn with, so drawing and hit-testing cannot
+drift apart.
+
 ## Known cosmetic gaps
 
 - Navigation arrow glyphs render inconsistently in the strip; the tab, address

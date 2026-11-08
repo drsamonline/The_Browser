@@ -262,3 +262,7 @@ add_test(NAME AetherisEmbeddedFont COMMAND TestAetherisEmbeddedFont)
 add_executable(TestAetherisWindowHost TestWindowHost.cpp)
 target_link_libraries(TestAetherisWindowHost PRIVATE AetherisRendering)
 add_test(NAME AetherisWindowHost COMMAND TestAetherisWindowHost)
+
+add_executable(TestAetherisInputRouter TestInputRouter.cpp)
+target_link_libraries(TestAetherisInputRouter PRIVATE AetherisRendering)
+add_test(NAME AetherisInputRouter COMMAND TestAetherisInputRouter)

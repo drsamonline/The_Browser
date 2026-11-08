@@ -17,6 +17,7 @@
 #include "resource_backend.hpp"
 #include "resource_loader.hpp"
 #include "secure_resource_loader.hpp"
+#include "ui/input_router.hpp"
 #include "ui/window_host.hpp"
 #include "resource.hpp"
 #include "url.hpp"
@@ -1619,23 +1620,37 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         return 1;
     }
     ui::WindowEvent event;
+    ui::InputRouter router(kChromeHeight);
+    router.set_address_text(url);
     int handled = 0;
+    bool done = false;
     // Present, then drain input. The host closes itself when its frame budget is
     // spent (headless) or when the user closes the window.
-    while (host->is_open()) {
+    while (host->is_open() && !done) {
         host->present(window);
         while (host->poll(event)) {
-            if (event.kind == ui::WindowEvent::Kind::Close) {
-                host->close();
+            auto action = router.handle(event);
+            if (action.kind == ui::InputAction::Kind::None)
+                continue;
+            ++handled;
+            switch (action.kind) {
+            case ui::InputAction::Kind::Quit:
+                done = true;
+                break;
+            case ui::InputAction::Kind::Navigate:
+                std::cout << "  navigate: " << action.text << std::endl;
+                break;
+            case ui::InputAction::Kind::PageClick:
+                std::cout << "  click at " << action.x << "," << action.y << std::endl;
+                break;
+            case ui::InputAction::Kind::ToggleZen:
+                std::cout << "  zen mode: " << (router.zen_mode() ? "on" : "off") << std::endl;
+                break;
+            default:
                 break;
             }
-            if (event.kind == ui::WindowEvent::Kind::KeyDown) {
-                if (event.key == "q" || event.key == "Escape") {
-                    host->close();
-                    break;
-                }
-                ++handled;
-            }
+            if (done)
+                break;
         }
     }
     host->close();
