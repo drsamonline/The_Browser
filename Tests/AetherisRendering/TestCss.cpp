@@ -44,5 +44,31 @@ int main()
         require(!Color::parse("notacolour").has_value(), "unknown colour rejected");
     }
 
+
+    // Media queries are resolved against the screen viewport (1024x768).
+    {
+        CssParser parser;
+        auto sheet = parser.parse(
+            "p { color: black; }"
+            "@media screen { p { color: green; } }"
+            "@media print { p { color: red; } }"
+            "@media (min-width: 600px) { #a { color: blue; } }"
+            "@media (max-width: 500px) { #b { color: orange; } }");
+        // screen and min-width survive; print and max-width are dropped.
+        require(sheet.rules.size() == 3, "media queries filter by the viewport");
+        bool has_blue = false;
+        for (auto const& rule : sheet.rules)
+            for (auto const& selector : rule.selectors)
+                if (selector == "#a")
+                    has_blue = true;
+        require(has_blue, "min-width rule is kept");
+        for (auto const& rule : sheet.rules)
+            for (auto const& selector : rule.selectors) {
+                require(selector != "#b", "max-width rule is dropped");
+                require(selector.rfind("@media", 0) != 0, "media blocks do not leak as selectors");
+                require(selector.find('}') == std::string::npos, "block braces do not leak into selectors");
+            }
+    }
+
     return 0;
 }

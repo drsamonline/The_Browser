@@ -27,6 +27,7 @@ out. Everything below is covered by the 51-test CTest suite.
   and `getComputedStyle(el).getPropertyValue(name)`.
 - **Networking.** RFC cookies (`Domain`/`Path`/`Expires`/`Max-Age`/`Secure`/
   `HttpOnly`), a keep-alive liveness probe, and `aetheris --dump-dom <url>`.
+- **CSS: media queries and structural pseudo-classes.** `@media` blocks are parsed and filtered against the renderer's screen viewport (1024x768), so `@media screen` and `(min-width: ...)` apply while `print` and non-matching widths are dropped. `:first-child`, `:last-child`, `:only-child` and `:nth-child(n)` now match.
 - **Form controls.** `value` (read/write) on `input`, `textarea`, `select` and `option`, `checked` on checkboxes and radios, and `form.submit()`, which fires a cancelable `submit` event so `preventDefault()` stops submission. The DOM is the source of truth, so a script's change is what the renderer paints.
 - **The security policy is on the real fetch path.** The document and every subresource now go through `SecureResourceLoader` (backed by `HttpResourceBackend`) instead of calling the HTTP client directly, so unsupported schemes, mixed content and file-document network access are actually refused for a rendered page.
 - **Fixed a crash introduced with the keep-alive probe:** the liveness check ran after the reconnect decision, so a pooled connection closed by the server was reset to null and the next request aborted. The probe now runs before the decision, with a regression test (a server that closes a pooled connection) verified to fail without the fix.

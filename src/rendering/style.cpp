@@ -7,6 +7,56 @@
 
 namespace aetheris::rendering {
 
+namespace {
+
+// 1-based position of `node` among its element siblings, and the sibling count.
+bool element_position(DomNode const& node, int& index, int& count)
+{
+    auto* parent = node.parent;
+    if (!parent)
+        return false;
+    index = 0;
+    count = 0;
+    for (auto const& child : parent->children) {
+        if (child->type != DomNodeType::Element)
+            continue;
+        ++count;
+        if (child.get() == &node)
+            index = count;
+    }
+    return index > 0;
+}
+
+bool matches_structural_pseudo(DomNode const& node, std::string const& pseudo)
+{
+    int index = 0;
+    int count = 0;
+    if (!element_position(node, index, count))
+        return false;
+    if (pseudo == "first-child")
+        return index == 1;
+    if (pseudo == "last-child")
+        return index == count;
+    if (pseudo == "only-child")
+        return count == 1;
+    if (pseudo.rfind("nth-child(", 0) == 0) {
+        std::string argument = pseudo.substr(10);
+        auto close = argument.find(')');
+        if (close != std::string::npos)
+            argument = argument.substr(0, close);
+        char* end = nullptr;
+        long wanted = std::strtol(argument.c_str(), &end, 10);
+        if (end == argument.c_str())
+            return false;
+        return static_cast<long>(index) == wanted;
+    }
+    return false;
+}
+
+} // namespace
+
+
+
 void StyleProperties::set(std::string property, std::string value)
 {
     m_properties[std::move(property)] = std::move(value);
@@ -231,6 +281,13 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
         }
     }
     for (auto const& pseudo : pseudo_classes) {
+        // Structural pseudo-classes need no interaction state.
+        if (pseudo == "first-child" || pseudo == "last-child" || pseudo == "only-child"
+            || pseudo.rfind("nth-child(", 0) == 0) {
+            if (!matches_structural_pseudo(node, pseudo))
+                return false;
+            continue;
+        }
         if (!interaction_state) return false;
         if (pseudo == "hover" && interaction_state->hovered != &node) return false;
         if (pseudo == "focus" && interaction_state->focused != &node) return false;
