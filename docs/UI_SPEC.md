@@ -59,6 +59,23 @@ consistent with page content.
 - `aetheris --render-window <url> [out.ppm]` renders the composited result, so
   the chrome can be verified without a display.
 
+## Window host
+
+The window is behind a five-method interface (`src/ui/window_host.hpp`:
+`open`, `present`, `poll`, `set_title`, `close`), so the chrome and input routing
+never learn which platform they run on and a native backend can replace SDL2
+later without touching them.
+
+`aetheris --window <url> [frames] [dir]` runs the present-and-pump loop. With no
+display backend it uses `HeadlessWindowHost`, which accepts a fixed number of
+frames and writes each one to the given directory — that is how CI and the test
+suite exercise the loop.
+
+**Not yet written:** the SDL2 backend. This environment has no SDL2 headers and
+no display, so a backend written here could not be compiled or verified. The
+interface and the headless host are done and tested; the SDL2 implementation is
+the next step and needs a machine that can build and run it.
+
 ## Known cosmetic gaps
 
 - Navigation arrow glyphs render inconsistently in the strip; the tab, address

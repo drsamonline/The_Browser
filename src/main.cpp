@@ -17,6 +17,7 @@
 #include "resource_backend.hpp"
 #include "resource_loader.hpp"
 #include "secure_resource_loader.hpp"
+#include "ui/window_host.hpp"
 #include "resource.hpp"
 #include "url.hpp"
 
@@ -1578,6 +1579,74 @@ static std::string chrome_document(std::string const& title, std::string const& 
     return html;
 }
 
+// Runs the browser in a window: render, present, pump events. Without a display
+// backend this still works headlessly for a fixed number of frames, which is
+// what CI and the tests use.
+static int run_window(std::string const& url, int frames, std::string const& frame_directory)
+{
+    if (network::Socket::initialize() != network::SocketError::None) {
+        std::cerr << "Failed to initialize network subsystem" << std::endl;
+        return 1;
+    }
+    rendering::Url document_url = rendering::Url::parse(url);
+    SecureFetcher fetcher(document_url);
+    auto loaded = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
+    network::Socket::cleanup();
+    if (!loaded.succeeded()) {
+        std::cerr << "Fetch failed: " << loaded.message << std::endl;
+        return 1;
+    }
+    std::string body(loaded.resource->bytes.begin(), loaded.resource->bytes.end());
+
+    constexpr int kWidth = 1024;
+    constexpr int kHeight = 768;
+    int content_height = kHeight - kChromeHeight;
+
+    auto page = rendering::RenderDocument::create(body, "", static_cast<float>(kWidth), nullptr, url);
+    auto page_surface = page.render_to_surface(kWidth, content_height, rendering::Color { 255, 255, 255, 255 });
+
+    std::string title = document_title(page.document().root());
+    auto chrome = rendering::RenderDocument::create(chrome_document(title, url), "", static_cast<float>(kWidth));
+    auto chrome_surface = chrome.render_to_surface(kWidth, kChromeHeight, rendering::Color { 32, 33, 36, 255 });
+
+    auto window = rendering::SoftwareSurface(kWidth, kHeight, rendering::Color { 255, 255, 255, 255 });
+    window.blit(chrome_surface, 0, 0);
+    window.blit(page_surface, 0, kChromeHeight);
+
+    auto host = ui::make_window_host(frames, frame_directory);
+    if (!host->open(kWidth, kHeight, title.empty() ? "Aetheris" : title)) {
+        std::cerr << "Could not open a window" << std::endl;
+        return 1;
+    }
+    ui::WindowEvent event;
+    int handled = 0;
+    // Present, then drain input. The host closes itself when its frame budget is
+    // spent (headless) or when the user closes the window.
+    while (host->is_open()) {
+        host->present(window);
+        while (host->poll(event)) {
+            if (event.kind == ui::WindowEvent::Kind::Close) {
+                host->close();
+                break;
+            }
+            if (event.kind == ui::WindowEvent::Kind::KeyDown) {
+                if (event.key == "q" || event.key == "Escape") {
+                    host->close();
+                    break;
+                }
+                ++handled;
+            }
+        }
+    }
+    host->close();
+
+    std::cout << "Window " << kWidth << "x" << kHeight << " (chrome " << kChromeHeight
+              << "px, content " << content_height << "px), backend: "
+              << (ui::has_display_backend() ? "display" : "headless")
+              << ", events handled: " << handled << std::endl;
+    return 0;
+}
+
 static int run_render_window(std::string const& url, std::string const& output_path)
 {
     if (network::Socket::initialize() != network::SocketError::None) {
@@ -1874,6 +1943,7 @@ int main(int argc, char* argv[]) {
                       << "                 content type and body size.\n"
                       << "  --render <url> [out.ppm]\n"
                       << "  --render-window <url> [out.ppm]   page composited under the browser chrome\n"
+                      << "  --window <url> [frames] [dir]     run the window loop (headless without SDL2)\n"
                       << "                 Fetch a URL, render it and write a PPM image.\n"
                       << "  --eval <script>  Run a JavaScript snippet and print its output.\n"
                       << "  --dispatch <id> <type>\n"
@@ -1908,6 +1978,16 @@ int main(int argc, char* argv[]) {
                 output_path = argv[++i];
             }
             return run_render(url, output_path, dispatch_id, dispatch_type, click_x, click_y);
+        }
+        if (arg == "--window" && i + 1 < argc) {
+            std::string url = argv[++i];
+            int frames = 1;
+            std::string frame_directory;
+            if (i + 1 < argc && argv[i + 1][0] != '-')
+                frames = std::atoi(argv[++i]);
+            if (i + 1 < argc && argv[i + 1][0] != '-')
+                frame_directory = argv[++i];
+            return run_window(url, frames, frame_directory);
         }
         // Same page, but composited under the compact browser chrome.
         if (arg == "--render-window" && i + 1 < argc) {
