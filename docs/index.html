@@ -641,7 +641,7 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6l7-3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
       </div>
       <h3>Test-driven, honestly scoped</h3>
-      <p>The Aetheris suite is 39 regression test executables wired into CTest. The project states plainly that it is not production-ready and avoids unsupported performance claims.</p>
+      <p>The Aetheris suite is 51 regression test executables wired into CTest. The project states plainly that it is not production-ready and avoids unsupported performance claims.</p>
     </div>
 
     <div class="card reveal">
@@ -649,7 +649,7 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4h16v16H4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 9h6v6H9z" stroke="currentColor" stroke-width="1.8"/></svg>
       </div>
       <h3>Minimal footprint by design</h3>
-      <p>The core links nothing at runtime, and a size-first profile (<code>-Os</code>, dead-section elimination, LTO, stripped) keeps the shipped binary tiny &mdash; a stripped <code>aetheris</code> executable lands around <strong>1&nbsp;MB</strong>, with HTML/CSS layout, anti-aliased bitmap-font text, PNG/JPEG/GIF/SVG/WebP images, HTTPS/TLS, an HTTP client and a small JavaScript engine all linked in.</p>
+      <p>The core links nothing at runtime, and a size-first profile (<code>-Os</code>, dead-section elimination, LTO, stripped) keeps the shipped binary small &mdash; a stripped <code>aetheris</code> executable is <strong>2.38&nbsp;MB</strong> with HTML5 parsing, CSS layout, anti-aliased bitmap-font text, PNG/JPEG/GIF/SVG/WebP images, HTTPS/TLS, an HTTP client and a full ES2025 JavaScript engine linked in. The budget is <strong>under 10&nbsp;MB</strong>, enforced by a CTest, which puts it about 40&times; under a WebKitGTK browser and 100&times; under Firefox while still running JavaScript.</p>
     </div>
 
   </div>
@@ -716,7 +716,7 @@
 <span class="c"># size-first Release: -Os, gc-sections, LTO, stripped</span>
 <span class="k">cmake</span> --preset StandaloneSize
 <span class="k">cmake</span> --build --preset StandaloneSize
-<span class="c"># -> ~0.35 MB stripped aetheris executable</span></pre>
+<span class="c"># -> ~2.38 MB stripped aetheris executable</span></pre>
     </div>
   </div>
 </section>
@@ -908,7 +908,7 @@
         Does it claim specific performance numbers?
         <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </summary>
-      <div class="ans">No. The project explicitly does not claim fixed limits for binary size, idle memory or startup time. Performance work is framed as measurable engineering, and future public claims are expected to be reproducible with recorded environment details.</div>
+      <div class="ans">Binary size is budgeted: the stripped <code>aetheris</code> executable must stay under 10&nbsp;MB and a CTest fails the build if it does not. It currently measures 2.38&nbsp;MB. Idle memory and startup time are not yet claimed. Performance work is framed as measurable engineering, and future public claims are expected to be reproducible with recorded environment details.</div>
     </details>
   </div>
 </section>

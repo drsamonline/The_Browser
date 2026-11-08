@@ -140,11 +140,38 @@ The project may explore delayed initialization of expensive subsystems, includin
 
 Current and future work may reduce redundant paint operations, improve clipping and invalidation, and evaluate accelerated backends where the complexity and dependencies are justified.
 
-## 📊 Performance and benchmarking
+## 📊 Size
 
-Aetheris does not currently claim fixed limits for binary size, idle memory usage, or startup time.
+"Minimal" only means something next to other browsers, so the budget is stated
+plainly: **the stripped `aetheris` binary stays under 10 MB.** That ceiling is
+enforced by the `AetherisBinarySize` CTest in the size-first build.
 
-Performance measurements should record the operating system, hardware, compiler, build configuration, enabled features, workload, and measurement method. Future public performance claims should be reproducible.
+Measured size profile (Release, `-Os`, LTO, stripped), with the comparison that
+gives it meaning:
+
+| Browser | Engine | Size | JavaScript |
+| --- | --- | --- | --- |
+| Firefox | Gecko | 238–428 MB | yes |
+| Chromium | Blink | 280–447 MB | yes |
+| Brave | Blink | ~260 MB | yes |
+| Epiphany | WebKitGTK | ~95 MB | yes |
+| NetSurf | own (C) | 4.0–6.9 MB | no |
+| Dillo | own (C) | ~0.25 MB | **no** |
+| **Aetheris** | **own (C++20)** | **2.38 MB** | **yes (ES2025)** |
+
+So Aetheris sits roughly 40× under a WebKitGTK browser and 100× under Firefox,
+while still running JavaScript — the thing the smaller engines give up. Dillo
+remains far smaller, but has no JavaScript and no CSS3, so the two are not the
+same kind of tool.
+
+Sizes for other browsers are installed sizes reported by their distributions
+and projects; the Aetheris figure is the stripped executable. Those are not
+identical measures, so treat the table as an order-of-magnitude comparison.
+
+Idle memory usage and startup time are not yet claimed. Performance
+measurements should record the operating system, hardware, compiler, build
+configuration, enabled features, workload, and measurement method. Future
+public performance claims should be reproducible.
 
 ## 🛠️ Quick start: build and test
 
@@ -172,8 +199,9 @@ cmake --build --preset StandaloneSize
 
 The size profile applies only to the Aetheris targets (`AetherisRendering`,
 `AetherisRuntime`, `aetheris`); a stripped `aetheris` executable is on the
-order of 1 MB with the current feature set (HTML/CSS layout, bitmap-font
-text, PNG/JPEG/GIF/SVG/WebP images, HTTPS/TLS and the HTTP client all linked in).
+2.38 MB (2,490,416 bytes) with the current feature set: gumbo HTML5 parsing,
+CSS layout, bitmap-font text, PNG/JPEG/GIF/SVG/WebP images, HTTPS/TLS, the HTTP
+client and QuickJS. See the size table above.
 
 The `aetheris` executable exposes a small headless command surface:
 
