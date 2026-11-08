@@ -108,8 +108,11 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
 
 6. ~~Event model completeness~~ — **done** (capture, `stopPropagation`,
    `preventDefault`, event objects).
-7. **Networking**: HTTP/2 and complete certificate validation. RFC cookie
-   attributes and the keep-alive liveness probe are done.
+7. **Networking**: HTTP/2 only. Certificate validation (chain, hostname,
+   expiry) was already enforced in `src/network/tls.cpp`; it is now **proven** by
+   `Tools/check_tls_verification.sh`, which checks that an untrusted certificate
+   is refused, one trusted via `AETHERIS_CA_FILE` is accepted, and a trusted
+   certificate for the wrong host is still refused.
 8. **Security model**: process/site isolation, CSP, mixed-content blocking,
    same-origin policy enforcement in the script bindings.
 9. **A real UI shell**: the browser is headless and renders to PPM. There is no
