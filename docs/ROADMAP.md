@@ -69,7 +69,8 @@ Last verified: 51/51 CTest passing, size profile **2,490,416 bytes (~2.38 MB)**.
 
 ## Remaining
 
-Ordered by value, not by effort.
+Ordered by value. **The execution order — cheap wins first, batched by shared
+code path, large tasks last — is in [PHASES.md](PHASES.md).**
 
 ### High value
 
