@@ -128,8 +128,13 @@ static uint16_t start_server(std::thread& server_thread)
             if (connection < 0)
                 break;
             char buffer[4096];
-            ::recv(connection, buffer, sizeof(buffer), 0);
+            auto received = ::recv(connection, buffer, sizeof(buffer), 0);
+            std::string request(buffer, received > 0 ? static_cast<std::size_t>(received) : 0);
             std::string body = kPage;
+            // /csp serves a page whose policy forbids inline scripts.
+            if (request.find("GET /csp") != std::string::npos)
+                body = "<html><head><meta http-equiv='Content-Security-Policy' content=\"script-src 'none'\">"
+                       "</head><body><script>console.log('MARK should-not-run');</script></body></html>";
             std::string response = "HTTP/1.1 200 OK\r\n";
             response += "Content-Type: text/html\r\n";
             response += "Content-Length: " + std::to_string(body.size()) + "\r\n";
@@ -219,6 +224,14 @@ int main(int argc, char* argv[])
     require(contains(captured_dispatch, "MARK outer"), "the event bubbles to the ancestor");
     require(contains(captured_dispatch, "ORDER capture>target>bubble"),
         "capture runs before the target and bubbling runs after");
+
+    // Pass 3: a Content-Security-Policy that forbids inline scripts.
+    std::string captured_csp;
+    status = run_browser(binary, { "--render", url + "csp", output }, captured_csp);
+    require(status == 0, "csp render exits 0");
+    require_clean_run(captured_csp);
+    require(!contains(captured_csp, "MARK should-not-run"), "CSP blocks the inline script");
+    require(contains(captured_csp, "blocked by Content-Security-Policy"), "CSP block is reported");
 
     server.join();
     return 0;

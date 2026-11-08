@@ -1386,6 +1386,80 @@ static void collect_selector_matches(rendering::DomNode& node, DomHost& dom, std
 }
 
 // Collects the bodies of inline <script> elements.
+// Reads the first <meta http-equiv="Content-Security-Policy"> in the document.
+static std::string content_security_policy(rendering::DomNode const& root)
+{
+    for (auto const& child : root.children) {
+        if (child->type == rendering::DomNodeType::Element && child->name == "meta") {
+            auto* http_equiv = child->attribute("http-equiv");
+            auto* content = child->attribute("content");
+            if (!http_equiv || !content)
+                continue;
+            std::string name = *http_equiv;
+            for (auto& c : name)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (name == "content-security-policy")
+                return *content;
+        }
+        auto nested = content_security_policy(*child);
+        if (!nested.empty())
+            return nested;
+    }
+    return {};
+}
+
+// Inline scripts run only when the policy permits them. No policy, or no
+// script-src/default-src directive, means they are allowed.
+static bool csp_allows_inline_scripts(std::string const& policy)
+{
+    if (policy.empty())
+        return true;
+
+    std::string script_source;
+    bool have_script_source = false;
+    std::string default_source;
+    bool have_default_source = false;
+
+    std::size_t start = 0;
+    while (start <= policy.size()) {
+        auto semicolon = policy.find(';', start);
+        std::string directive = policy.substr(start,
+            semicolon == std::string::npos ? std::string::npos : semicolon - start);
+        start = semicolon == std::string::npos ? policy.size() + 1 : semicolon + 1;
+
+        std::string name;
+        std::string values;
+        std::size_t index = 0;
+        while (index < directive.size() && std::isspace(static_cast<unsigned char>(directive[index])))
+            ++index;
+        while (index < directive.size() && !std::isspace(static_cast<unsigned char>(directive[index])))
+            name += static_cast<char>(std::tolower(static_cast<unsigned char>(directive[index++])));
+        values = directive.substr(index);
+        for (auto& c : values)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+        if (name == "script-src") {
+            script_source = values;
+            have_script_source = true;
+        } else if (name == "default-src") {
+            default_source = values;
+            have_default_source = true;
+        }
+    }
+
+    std::string effective;
+    if (have_script_source)
+        effective = script_source;
+    else if (have_default_source)
+        effective = default_source;
+    else
+        return true; // no directive restricting scripts
+
+    if (effective.find("'none'") != std::string::npos)
+        return false;
+    return effective.find("'unsafe-inline'") != std::string::npos;
+}
+
 static std::vector<std::string> extract_scripts(std::string const& html)
 {
     std::vector<std::string> scripts;
@@ -1588,7 +1662,11 @@ static int run_render(std::string const& url, std::string const& output_path, st
         return array;
     };
 
-    for (auto const& script : extract_scripts(html)) {
+    // Content-Security-Policy: inline scripts only run when the policy allows.
+    auto policy = content_security_policy(document.root());
+    if (!csp_allows_inline_scripts(policy)) {
+        std::cerr << "  [js] inline scripts blocked by Content-Security-Policy" << std::endl;
+    } else for (auto const& script : extract_scripts(html)) {
         js.run(script);
         if (js.has_error()) {
             std::cerr << "  [js] " << js.error() << std::endl;
