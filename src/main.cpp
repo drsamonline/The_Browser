@@ -1092,6 +1092,8 @@ static int run_render(std::string const& url, std::string const& output_path, st
     if (!js.has_error()) {
         js.dispatch_event("DOMContentLoaded");
         js.dispatch_event("load");
+        // Run timers (setTimeout/setInterval) on virtual time.
+        js.run_event_loop();
     }
     if (!js.has_error() && !dispatch_id.empty() && !dispatch_type.empty()) {
         auto it = dom.handle_by_id.find(dispatch_id);

@@ -45,6 +45,9 @@ Last verified: 51/51 CTest passing, size profile **2,490,416 bytes (~2.38 MB)**.
 - **Events**: `addEventListener` and `on<type>` on window, document and
   elements, with bubbling up the ancestor chain. `DOMContentLoaded` and `load`.
 - **Promise jobs** are drained after each script and each event.
+- **Timers**: `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` and
+  `queueMicrotask`, run on **virtual time** — timers fire in due order without
+  real waiting, which is what makes them usable in a headless renderer.
 
 ### Tooling and process
 
@@ -73,9 +76,10 @@ Ordered by value, not by effort.
 1. **Vector fonts and text shaping.** The renderer uses a bitmap font, so text
    quality is the single largest visual gap against any real browser. Needs a
    TrueType/OpenType rasteriser, kerning and basic shaping.
-2. **An event loop.** Promise jobs are drained after each script and event;
-   there are no timers, no `requestAnimationFrame`, and no continuous job
-   processing. Async code that resolves later than the current turn does not run.
+2. **`requestAnimationFrame` and real-time scheduling.** Timers exist and run on
+   virtual time, but there is no animation frame callback, no compositor, and no
+   real clock — a page that expects wall-clock pacing will run its timers as fast
+   as the loop allows.
 3. **`getComputedStyle`.** Resolved styles are not exposed to scripts.
 4. **CSS coverage**: `transform`, complete `flex`/`grid`, pseudo-elements,
    media queries, `@font-face`, `position: sticky`, transitions/animations.
@@ -107,8 +111,8 @@ Ordered by value, not by effort.
 
 - The engine is **not** standards-complete. It renders simple and moderately
   complex pages; it does not render the modern web correctly.
-- There is **no JavaScript event loop**, so timers and late async work do not
-  run.
+- Timers run on **virtual time**, not a real clock, and there is no
+  `requestAnimationFrame`.
 - The browser is **headless**: `--render` writes a PPM image.
 - Size is ~2.38 MB, roughly 40× under a WebKitGTK browser and 100× under
   Firefox, while still running JavaScript. Dillo (~0.25 MB) is far smaller but

@@ -1,5 +1,6 @@
 #include "js.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 namespace aetheris::js {
@@ -105,6 +106,53 @@ JSValue js_add_event_listener(JSContext* context, JSValueConst this_value, int a
     return JS_UNDEFINED;
 }
 
+
+// ---- timers ---------------------------------------------------------------
+
+JSValue js_set_timeout(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* interpreter = interpreter_for(context);
+    if (!interpreter || argc < 1 || !JS_IsFunction(context, argv[0]))
+        return JS_UNDEFINED;
+    double delay = 0;
+    if (argc > 1)
+        JS_ToFloat64(context, &delay, argv[1]);
+    return JS_NewInt32(context, interpreter->add_timer(JS_DupValue(context, argv[0]), delay, false));
+}
+
+JSValue js_set_interval(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* interpreter = interpreter_for(context);
+    if (!interpreter || argc < 1 || !JS_IsFunction(context, argv[0]))
+        return JS_UNDEFINED;
+    double delay = 0;
+    if (argc > 1)
+        JS_ToFloat64(context, &delay, argv[1]);
+    return JS_NewInt32(context, interpreter->add_timer(JS_DupValue(context, argv[0]), delay, true));
+}
+
+JSValue js_clear_timer(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* interpreter = interpreter_for(context);
+    if (!interpreter || argc < 1)
+        return JS_UNDEFINED;
+    int32_t id = 0;
+    JS_ToInt32(context, &id, argv[0]);
+    interpreter->clear_timer(id);
+    return JS_UNDEFINED;
+}
+
+JSValue js_queue_microtask(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc < 1 || !JS_IsFunction(context, argv[0]))
+        return JS_UNDEFINED;
+    // A zero-delay timer is close enough: it runs on the next loop turn.
+    auto* interpreter = interpreter_for(context);
+    if (interpreter)
+        interpreter->add_timer(JS_DupValue(context, argv[0]), 0, false);
+    return JS_UNDEFINED;
+}
+
 void define_function(JSContext* context, JSValueConst target, char const* name, JSCFunction* function)
 {
     JS_SetPropertyStr(context, target, name, JS_NewCFunction(context, function, name, 1));
@@ -127,6 +175,9 @@ Interpreter::Interpreter()
 Interpreter::~Interpreter()
 {
     if (m_context) {
+        for (auto& timer : m_timers)
+            JS_FreeValue(m_context, timer.callback);
+        m_timers.clear();
         JS_FreeValue(m_context, m_window);
         JS_FreeValue(m_context, m_document);
         JS_FreeContext(m_context);
@@ -158,7 +209,19 @@ void Interpreter::setup_globals()
     // window
     JSValue window = JS_NewObject(m_context);
     define_function(m_context, window, "addEventListener", js_add_event_listener);
+    define_function(m_context, window, "setTimeout", js_set_timeout);
+    define_function(m_context, window, "setInterval", js_set_interval);
+    define_function(m_context, window, "clearTimeout", js_clear_timer);
+    define_function(m_context, window, "clearInterval", js_clear_timer);
+    define_function(m_context, window, "queueMicrotask", js_queue_microtask);
     JS_SetPropertyStr(m_context, global, "window", JS_DupValue(m_context, window));
+
+    // Bare globals too: scripts call setTimeout(...) without a window prefix.
+    JS_SetPropertyStr(m_context, global, "setTimeout", JS_NewCFunction(m_context, js_set_timeout, "setTimeout", 2));
+    JS_SetPropertyStr(m_context, global, "setInterval", JS_NewCFunction(m_context, js_set_interval, "setInterval", 2));
+    JS_SetPropertyStr(m_context, global, "clearTimeout", JS_NewCFunction(m_context, js_clear_timer, "clearTimeout", 1));
+    JS_SetPropertyStr(m_context, global, "clearInterval", JS_NewCFunction(m_context, js_clear_timer, "clearInterval", 1));
+    JS_SetPropertyStr(m_context, global, "queueMicrotask", JS_NewCFunction(m_context, js_queue_microtask, "queueMicrotask", 1));
 
     JS_FreeValue(m_context, global);
     m_document = document;
@@ -270,6 +333,63 @@ void Interpreter::dispatch_event_to(JSValue target, std::string const& type, std
     }
     JS_FreeValue(m_context, current);
     JS_FreeValue(m_context, target); // takes ownership of the caller's reference
+    drain_microtasks();
+}
+
+
+int Interpreter::add_timer(JSValue callback, double delay_ms, bool repeating)
+{
+    Timer timer;
+    timer.id = m_next_timer_id++;
+    timer.due = m_virtual_time + (delay_ms > 0 ? delay_ms : 0) / 1000.0;
+    timer.interval = (delay_ms > 0 ? delay_ms : 0) / 1000.0;
+    timer.repeating = repeating;
+    timer.callback = callback;
+    m_timers.push_back(timer);
+    return timer.id;
+}
+
+void Interpreter::clear_timer(int id)
+{
+    for (auto it = m_timers.begin(); it != m_timers.end(); ++it) {
+        if (it->id != id)
+            continue;
+        JS_FreeValue(m_context, it->callback);
+        m_timers.erase(it);
+        return;
+    }
+}
+
+void Interpreter::run_event_loop(int max_tasks)
+{
+    if (!m_context)
+        return;
+    for (int task = 0; task < max_tasks; ++task) {
+        drain_microtasks();
+        if (m_timers.empty() || m_has_error)
+            break;
+
+        auto next = std::min_element(m_timers.begin(), m_timers.end(),
+            [](Timer const& left, Timer const& right) { return left.due < right.due; });
+        if (next == m_timers.end())
+            break;
+
+        // Virtual time: jump to the timer instead of sleeping.
+        m_virtual_time = std::max(m_virtual_time, next->due);
+        Timer timer = *next;
+        if (timer.repeating)
+            next->due = m_virtual_time + (timer.interval > 0 ? timer.interval : 0.001);
+        else
+            m_timers.erase(next);
+
+        JSValue result = JS_Call(m_context, timer.callback, JS_UNDEFINED, 0, nullptr);
+        if (JS_IsException(result))
+            record_exception();
+        JS_FreeValue(m_context, result);
+        if (!timer.repeating)
+            JS_FreeValue(m_context, timer.callback);
+        drain_microtasks();
+    }
     drain_microtasks();
 }
 

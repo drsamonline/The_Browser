@@ -333,6 +333,40 @@ int main()
         require(h.output == "true false\nll\nfoo null\ntrue false\n42\ntrue false\n", "regex back-references and look-around");
     }
 
+    // Timers run on virtual time: due order, no real waiting.
+    {
+        Harness h;
+        h.run("var order = [];"
+              "setTimeout(function () { order.push('a'); }, 20);"
+              "setTimeout(function () { order.push('b'); }, 10);"
+              "var id = setTimeout(function () { order.push('never'); }, 5);"
+              "clearTimeout(id);");
+        h.interpreter.run_event_loop();
+        h.run("console.log(order.join(','));");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "b,a\n", "setTimeout fires in due order and clearTimeout cancels");
+    }
+
+    // setInterval repeats until cleared.
+    {
+        Harness h;
+        h.run("var n = 0; var t = setInterval(function () { n++; if (n >= 3) clearInterval(t); }, 10);");
+        h.interpreter.run_event_loop();
+        h.run("console.log(n);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "3\n", "setInterval repeats and can be cleared");
+    }
+
+    // A timer callback can resolve a promise, and the job runs.
+    {
+        Harness h;
+        h.run("var value = 0;"
+              "setTimeout(function () { Promise.resolve(9).then(function (v) { value = v; console.log('v', value); }); }, 5);");
+        h.interpreter.run_event_loop();
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "v 9\n", "timer callback can settle a promise");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;

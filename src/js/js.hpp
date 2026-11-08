@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace aetheris::js {
 
@@ -34,8 +35,17 @@ public:
     void dispatch_event_to(JSValue target, std::string const& type,
         std::function<JSValue(JSValue)> const& next_in_chain = {});
 
-    // Runs queued promise jobs (QuickJS needs this; there is no event loop).
+    // Runs queued promise jobs (QuickJS needs this; there is no threading).
     void drain_microtasks();
+
+    // Runs the timer queue using virtual time: timers fire in due order without
+    // real waiting, up to max_tasks callbacks. This is what makes setTimeout
+    // and setInterval work in a headless renderer.
+    void run_event_loop(int max_tasks = 1000);
+
+    // Registers a timer; returns its id. Used by setTimeout/setInterval.
+    int add_timer(JSValue callback, double delay_ms, bool repeating);
+    void clear_timer(int id);
 
     JSRuntime* runtime() const { return m_runtime; }
     JSContext* context() const { return m_context; }
@@ -49,6 +59,14 @@ public:
     std::function<JSValue(std::string const&)> query_selector_all; // querySelectorAll
 
 private:
+    struct Timer {
+        int id { 0 };
+        double due { 0.0 };
+        double interval { 0.0 };
+        bool repeating { false };
+        JSValue callback { JS_UNDEFINED };
+    };
+
     void setup_globals();
     void record_exception();
 
@@ -58,6 +76,9 @@ private:
     JSValue m_document { JS_UNDEFINED };
     bool m_has_error { false };
     std::string m_error;
+    std::vector<Timer> m_timers;
+    int m_next_timer_id { 1 };
+    double m_virtual_time { 0.0 };
 };
 
 } // namespace aetheris::js
