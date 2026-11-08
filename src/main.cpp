@@ -17,6 +17,7 @@
 #include "resource_backend.hpp"
 #include "resource_loader.hpp"
 #include "secure_resource_loader.hpp"
+#include "ui/browser_session.hpp"
 #include "ui/input_router.hpp"
 #include "ui/window_host.hpp"
 #include "resource.hpp"
@@ -1585,49 +1586,74 @@ static std::string chrome_document(std::string const& title, std::string const& 
 // what CI and the tests use.
 static int run_window(std::string const& url, int frames, std::string const& frame_directory)
 {
-    if (network::Socket::initialize() != network::SocketError::None) {
-        std::cerr << "Failed to initialize network subsystem" << std::endl;
-        return 1;
-    }
-    rendering::Url document_url = rendering::Url::parse(url);
-    SecureFetcher fetcher(document_url);
-    auto loaded = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
-    network::Socket::cleanup();
-    if (!loaded.succeeded()) {
-        std::cerr << "Fetch failed: " << loaded.message << std::endl;
-        return 1;
-    }
-    std::string body(loaded.resource->bytes.begin(), loaded.resource->bytes.end());
-
     constexpr int kWidth = 1024;
     constexpr int kHeight = 768;
     int content_height = kHeight - kChromeHeight;
 
-    auto page = rendering::RenderDocument::create(body, "", static_cast<float>(kWidth), nullptr, url);
-    auto page_surface = page.render_to_surface(kWidth, content_height, rendering::Color { 255, 255, 255, 255 });
+    ui::BrowserSession session;
+    if (!session.open(url)) {
+        std::cerr << "Not a loadable URL: " << url << std::endl;
+        return 1;
+    }
 
-    std::string title = document_title(page.document().root());
-    auto chrome = rendering::RenderDocument::create(chrome_document(title, url), "", static_cast<float>(kWidth));
-    auto chrome_surface = chrome.render_to_surface(kWidth, kChromeHeight, rendering::Color { 32, 33, 36, 255 });
+    // Loads the active tab and composites a frame. Returns false when the page
+    // could not be fetched, which the chrome then shows.
+    auto render_frame = [&](rendering::SoftwareSurface& window) {
+        if (network::Socket::initialize() != network::SocketError::None) {
+            std::cerr << "Failed to initialize network subsystem" << std::endl;
+            return false;
+        }
+        rendering::Url document_url = rendering::Url::parse(session.current_url());
+        SecureFetcher fetcher(document_url);
+        auto loaded = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
+        network::Socket::cleanup();
+        if (!loaded.succeeded()) {
+            session.set_error(loaded.message);
+            return false;
+        }
+        std::string body(loaded.resource->bytes.begin(), loaded.resource->bytes.end());
+        auto page = rendering::RenderDocument::create(body, "", static_cast<float>(kWidth), nullptr, session.current_url());
+        session.set_page_title(document_title(page.document().root()));
+        session.set_loading(false);
+        auto page_surface = page.render_to_surface(kWidth, content_height, rendering::Color { 255, 255, 255, 255 });
+        window.blit(page_surface, 0, kChromeHeight);
+        return true;
+    };
 
-    auto window = rendering::SoftwareSurface(kWidth, kHeight, rendering::Color { 255, 255, 255, 255 });
-    window.blit(chrome_surface, 0, 0);
-    window.blit(page_surface, 0, kChromeHeight);
+    auto compose_chrome = [&](rendering::SoftwareSurface& window) {
+        std::string status = session.failed() ? session.error() : session.current_url();
+        auto chrome = rendering::RenderDocument::create(
+            chrome_document(session.display_title(), status), "", static_cast<float>(kWidth));
+        auto chrome_surface = chrome.render_to_surface(kWidth, kChromeHeight, rendering::Color { 32, 33, 36, 255 });
+        window.blit(chrome_surface, 0, 0);
+    };
 
     auto host = ui::make_window_host(frames, frame_directory);
-    if (!host->open(kWidth, kHeight, title.empty() ? "Aetheris" : title)) {
+    if (!host->open(kWidth, kHeight, session.display_title())) {
         std::cerr << "Could not open a window" << std::endl;
         return 1;
     }
-    ui::WindowEvent event;
-    ui::InputRouter router(kChromeHeight);
-    router.set_address_text(url);
+
+    rendering::SoftwareSurface window(kWidth, kHeight, rendering::Color { 255, 255, 255, 255 });
+    bool need_render = true;
     int handled = 0;
     bool done = false;
-    // Present, then drain input. The host closes itself when its frame budget is
-    // spent (headless) or when the user closes the window.
+
+    ui::WindowEvent event;
+    ui::InputRouter router(kChromeHeight);
+    router.set_address_text(session.current_url());
+
     while (host->is_open() && !done) {
-        host->present(window);
+        if (need_render) {
+            window.clear(rendering::Color { 255, 255, 255, 255 });
+            render_frame(window);
+            compose_chrome(window);
+            host->present(window);
+            need_render = false;
+        } else {
+            host->present(window);
+        }
+
         while (host->poll(event)) {
             auto action = router.handle(event);
             if (action.kind == ui::InputAction::Kind::None)
@@ -1638,10 +1664,21 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                 done = true;
                 break;
             case ui::InputAction::Kind::Navigate:
-                std::cout << "  navigate: " << action.text << std::endl;
+                if (session.navigate(action.text)) {
+                    router.set_address_text(session.current_url());
+                    need_render = true;
+                }
                 break;
-            case ui::InputAction::Kind::PageClick:
-                std::cout << "  click at " << action.x << "," << action.y << std::endl;
+            case ui::InputAction::Kind::Reload:
+                need_render = true;
+                break;
+            case ui::InputAction::Kind::NewTab:
+                session.new_tab();
+                need_render = true;
+                break;
+            case ui::InputAction::Kind::CloseTab:
+                session.close_active_tab();
+                need_render = true;
                 break;
             case ui::InputAction::Kind::ToggleZen:
                 std::cout << "  zen mode: " << (router.zen_mode() ? "on" : "off") << std::endl;
@@ -1658,7 +1695,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     std::cout << "Window " << kWidth << "x" << kHeight << " (chrome " << kChromeHeight
               << "px, content " << content_height << "px), backend: "
               << (ui::has_display_backend() ? "display" : "headless")
-              << ", events handled: " << handled << std::endl;
+              << ", tabs: " << session.tab_count() << ", events handled: " << handled << std::endl;
     return 0;
 }
 

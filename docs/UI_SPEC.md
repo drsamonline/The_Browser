@@ -99,6 +99,16 @@ The chrome/page boundary is the strip height, and the button positions come from
 the same constants the chrome is drawn with, so drawing and hit-testing cannot
 drift apart.
 
+## Session
+
+`src/ui/browser_session.*` holds what the browser is showing — tabs, the active
+one, loading and error state — and nothing else, so tab behaviour is tested
+without rendering or networking. `aetheris --window` keeps one session alive for
+the whole loop, so navigating re-fetches and re-renders rather than starting over.
+
+The tab strip shows the page's own `<title>` when it has one, the URL otherwise,
+and "New Tab" for an empty tab.
+
 ## Known cosmetic gaps
 
 - Navigation arrow glyphs render inconsistently in the strip; the tab, address

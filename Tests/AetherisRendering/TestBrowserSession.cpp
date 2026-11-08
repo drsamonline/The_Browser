@@ -1,77 +1,92 @@
-#include "browser_session.hpp"
-#include "resource_loader.hpp"
+// Tabs and navigation state, tested without rendering or networking.
 
-#include <cassert>
-#include <unordered_map>
+#include <ui/browser_session.hpp>
 
-using namespace aetheris::rendering;
+#include <cstdio>
+#include <cstdlib>
 
-static ResourceData make_document(std::string url, std::string html)
+using namespace aetheris::ui;
+
+static void require(bool condition, char const* message)
 {
-    return { ResourceType::Document, std::move(url), std::vector<unsigned char>(html.begin(), html.end()) };
-}
-
-static ResourceData make_stylesheet(std::string url)
-{
-    std::string css = "body { display: block; }";
-    return { ResourceType::Stylesheet, std::move(url), std::vector<unsigned char>(css.begin(), css.end()) };
+    if (!condition) {
+        std::fprintf(stderr, "FAILED: %s\n", message);
+        std::exit(1);
+    }
 }
 
 int main()
 {
-    ResourceCache cache;
-    std::unordered_map<std::string, ResourceData> resources;
-    resources.emplace("https://example.test/a.html", make_document("https://example.test/a.html", "<html><head><title>Page A</title><link rel=\"stylesheet\" href=\"site.css\"></head><body>A</body></html>"));
-    resources.emplace("https://example.test/b.html", make_document("https://example.test/b.html", "<html><head><title>Page B</title><link rel=\"stylesheet\" href=\"site.css\"></head><body>B</body></html>"));
-    resources.emplace("https://example.test/c.html", make_document("https://example.test/c.html", "<html><head><title>Page C</title><link rel=\"stylesheet\" href=\"site.css\"></head><body>C</body></html>"));
-    resources.emplace("https://example.test/site.css", make_stylesheet("https://example.test/site.css"));
+    // URL handling: bare hosts get a scheme, localhost gets http.
+    {
+        require(BrowserSession::normalise("example.com") == "https://example.com", "bare host gets https");
+        require(BrowserSession::normalise("localhost:8080/x") == "http://localhost:8080/x", "localhost gets http");
+        require(BrowserSession::normalise("https://a.test/b") == "https://a.test/b", "an existing scheme is kept");
+        require(BrowserSession::normalise("  example.com  ") == "https://example.com", "surrounding space is trimmed");
+        require(!BrowserSession::is_loadable(""), "an empty URL is not loadable");
+        require(!BrowserSession::is_loadable("   "), "whitespace is not loadable");
+        require(BrowserSession::is_loadable("example.com"), "a bare host is loadable");
+    }
 
-    ResourceLoader loader(cache, [&](Url const& url) -> std::optional<ResourceData> {
-        auto it = resources.find(url.serialized());
-        if (it == resources.end())
-            return std::nullopt;
-        return it->second;
-    });
+    // Opening a URL creates the first tab and shows a loading state.
+    {
+        BrowserSession session;
+        require(session.tab_count() == 0, "no tabs before open");
+        require(session.open("example.com"), "open succeeds");
+        require(session.tab_count() == 1, "open creates a tab");
+        require(session.current_url() == "https://example.com", "the URL is normalised");
+        require(session.loading(), "the tab is loading after open");
+        require(session.display_title() == "https://example.com", "the URL stands in for a missing title");
 
-    BrowserSession session;
-    auto a = session.navigate({ Url::parse("https://example.test/a.html"), std::nullopt, 800 }, loader);
-    assert(a.succeeded());
-    assert(session.history_size() == 1);
-    assert(session.current_history_index() && *session.current_history_index() == 0);
-    assert(session.current_page() && session.current_page()->title == "Page A");
+        session.set_page_title("Example Domain");
+        require(session.display_title() == "Example Domain", "the page title is used when set");
 
-    auto b = session.navigate({ Url::parse("https://example.test/b.html"), std::nullopt, 800 }, loader);
-    assert(b.succeeded());
-    assert(session.can_go_back());
-    assert(session.history_size() == 2);
-    assert(session.current_page()->title == "Page B");
+        session.set_loading(false);
+        require(!session.loading(), "loading clears");
+    }
 
-    auto back = session.back(loader);
-    assert(back.succeeded());
-    assert(session.current_history_index() && *session.current_history_index() == 0);
-    assert(session.can_go_forward());
-    assert(session.current_page()->title == "Page A");
+    // Navigation changes the URL and marks loading; a failure is recorded.
+    {
+        BrowserSession session;
+        session.open("example.com");
+        require(session.navigate("other.test/page"), "navigate succeeds");
+        require(session.current_url() == "https://other.test/page", "navigate updates the URL");
+        require(session.loading(), "navigate starts loading");
 
-    auto forward = session.forward(loader);
-    assert(forward.succeeded());
-    assert(session.current_history_index() && *session.current_history_index() == 1);
-    assert(session.current_page()->title == "Page B");
+        session.set_error("connection refused");
+        require(session.failed(), "the error is recorded");
+        require(!session.loading(), "a failure stops loading");
+        require(session.error() == "connection refused", "the message is kept");
 
-    auto back_again = session.back(loader);
-    assert(back_again.succeeded());
-    auto c = session.navigate({ Url::parse("https://example.test/c.html"), std::nullopt, 800 }, loader);
-    assert(c.succeeded());
-    assert(session.history_size() == 2);
-    assert(!session.can_go_forward());
-    assert(session.current_page()->title == "Page C");
+        require(!session.navigate(""), "navigating to nothing is refused");
+    }
 
-    auto failed = session.navigate({ Url::parse("https://example.test/missing.html"), std::nullopt, 800 }, loader);
-    assert(!failed.succeeded());
-    assert(session.history_size() == 2);
-    assert(session.current_page()->title == "Page C");
+    // Tabs: new, activate, close.
+    {
+        BrowserSession session;
+        session.open("one.test");
+        auto second = session.new_tab();
+        require(session.tab_count() == 2, "new_tab adds a tab");
+        require(second == 1 && session.active_index() == 1, "the new tab becomes active");
+        require(session.display_title() == "New Tab", "an empty tab is called New Tab");
 
-    auto reload = session.reload(loader);
-    assert(reload.succeeded());
-    assert(session.history_size() == 2);
-    assert(session.current_page()->title == "Page C");
+        session.navigate("two.test");
+        require(session.current_url() == "https://two.test", "the second tab navigates independently");
+
+        require(session.activate_tab(0), "the first tab can be activated");
+        require(session.current_url() == "https://one.test", "each tab keeps its own URL");
+
+        require(session.close_active_tab(), "closing works");
+        require(session.tab_count() == 1, "one tab remains");
+        require(session.active_index() == 0, "the active index is corrected");
+        require(session.current_url() == "https://two.test", "the surviving tab is the right one");
+
+        require(session.close_active_tab(), "the last tab can be closed");
+        require(session.tab_count() == 0, "no tabs remain");
+        require(session.display_title() == "New Tab", "an empty session shows New Tab");
+        require(!session.activate_tab(5), "activating a missing tab fails");
+    }
+
+    std::printf("browser session: tabs and navigation verified\n");
+    return 0;
 }

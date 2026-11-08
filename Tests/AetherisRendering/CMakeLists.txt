@@ -266,3 +266,7 @@ add_test(NAME AetherisWindowHost COMMAND TestAetherisWindowHost)
 add_executable(TestAetherisInputRouter TestInputRouter.cpp)
 target_link_libraries(TestAetherisInputRouter PRIVATE AetherisRendering)
 add_test(NAME AetherisInputRouter COMMAND TestAetherisInputRouter)
+
+add_executable(TestAetherisBrowserSession TestBrowserSession.cpp)
+target_link_libraries(TestAetherisBrowserSession PRIVATE AetherisRendering)
+add_test(NAME AetherisBrowserSession COMMAND TestAetherisBrowserSession)
