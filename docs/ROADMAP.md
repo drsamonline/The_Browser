@@ -93,11 +93,14 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
    real clock — a page that expects wall-clock pacing will run its timers as fast
    as the loop allows.
 3. ~~`getComputedStyle`~~ — **done** (read-only resolved values).
-4. **CSS coverage**: `transform`, complete `flex`/`grid`, pseudo-elements
+4. **CSS coverage**: complete `flex`/`grid`, pseudo-elements
    (`::before`/`::after` need layout-level synthetic boxes), `@font-face`,
    `position: sticky`, transitions/animations. **Media queries and the
    structural pseudo-classes (`:first-child`, `:last-child`, `:only-child`,
-   `:nth-child(n)`) are done.**
+   `:nth-child(n)`) are done. **`transform` (translate/scale) is done.**
+   `position: sticky` is deliberately deferred: it only differs from static
+   once a scroll offset exists, and a static render has none, so implementing it
+   now would be a no-op dressed as a feature.
 5. ~~Form elements~~ — **done**: `value` on `input`/`textarea`/`select`/`option`,
    `checked`, and `form.submit()` firing a cancelable `submit` event.
 

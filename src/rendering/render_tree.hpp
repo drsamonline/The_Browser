@@ -47,6 +47,14 @@ struct PaintCommand {
     bool pop_clip { false };
 };
 
+// Cumulative CSS transform (translate + scale) applied while emitting commands.
+struct PaintTransform {
+    float tx { 0 };
+    float ty { 0 };
+    float sx { 1 };
+    float sy { 1 };
+};
+
 class RenderTree {
 public:
     static RenderTree from_layout(LayoutNode const& root);
@@ -54,7 +62,8 @@ public:
     std::vector<PaintCommand> const& commands() const { return m_commands; }
 
 private:
-    static void emit(LayoutNode const& node, std::vector<PaintCommand>& commands, float inherited_opacity);
+    static void emit(LayoutNode const& node, std::vector<PaintCommand>& commands, float inherited_opacity,
+        PaintTransform const& inherited);
 
     std::vector<PaintCommand> m_commands;
 };

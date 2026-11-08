@@ -19,17 +19,112 @@ float number(std::string const* value, float fallback)
 }
 }
 
+namespace {
+
+// Parses the transform forms this renderer supports: translate/translateX/
+// translateY and scale. Anything else (rotate, skew, matrix) is ignored.
+PaintTransform parse_transform(std::string const* value)
+{
+    PaintTransform transform;
+    if (!value)
+        return transform;
+
+    auto number_after = [](std::string const& text, std::size_t start, bool& ok) {
+        auto end = text.find_first_of(",)", start);
+        std::string piece = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        piece.erase(std::remove_if(piece.begin(), piece.end(), [](char c) {
+            return std::isalpha(static_cast<unsigned char>(c)) || std::isspace(static_cast<unsigned char>(c));
+        }), piece.end());
+        if (piece.empty()) {
+            ok = false;
+            return 0.0f;
+        }
+        char* tail = nullptr;
+        float result = std::strtof(piece.c_str(), &tail);
+        ok = tail != piece.c_str();
+        return result;
+    };
+
+    std::size_t position = 0;
+    while (position < value->size()) {
+        auto open = value->find('(', position);
+        if (open == std::string::npos)
+            break;
+        auto close = value->find(')', open);
+        if (close == std::string::npos)
+            break;
+        std::string name = value->substr(position, open - position);
+        name.erase(std::remove_if(name.begin(), name.end(), [](char c) {
+            return std::isspace(static_cast<unsigned char>(c));
+        }), name.end());
+
+        std::string arguments = value->substr(open + 1, close - open - 1);
+        bool ok = true;
+        if (name == "translate") {
+            transform.tx += number_after(arguments, 0, ok);
+            auto comma = arguments.find(',');
+            if (comma != std::string::npos)
+                transform.ty += number_after(arguments, comma + 1, ok);
+        } else if (name == "translateX") {
+            transform.tx += number_after(arguments, 0, ok);
+        } else if (name == "translateY") {
+            transform.ty += number_after(arguments, 0, ok);
+        } else if (name == "scale") {
+            bool ok_x = true;
+            float sx = number_after(arguments, 0, ok_x);
+            auto comma = arguments.find(',');
+            if (comma != std::string::npos) {
+                bool ok_y = true;
+                float sy = number_after(arguments, comma + 1, ok_y);
+                if (ok_x && ok_y) {
+                    transform.sx *= sx;
+                    transform.sy *= sy;
+                }
+            } else if (ok_x) {
+                transform.sx *= sx;
+                transform.sy *= sx;
+            }
+        }
+        position = close + 1;
+    }
+    return transform;
+}
+
+void apply_transform(PaintTransform const& transform, PaintCommand& command)
+{
+    if (transform.sx == 1.0f && transform.sy == 1.0f && transform.tx == 0.0f && transform.ty == 0.0f)
+        return;
+    command.rect.x = command.rect.x * transform.sx + transform.tx;
+    command.rect.y = command.rect.y * transform.sy + transform.ty;
+    command.rect.width *= transform.sx;
+    command.rect.height *= transform.sy;
+    command.baseline *= transform.sy;
+}
+
+} // namespace
+
 RenderTree RenderTree::from_layout(LayoutNode const& root)
 {
     RenderTree tree;
-    emit(root, tree.m_commands, 1.0f);
+    emit(root, tree.m_commands, 1.0f, PaintTransform {});
     return tree;
 }
 
-void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& commands, float inherited_opacity)
+void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& commands, float inherited_opacity,
+    PaintTransform const& inherited)
 {
     if (node.display == LayoutDisplay::None)
         return;
+
+    // Compose this node's transform with the inherited one. A point is mapped
+    // by the local transform first, then by the ancestor's.
+    PaintTransform local = parse_transform(node.style.get("transform"));
+    PaintTransform cumulative;
+    cumulative.sx = inherited.sx * local.sx;
+    cumulative.sy = inherited.sy * local.sy;
+    cumulative.tx = inherited.sx * local.tx + inherited.tx;
+    cumulative.ty = inherited.sy * local.ty + inherited.ty;
+    std::size_t own_start = commands.size();
 
     float opacity = std::clamp(inherited_opacity * number(node.style.get("opacity"), 1.0f), 0.0f, 1.0f);
     float radius = std::max(0.0f, number(node.style.get("border-radius"), 0.0f));
@@ -105,6 +200,11 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
     std::vector<LayoutNode const*> ordered_children;
     ordered_children.reserve(node.children.size());
     bool any_z_index = false;
+    // This node's own commands carry the cumulative transform; children compose
+    // it again with their own.
+    for (std::size_t index = own_start; index < commands.size(); ++index)
+        apply_transform(cumulative, commands[index]);
+
     for (auto const& child : node.children) {
         if (z_index(*child) != 0)
             any_z_index = true;
@@ -118,12 +218,16 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
         });
     }
     for (auto const* child : ordered_children)
-        emit(*child, commands, opacity);
+        emit(*child, commands, opacity, cumulative);
 
     if (clips_children) {
+        std::size_t tail_start = commands.size();
         PaintCommand command;
         command.pop_clip = true;
         commands.push_back(std::move(command));
+        // The pop belongs to this node, so it carries this node's transform.
+        for (std::size_t index = tail_start; index < commands.size(); ++index)
+            apply_transform(cumulative, commands[index]);
     }
 }
 
