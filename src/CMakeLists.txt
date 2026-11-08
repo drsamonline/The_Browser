@@ -166,9 +166,15 @@ add_library(AetherisGumbo STATIC
 )
 
 target_include_directories(AetherisGumbo
-    PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/third_party/gumbo>
+    SYSTEM PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/third_party/gumbo>
 )
 set_target_properties(AetherisGumbo PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)
+
+# Vendored third-party code is not held to this project's warning set (-Werror).
+target_compile_options(AetherisGumbo PRIVATE
+    $<$<C_COMPILER_ID:MSVC>:/W0>
+    $<$<NOT:$<C_COMPILER_ID:MSVC>>:-w>
+)
 
 add_library(AetherisQuickJS STATIC
     ${CMAKE_SOURCE_DIR}/third_party/quickjs/quickjs.c
@@ -178,13 +184,19 @@ add_library(AetherisQuickJS STATIC
 )
 
 target_include_directories(AetherisQuickJS
-    PUBLIC
+    SYSTEM PUBLIC
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/third_party/quickjs>
 )
 
 set_target_properties(AetherisQuickJS PROPERTIES
     C_STANDARD 11
     C_STANDARD_REQUIRED ON
+)
+
+# Vendored third-party code is not held to this project's warning set (-Werror).
+target_compile_options(AetherisQuickJS PRIVATE
+    $<$<C_COMPILER_ID:MSVC>:/W0>
+    $<$<NOT:$<C_COMPILER_ID:MSVC>>:-w>
 )
 
 target_link_libraries(AetherisQuickJS PUBLIC m)
