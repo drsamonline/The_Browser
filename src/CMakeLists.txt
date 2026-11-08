@@ -269,7 +269,7 @@ if(AETHERIS_SIZE_OPTIMIZED)
     add_custom_command(TARGET aetheris POST_BUILD
         COMMAND ${CMAKE_COMMAND}
             -DBINARY=$<TARGET_FILE:aetheris>
-            -Dreference=2490416
+            -Dreference=2630800
             -P ${CMAKE_SOURCE_DIR}/Tools/report_binary_size.cmake
         COMMENT "Reporting the binary size"
     )
@@ -277,7 +277,7 @@ if(AETHERIS_SIZE_OPTIMIZED)
         add_test(NAME AetherisSizeReport
             COMMAND ${CMAKE_COMMAND}
                 -DBINARY=$<TARGET_FILE:aetheris>
-                -Dreference=2490416
+                -Dreference=2630800
                 -P ${CMAKE_SOURCE_DIR}/Tools/report_binary_size.cmake
         )
     endif()

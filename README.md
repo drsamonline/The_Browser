@@ -160,7 +160,7 @@ gives it meaning:
 | Epiphany | WebKitGTK | ~95 MB | yes |
 | NetSurf | own (C) | 4.0–6.9 MB | no |
 | Dillo | own (C) | ~0.25 MB | **no** |
-| **Aetheris** | **own (C++20)** | **2.38 MB** | **yes (ES2025)** |
+| **Aetheris** | **own (C++20)** | **2.51 MB** | **yes (ES2025)** |
 
 So Aetheris sits roughly 40× under a WebKitGTK browser and 100× under Firefox,
 while still running JavaScript — the thing the smaller engines give up. Dillo
@@ -202,7 +202,7 @@ cmake --build --preset StandaloneSize
 
 The size profile applies only to the Aetheris targets (`AetherisRendering`,
 `AetherisRuntime`, `aetheris`); a stripped `aetheris` executable is on the
-2.38 MB (2,490,416 bytes) with the current feature set: gumbo HTML5 parsing,
+2.51 MB (2,630,800 bytes) with the current feature set: gumbo HTML5 parsing,
 CSS layout, bitmap-font text, PNG/JPEG/GIF/SVG/WebP images, HTTPS/TLS, the HTTP
 client and QuickJS. See the size table above.
 

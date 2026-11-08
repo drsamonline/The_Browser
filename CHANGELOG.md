@@ -4,6 +4,38 @@
 
 All notable Aetheris-specific changes should be documented here. Upstream-derived changes should retain their original provenance and must not be presented as newly authored Aetheris work.
 
+## v0.4 — 2026-11-08
+
+The browser became an application: real outline text, a compact chrome, a
+window loop and input routing.
+
+- **Text from real font outlines.** A TrueType/OpenType reader (`cmap` formats 4
+  and 12, `head`/`hhea`/`maxp`/`hmtx`/`loca`/`glyf`), an anti-aliased scanline
+  rasteriser, a glyph cache, and 1,218 kerning pairs. A DejaVu Sans subset
+  (~23 KB) is embedded, so text renders identically with no system font, and
+  `AETHERIS_FONT` overrides it.
+- **Compact browser chrome.** One 34 px strip — tab, navigation, address bar,
+  menu — leaving 95.6% of a 768 px window for the page. No menubar. The chrome
+  is an HTML document rendered by the engine itself.
+- **Window loop and input routing.** `aetheris --window` runs a persistent
+  session; `Ctrl+L/T/W/R`, `Alt+Left/Right`, `F11` zen mode, address editing,
+  and clicks split between chrome and page. A window host interface with a
+  headless backend keeps it runnable without a display.
+- **Security.** CSP is enforced for inline scripts, and every fetch — document
+  and subresource — goes through `SecureResourceLoader`, so the tested policy is
+  the one a real page gets. TLS certificate validation is proven by
+  `Tools/check_tls_verification.sh`.
+- **CSS.** Media queries, structural pseudo-classes, and `transform`
+  (translate/scale).
+- **Forms.** `value`, `checked` and a cancelable `submit`.
+- **Fixes.** `display: none` now hides the subtree (it used to hoist children,
+  which rendered `<head>` contents as page text); `removeEventListener` and
+  listener de-duplication; a writable `dataset`; a keep-alive crash where the
+  liveness probe ran after the reconnect decision.
+
+Size profile: **2,630,800 bytes (~2.51 MB)**, +137 KiB over v0.3 — reported on
+every build and never enforced.
+
 ## v0.3 — 2026-11-08
 
 The engine was rebuilt on two upstream components and the DOM surface was filled
