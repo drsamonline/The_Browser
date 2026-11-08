@@ -27,20 +27,11 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
     layout_node->style = StyleResolver {}.resolve(node, sheet, parent_style, interaction_state);
     layout_node->display = display_for(node, layout_node->style);
 
-    if (layout_node->display == LayoutDisplay::None) {
-        // Elements with display: none do not generate boxes themselves; their
-        // non-hidden descendants are hoisted into the nearest generating box.
-        for (auto const& child : node.children) {
-            auto child_layout = build_node(*child, sheet, parent, parent_style, interaction_state);
-            if (child_layout->display == LayoutDisplay::None) {
-                for (auto& grandchild : child_layout->children)
-                    parent->append_child(std::move(grandchild));
-            } else {
-                parent->append_child(std::move(child_layout));
-            }
-        }
+    // display: none hides the whole subtree. Hoisting the descendants into the
+    // parent (as this used to do) is not what CSS does, and it made <head>
+    // contents such as <title> render as page text.
+    if (layout_node->display == LayoutDisplay::None)
         return layout_node;
-    }
 
     for (auto const& child : node.children)
         layout_node->append_child(build_node(*child, sheet, layout_node.get(), &layout_node->style, interaction_state));
@@ -49,6 +40,14 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
 
 LayoutDisplay LayoutTreeBuilder::display_for(DomNode const& node, StyleProperties const& style)
 {
+    // Document metadata is never painted: <head> and its contents carry the
+    // title, styles and links, not visible text.
+    if (node.type == DomNodeType::Element) {
+        if (node.name == "head" || node.name == "title" || node.name == "meta"
+            || node.name == "link" || node.name == "style" || node.name == "script"
+            || node.name == "base" || node.name == "noscript")
+            return LayoutDisplay::None;
+    }
     if (auto value = style.get("display")) {
         if (*value == "none")
             return LayoutDisplay::None;

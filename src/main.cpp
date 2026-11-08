@@ -1518,6 +1518,108 @@ static int run_eval(std::string const& source)
 // Headless render mode: fetch a URL, run the rendering pipeline and write the
 // resulting surface to a PPM file. Exercises the full fetch -> parse -> style
 // -> layout -> paint path without a display server.
+// A compact browser chrome: one 34px strip holding tabs, navigation and the
+// address bar, so the page gets the rest of the window.
+static constexpr int kChromeHeight = 34;
+
+static std::string document_title(rendering::DomNode const& node)
+{
+    if (node.type == rendering::DomNodeType::Element && node.name == "title")
+        return node_text(node);
+    for (auto const& child : node.children) {
+        auto found = document_title(*child);
+        if (!found.empty())
+            return found;
+    }
+    return {};
+}
+
+static std::string chrome_document(std::string const& title, std::string const& address)
+{
+    auto escape = [](std::string const& value) {
+        std::string out;
+        for (char c : value) {
+            if (c == '&') out += "&amp;";
+            else if (c == '<') out += "&lt;";
+            else if (c == '>') out += "&gt;";
+            else out += c;
+        }
+        return out;
+    };
+    std::string tab_title = escape(title.empty() ? address : title);
+    if (tab_title.size() > 20)
+        tab_title = tab_title.substr(0, 19) + "\u2026";
+
+    // Absolutely positioned, not flex: the engine has no flexbox, and this
+    // layout is a fixed 34px strip so explicit coordinates are exact.
+    auto box = [](int left, int top, int width, int height, std::string const& background,
+                   std::string const& radius) {
+        return "position:absolute;left:" + std::to_string(left) + "px;top:" + std::to_string(top)
+            + "px;width:" + std::to_string(width) + "px;height:" + std::to_string(height)
+            + "px;background:" + background + ";border-radius:" + radius + ";overflow:hidden";
+    };
+    auto label = [](int left, int top, std::string const& text, std::string const& colour, int size) {
+        return "<div style='position:absolute;left:" + std::to_string(left) + "px;top:"
+            + std::to_string(top) + "px;color:" + colour + ";font-size:" + std::to_string(size)
+            + "px;white-space:nowrap'>" + text + "</div>";
+    };
+
+    std::string html = "<html><body style='margin:0;background:#202124'>";
+    html += "<div style='" + box(8, 4, 190, 26, "#35363a", "6px") + "'></div>";
+    html += label(16, 9, tab_title, "#e8eaed", 12);
+    html += label(206, 8, "+", "#9aa0a6", 15);
+    html += label(230, 8, "\u2190", "#9aa0a6", 14);
+    html += label(256, 8, "\u2192", "#9aa0a6", 14);
+    html += label(282, 8, "\u21bb", "#9aa0a6", 14);
+    html += "<div style='" + box(310, 5, 660, 24, "#35363a", "12px") + "'></div>";
+    html += label(320, 10, escape(address), "#e8eaed", 12);
+    html += label(986, 8, "\u22ee", "#9aa0a6", 14);
+    html += "</body></html>";
+    return html;
+}
+
+static int run_render_window(std::string const& url, std::string const& output_path)
+{
+    if (network::Socket::initialize() != network::SocketError::None) {
+        std::cerr << "Failed to initialize network subsystem" << std::endl;
+        return 1;
+    }
+    rendering::Url document_url = rendering::Url::parse(url);
+    SecureFetcher fetcher(document_url);
+    auto loaded = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
+    network::Socket::cleanup();
+    if (!loaded.succeeded()) {
+        std::cerr << "Fetch failed: " << loaded.message << std::endl;
+        return 1;
+    }
+    std::string body(loaded.resource->bytes.begin(), loaded.resource->bytes.end());
+
+    constexpr int kWidth = 1024;
+    constexpr int kHeight = 768;
+    int content_height = kHeight - kChromeHeight;
+
+    auto page = rendering::RenderDocument::create(body, "", static_cast<float>(kWidth), nullptr, url);
+    auto page_surface = page.render_to_surface(kWidth, content_height, rendering::Color { 255, 255, 255, 255 });
+
+    // The title comes from the page so the tab reads like a real browser.
+    std::string title = document_title(page.document().root());
+
+    auto chrome = rendering::RenderDocument::create(chrome_document(title, url), "", static_cast<float>(kWidth));
+    auto chrome_surface = chrome.render_to_surface(kWidth, kChromeHeight, rendering::Color { 32, 33, 36, 255 });
+
+    auto window = rendering::SoftwareSurface(kWidth, kHeight, rendering::Color { 255, 255, 255, 255 });
+    window.blit(chrome_surface, 0, 0);
+    window.blit(page_surface, 0, kChromeHeight);
+
+    if (!rendering::ImageOutput::write_ppm(window, output_path)) {
+        std::cerr << "Failed to write " << output_path << std::endl;
+        return 1;
+    }
+    std::cout << "Rendered window " << kWidth << "x" << kHeight << " (chrome " << kChromeHeight
+              << "px, content " << content_height << "px) to " << output_path << std::endl;
+    return 0;
+}
+
 static int run_render(std::string const& url, std::string const& output_path, std::string const& dispatch_id = {}, std::string const& dispatch_type = {}, float click_x = -1, float click_y = -1) {
     if (network::Socket::initialize() != network::SocketError::None) {
         std::cerr << "Failed to initialize network subsystem" << std::endl;
@@ -1771,6 +1873,7 @@ int main(int argc, char* argv[]) {
                       << "  --fetch <url>  Fetch a URL over HTTP and print the status,\n"
                       << "                 content type and body size.\n"
                       << "  --render <url> [out.ppm]\n"
+                      << "  --render-window <url> [out.ppm]   page composited under the browser chrome\n"
                       << "                 Fetch a URL, render it and write a PPM image.\n"
                       << "  --eval <script>  Run a JavaScript snippet and print its output.\n"
                       << "  --dispatch <id> <type>\n"
@@ -1805,6 +1908,15 @@ int main(int argc, char* argv[]) {
                 output_path = argv[++i];
             }
             return run_render(url, output_path, dispatch_id, dispatch_type, click_x, click_y);
+        }
+        // Same page, but composited under the compact browser chrome.
+        if (arg == "--render-window" && i + 1 < argc) {
+            std::string url = argv[++i];
+            std::string output_path = "aetheris-window.ppm";
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                output_path = argv[++i];
+            }
+            return run_render_window(url, output_path);
         }
     }
 

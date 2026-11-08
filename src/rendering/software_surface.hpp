@@ -31,6 +31,10 @@ public:
     void draw_shadow(LayoutRect const&, float offset_x, float offset_y, float blur, Color, std::optional<RoundedRect> clip = {});
     void draw_background_image(LayoutRect const&, Image const&, std::string_view repeat, std::string_view position, std::string_view size, std::optional<RoundedRect> clip = {});
 
+    // Copies `source` onto this surface at (dx, dy), clipping at the edges.
+    // Used to composite the browser chrome above page content.
+    void blit(SoftwareSurface const& source, int dx, int dy);
+
     Color pixel(int x, int y) const;
     std::vector<uint32_t> const& pixels() const { return m_pixels; }
 

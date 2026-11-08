@@ -41,6 +41,32 @@ void SoftwareSurface::blend_pixel(int x, int y, Color color)
     m_pixels[index] = Color::blend_over(color, destination).rgba();
 }
 
+void SoftwareSurface::blit(SoftwareSurface const& source, int dx, int dy)
+{
+    for (int y = 0; y < source.height(); ++y) {
+        int target_y = dy + y;
+        if (target_y < 0 || target_y >= m_height)
+            continue;
+        for (int x = 0; x < source.width(); ++x) {
+            int target_x = dx + x;
+            if (target_x < 0 || target_x >= m_width)
+                continue;
+            auto value = source.m_pixels[static_cast<size_t>(y) * static_cast<size_t>(source.width()) + static_cast<size_t>(x)];
+            auto& destination = m_pixels[static_cast<size_t>(target_y) * static_cast<size_t>(m_width) + static_cast<size_t>(target_x)];
+            Color source_color { static_cast<uint8_t>((value >> 24) & 0xFF), static_cast<uint8_t>((value >> 16) & 0xFF),
+                static_cast<uint8_t>((value >> 8) & 0xFF), static_cast<uint8_t>(value & 0xFF) };
+            if (source_color.alpha == 255) {
+                destination = value;
+            } else if (source_color.alpha > 0) {
+                auto existing = m_pixels[static_cast<size_t>(target_y) * static_cast<size_t>(m_width) + static_cast<size_t>(target_x)];
+                Color destination_color { static_cast<uint8_t>((existing >> 24) & 0xFF), static_cast<uint8_t>((existing >> 16) & 0xFF),
+                    static_cast<uint8_t>((existing >> 8) & 0xFF), static_cast<uint8_t>(existing & 0xFF) };
+                destination = Color::blend_over(source_color, destination_color).rgba();
+            }
+        }
+    }
+}
+
 Color SoftwareSurface::pixel(int x, int y) const
 {
     if (!contains(x, y))
