@@ -5,7 +5,9 @@
 This is the authoritative status document: what is done, how it is evidenced, and
 what remains. Anything not listed as done is not done, regardless of how it looks.
 
-Last verified: 51/51 CTest passing, size profile **2,490,416 bytes (~2.38 MB)**.
+Last verified: 51/51 CTest passing, size profile **2,515,056 bytes (~2.40 MB)**.
+The current state has been audited — findings and the plan forward are in
+[AUDIT.md](AUDIT.md).
 
 ## Done
 
