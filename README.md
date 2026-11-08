@@ -142,9 +142,12 @@ Current and future work may reduce redundant paint operations, improve clipping 
 
 ## 📊 Size
 
-"Minimal" only means something next to other browsers, so the budget is stated
-plainly: **the stripped `aetheris` binary stays under 10 MB.** That ceiling is
-enforced by the `AetherisBinarySize` CTest in the size-first build.
+"Minimal" only means something next to other browsers, so the target is stated
+plainly: **keep the stripped `aetheris` binary as small as possible, with 10 MB
+as the working reference.** Size is *reported*, not enforced — every size-profile
+build prints the figure and the drift from the last recorded reference
+(`Tools/report_binary_size.cmake`), and nothing fails if it grows. The browser is
+expected to grow as features land; the point is to see it happening.
 
 Measured size profile (Release, `-Os`, LTO, stripped), with the comparison that
 gives it meaning:

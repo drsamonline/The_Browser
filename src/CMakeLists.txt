@@ -244,23 +244,23 @@ if (AETHERIS_SIZE_OPTIMIZED)
     endif()
 endif()
 
-# Size budget: "minimal" is defined as under 10 MB (see README). This keeps the
-# number honest instead of discovering drift later. The post-build check fails a
-# size-profile build immediately; the CTest surfaces it in a test run too.
+# Size reporting: never fails the build. The browser is expected to grow as
+# features land, so this surfaces the number (and the drift from the recorded
+# reference) instead of gating on it.
 if(AETHERIS_SIZE_OPTIMIZED)
     add_custom_command(TARGET aetheris POST_BUILD
         COMMAND ${CMAKE_COMMAND}
             -DBINARY=$<TARGET_FILE:aetheris>
-            -Dbudget=10485760
-            -P ${CMAKE_SOURCE_DIR}/Tools/check_binary_size.cmake
-        COMMENT "Checking the binary size budget (10 MB)"
+            -Dreference=2490416
+            -P ${CMAKE_SOURCE_DIR}/Tools/report_binary_size.cmake
+        COMMENT "Reporting the binary size"
     )
     if(AETHERIS_ENABLE_TESTING AND BUILD_TESTING)
-        add_test(NAME AetherisBinarySize
+        add_test(NAME AetherisSizeReport
             COMMAND ${CMAKE_COMMAND}
                 -DBINARY=$<TARGET_FILE:aetheris>
-                -Dbudget=10485760
-                -P ${CMAKE_SOURCE_DIR}/Tools/check_binary_size.cmake
+                -Dreference=2490416
+                -P ${CMAKE_SOURCE_DIR}/Tools/report_binary_size.cmake
         )
     endif()
 endif()
