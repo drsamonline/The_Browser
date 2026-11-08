@@ -8,6 +8,7 @@ add_library(AetherisRendering STATIC
     rendering/resource_loader.cpp
     rendering/security_policy.cpp
     rendering/secure_resource_loader.cpp
+    rendering/font_library.cpp
     rendering/glyph_rasterizer.cpp
     rendering/ttf_font.cpp
     rendering/cookie_jar.cpp

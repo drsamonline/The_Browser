@@ -1,4 +1,7 @@
 #include "software_surface.hpp"
+
+#include "font_library.hpp"
+#include "glyph_rasterizer.hpp"
 #include "bitmap_font.hpp"
 
 #include <algorithm>
@@ -155,6 +158,34 @@ void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, f
 {
     if (text.empty() || font_size <= 0)
         return;
+
+    // Prefer real outlines when a font is available; the embedded bitmap font
+    // remains the fallback so the engine still renders without one.
+    if (auto* font = active_font()) {
+        float scale = font_size / static_cast<float>(font->units_per_em() > 0 ? font->units_per_em() : 1000);
+        float pen_x = rect.x;
+        int baseline = static_cast<int>(std::lround(rect.y + static_cast<float>(font->ascender()) * scale));
+        for (unsigned char character : text) {
+            auto glyph = font->glyph_index(character);
+            auto bitmap = rasterize_glyph(*font, glyph, font_size);
+            for (int y = 0; y < bitmap.height; ++y) {
+                for (int x = 0; x < bitmap.width; ++x) {
+                    auto coverage = bitmap.at(x, y);
+                    if (coverage == 0)
+                        continue;
+                    int pixel_x = static_cast<int>(std::lround(pen_x)) + bitmap.left + x;
+                    int pixel_y = baseline + bitmap.top + y;
+                    if (!accepts(pixel_x, pixel_y, clip))
+                        continue;
+                    Color shaded = color;
+                    shaded.alpha = static_cast<uint8_t>(static_cast<unsigned>(color.alpha) * coverage / 255u);
+                    blend_pixel(pixel_x, pixel_y, shaded);
+                }
+            }
+            pen_x += static_cast<float>(font->advance_width(glyph)) * scale;
+        }
+        return;
+    }
 
     int cell_width = std::max(1, static_cast<int>(std::lround(bitmap_advance(font_size))));
     int cell_height = std::max(1, static_cast<int>(std::lround(bitmap_cell_height(font_size))));
