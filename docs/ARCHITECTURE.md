@@ -25,7 +25,7 @@ independently.
 ## Aetheris rendering pipeline
 
 ```text
-HTML bytes ─► html_tokenizer ─► html_tree_builder ─► dom / document
+HTML bytes ─► gumbo (HTML5 tree construction) ─► convert ─► dom / document
                                                         │
 CSS text  ─► css_tokenizer ─► css_parser ─► stylesheet  │
                                     │                   ▼
@@ -40,6 +40,13 @@ CSS text  ─► css_tokenizer ─► css_parser ─► stylesheet  │
                                                 ▼
                             software_surface (rasterized output)
 ```
+
+The HTML stage uses the vendored **gumbo** parser (the HTML5 tree-construction
+algorithm) and converts its tree into the internal `DomNode` tree. The
+`html_tokenizer` / `html_tree_builder` pair is retained as the fallback used only
+if gumbo returns no output. JavaScript runs on the vendored **QuickJS** engine
+(`src/js/js.cpp` is a thin embedding), and `main.cpp`'s DOM host builds real
+QuickJS objects whose opaque data is the `DomNode`.
 
 Supporting subsystems around the pipeline:
 

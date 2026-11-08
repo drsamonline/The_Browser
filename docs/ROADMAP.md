@@ -1,97 +1,124 @@
-# Aetheris roadmap and delivery workflow
+# Aetheris roadmap and status
 
 **Author:** Dr. Sohil Momin · Part of the [Aetheris documentation set](USER_GUIDE.md)
 
-This document defines *how* the remaining work is delivered, not just *what*:
-the phases, the batches within them, and the workflow rules that keep the
-time-to-quality ratio high.
+This is the authoritative status document: what is done, how it is evidenced, and
+what remains. Anything not listed as done is not done, regardless of how it looks.
 
-## Where we are
+Last verified: 51/51 CTest passing, size profile **2,490,416 bytes (~2.38 MB)**.
 
-- **v0.1 milestone:** met (see [V0.1_ACCEPTANCE.md](V0.1_ACCEPTANCE.md)). Build,
-  CTest (49/49), smoke test and the size profile all pass; navigation, history,
-  tabs, security-policy and attribution are in place.
-- **Beyond v0.1:** the browser-engine surface is broad but not standards-complete.
-  The phases below close the highest-value gaps first.
+## Done
 
-## Workflow rules (the "minimum time, maximum quality" part)
+### Engine foundations
 
-1. **Batch by shared code path, not by feature name.** Anything that touches the
-   same file or the same subsystem lands in one batch, so it needs one build and
-   one test cycle instead of many.
-2. **One verification cycle per batch.** Build → `ctest` → one end-to-end harness
-   run. A feature is not "done" until it is exercised through the real pipeline,
-   not only a unit test.
-3. **One push per phase.** Batches are committed locally as they finish; the
-   phase is pushed to `main` as a small number of atomic commits, and one patch
-   file per phase is produced. This cuts round-trips and keeps history clean.
-4. **Fast inner loop.** Use `aetheris --eval "<script>"` for sub-second
-   JavaScript iteration instead of a full rebuild-and-render.
-5. **Warm the build.** Configure once, then incremental `cmake --build` only.
-   Reconfigure only when CMake inputs change.
-6. **Prefer vetted libraries for big, risky subsystems.** Crypto and codecs are
-   integrated (OpenSSL, libwebp), not hand-rolled; the build degrades gracefully
-   when they are absent (`AETHERIS_HAS_TLS`, `AETHERIS_HAS_WEBP`).
-7. **Reuse upstream.** Ladybird/SerenityOS source in the tree is the reference
-   for semantics; attribution is recorded in [CREDITS.md](../CREDITS.md).
-8. **Delegate research, keep implementation.** Upstream API/algorithm lookups can
-   be delegated to a sub-agent so they do not consume the main context.
-9. **Never overclaim.** Every capability is backed by a test or a verified render;
-   docs state known limitations.
+- **C++20 engine**, standalone build with no dependency on the upstream tree.
+  Targets: `AetherisRendering`, `AetherisRuntime`, `AetherisJS`, `aetheris`.
+- **HTML parsing: gumbo** (vendored, Apache-2.0). The HTML5 tree-construction
+  algorithm: implied end tags, the spec's stray-`</p>` rule, automatic
+  `<tbody>`, character references, error recovery. `Document::parse_html`
+  converts gumbo's tree into the internal `DomNode` tree, splicing out the
+  implicit `<html>`/`<head>`/`<body>` wrappers when the document did not author
+  them.
+- **CSS**: parser, cascade, selector matching (tag/`.class`/`#id`/compound/
+  descendant), inline `style` attributes and inline `<style>` blocks.
+- **Layout**: block and inline flow, box model, line boxes.
+- **Paint**: ordered paint commands with clipping onto a software surface.
+- **Text**: anti-aliased bitmap font.
+- **Images**: PNG (own DEFLATE inflater), JPEG, GIF, SVG, WebP (via libwebp).
+- **Networking**: HTTP/1.1 client with redirects, a host-scoped cookie jar, a
+  `Cache-Control: max-age` response cache, and per-origin keep-alive reuse.
+- **TLS**: HTTPS via OpenSSL, optional at build time (`AETHERIS_HAS_TLS`).
+- **Upstream data tables**: the full HTML5 character-reference table (2,125
+  entries) and the 148 CSS named colours, generated from upstream Ladybird /
+  SerenityOS data.
 
-## Phases
+### JavaScript
 
-### Phase 0 — v0.1 release pass (½ batch)
+- **QuickJS** (vendored, MIT) is the engine — ES2025, not a subset. Arrow
+  functions, template literals, destructuring, spread/rest, optional chaining,
+  `Symbol`/`WeakMap`, real `Date`/`Map`/`Set`, correct number formatting.
+- **DOM bindings**: `document.write`, `getElementById`, `createElement`,
+  `appendChild`, `setAttribute`/`getAttribute`, `textContent` (accessor),
+  `innerHTML` (get/set), `style` (string set plus `setProperty`/
+  `removeProperty`), `classList`, `parentNode`/`children`,
+  `querySelector`/`querySelectorAll`.
+- **Events**: `addEventListener` and `on<type>` on window, document and
+  elements, with bubbling up the ancestor chain. `DOMContentLoaded` and `load`.
+- **Promise jobs** are drained after each script and each event.
 
-- Run the exact acceptance commands from [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
-  (`cmake --preset StandaloneSize`, build, smoke, `ctest`), record the release
-  evidence, and tag the release.
-- **Verify:** size-profile build + smoke; full CTest.
-- **Effort:** small. **Value:** closes the milestone.
+### Tooling and process
 
-### Phase 1 — JavaScript engine (3 combined batches)
+- **CTest suite: 51 tests**, including `AetherisDomHost`, which drives the real
+  binary end to end and fails on allocator-corruption markers in stderr.
+- **Size is measured and reported**, never enforced: the size profile prints the
+  stripped figure and its drift from the recorded reference
+  (`Tools/report_binary_size.cmake`).
+- **CI**: standalone Linux and Windows jobs are the supported signal. The
+  full-tree Windows build is opt-in only. Tagged releases are published from the
+  standalone size profile.
+- **Provenance**: `CREDITS.md` records every upstream source, including the
+  vendored QuickJS and gumbo and the generated data tables.
 
-The engine is a tree-walking interpreter in `src/js/` with a small standard
-library. Remaining gaps, ordered by value:
+### Releases
 
-- **Batch 1a — Regular expressions (combined).** One small regex engine, used by
-  `RegExp`, `String.match`, `test`, `replace(regex)`, `split(regex)` together.
-  All of these share the engine, so they land in one batch and one test cycle.
-- **Batch 1b — Async (combined).** A microtask queue plus `Promise`
-  (`then`/`catch`/`resolve`/`all`) and `async`/`await` (parser + interpreter).
-  They share the queue, so they ship together.
-- **Batch 1c — Library breadth + element events (combined).** `Date`, `Map`/`Set`,
-  remaining `String`/`Array`/`Math` methods, and element-level events
-  (`element.onclick`, `element.addEventListener`) with host dispatch.
-- **Verify (each batch):** `ctest` + `--eval` demo + one rendered-page check.
+- **v0.1** — tagged, evidenced in [V0.1_ACCEPTANCE.md](V0.1_ACCEPTANCE.md).
+- **v0.2** — tagged, evidenced.
 
-### Phase 2 — DOM and rendering completeness (2 combined batches)
+## Remaining
 
-- **Batch 2a — Hit-testing and element events.** Reuse the existing visual
-  hit-testing so an event can be dispatched to the element under a point; this is
-  what makes `onclick` real.
-- **Batch 2b — CSS/HTML gaps (combined).** `transform`, remaining `grid`/`flex`
-  behaviour, and additional HTML elements — grouped because they touch the same
-  style/layout code.
-- **Verify:** `ctest` + a rendered sample per batch.
+Ordered by value, not by effort.
 
-### Phase 3 — Networking completeness (1–2 batches)
+### High value
 
-- Cookies, redirects, cache headers and HTTP/1.1 keep-alive, combined where they
-  share the request/response path.
-- **Verify:** loopback-server tests (the pattern already used for HTTP and TLS).
+1. **Vector fonts and text shaping.** The renderer uses a bitmap font, so text
+   quality is the single largest visual gap against any real browser. Needs a
+   TrueType/OpenType rasteriser, kerning and basic shaping.
+2. **An event loop.** Promise jobs are drained after each script and event;
+   there are no timers, no `requestAnimationFrame`, and no continuous job
+   processing. Async code that resolves later than the current turn does not run.
+3. **`getComputedStyle`.** Resolved styles are not exposed to scripts.
+4. **CSS coverage**: `transform`, complete `flex`/`grid`, pseudo-elements,
+   media queries, `@font-face`, `position: sticky`, transitions/animations.
+5. **Form elements**: `input`/`select`/`textarea` values, `submit` events,
+   `preventDefault`.
 
-### Phase 4 — Toolchain-gated (a decision, not a batch)
+### Medium value
 
-Building the upstream **LibJS/LibWeb** wholesale needs a Rust toolchain, ICU dev
-headers, and a clang GC plugin. This is a separate, multi-session effort and a
-deliberate dependency decision — not part of the batched engine work above.
+6. **Event model completeness**: capture phase, `stopPropagation`,
+   `preventDefault`, event objects with `target`/`currentTarget`.
+7. **Networking**: HTTP/2, complete certificate validation, RFC-complete cookies
+   (`Domain`/`Expires`/`Secure`/`HttpOnly`), retry when a pooled keep-alive
+   connection was closed by the server.
+8. **Security model**: process/site isolation, CSP, mixed-content blocking,
+   same-origin policy enforcement in the script bindings.
+9. **A real UI shell**: the browser is headless and renders to PPM. There is no
+   window, no tab strip, no bookmarks or history UI in the shipped binary.
+
+### Lower value / deferred
+
+10. **`requestAnimationFrame` and compositor-driven rendering.**
+11. **Accessibility tree.**
+12. **Developer tools / inspector.**
+13. **Full-tree build (LibJS/LibWeb).** Needs Rust, ICU and a clang GC plugin.
+    A dependency decision, not a task. The opt-in Windows full-tree CI job exists
+    for this and is not expected to pass yet.
+
+## Known limitations to state honestly
+
+- The engine is **not** standards-complete. It renders simple and moderately
+  complex pages; it does not render the modern web correctly.
+- There is **no JavaScript event loop**, so timers and late async work do not
+  run.
+- The browser is **headless**: `--render` writes a PPM image.
+- Size is ~2.38 MB, roughly 40× under a WebKitGTK browser and 100× under
+  Firefox, while still running JavaScript. Dillo (~0.25 MB) is far smaller but
+  has no JavaScript.
 
 ## Definition of done
 
-A phase is done when: the batches are implemented, the CTest suite passes, an
-end-to-end check demonstrates the behaviour, the docs and changelog state the
-capability and its limitations, and the phase is pushed with one patch file.
+A capability is done when: it is implemented, the CTest suite passes, an
+end-to-end check exercises it through the real pipeline (not only a unit test),
+and the docs and changelog state the capability and its limitations.
 
 ---
 

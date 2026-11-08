@@ -8,6 +8,11 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      full_tree:
+        description: "Also run the full-tree Windows build (slow, currently unsupported)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -110,9 +115,13 @@ jobs:
   # runs on main pushes, tags, and manual dispatches - NOT on every PR - so
   # pull-request latency stays low. The vcpkg caches below make repeat runs
   # incremental instead of bootstrapping every dependency from source.
+  # Full-tree Windows build: OPT-IN ONLY. It compiles the whole upstream
+  # Ladybird-derived tree through vcpkg, which is not supported by this project
+  # yet, so it must not fail every push and tag. Trigger it manually with the
+  # `full_tree` input when working on that build.
   build-windows:
-    name: Build Aetheris (Windows)
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    name: Build Aetheris (Windows, full tree, opt-in)
+    if: github.event_name == 'workflow_dispatch' && inputs.full_tree
     runs-on: windows-latest
 
     steps:
@@ -421,10 +430,55 @@ jobs:
           path: aetheris-windows-x64.zip
           if-no-files-found: error
 
+  # Release publishing runs on the build that actually works: the standalone
+  # size profile. The full-tree build above is opt-in and unsupported, so it no
+  # longer gates releases.
+  release-standalone:
+    name: Publish release (standalone, Linux)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config g++ libx11-dev liblz4-dev libedit-dev \
+            uuid-dev libssl-dev libwebp-dev
+
+      - name: Configure (size profile)
+        run: >
+          cmake -S . -B build-size -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DAETHERIS_STANDALONE_BUILD=ON
+          -DAETHERIS_SIZE_OPTIMIZED=ON
+          -DAETHERIS_ENABLE_TESTING=ON
+          -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build-size --parallel
+
+      - name: Test
+        run: ctest --test-dir build-size --output-on-failure --no-tests=error
+
+      - name: Smoke-run
+        run: ./build-size/bin/aetheris --smoke-test
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build-size/bin/aetheris dist/aetheris-linux-x86_64
+          # Report the size in the log so the release records it.
+          ls -l dist/aetheris-linux-x86_64
+          tar -C dist -czf aetheris-linux-x86_64.tar.gz aetheris-linux-x86_64
+
       - name: Publish tagged release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
-          files: aetheris-windows-x64.zip
+          files: aetheris-linux-x86_64.tar.gz
           generate_release_notes: true
           fail_on_unmatched_files: true
