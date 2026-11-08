@@ -300,6 +300,27 @@ void event_finalizer(JSRuntime* runtime, JSValue value)
     delete state;
 }
 
+
+// ---- real time ------------------------------------------------------------
+
+JSValue js_performance_now(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    auto* interpreter = interpreter_for(context);
+    if (!interpreter)
+        return JS_NewFloat64(context, 0.0);
+    return JS_NewFloat64(context, interpreter->now_ms());
+}
+
+// requestAnimationFrame maps onto the timer queue one frame ahead: with virtual
+// time there is no display, so a frame is a fixed step.
+JSValue js_request_animation_frame(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* interpreter = interpreter_for(context);
+    if (!interpreter || argc < 1 || !JS_IsFunction(context, argv[0]))
+        return JS_UNDEFINED;
+    return JS_NewInt32(context, interpreter->add_timer(JS_DupValue(context, argv[0]), 16.0, false));
+}
+
 void define_function(JSContext* context, JSValueConst target, char const* name, JSCFunction* function)
 {
     JS_SetPropertyStr(context, target, name, JS_NewCFunction(context, function, name, 1));
@@ -398,6 +419,8 @@ void Interpreter::setup_globals()
     define_function(m_context, window, "clearTimeout", js_clear_timer);
     define_function(m_context, window, "clearInterval", js_clear_timer);
     define_function(m_context, window, "queueMicrotask", js_queue_microtask);
+    define_function(m_context, window, "requestAnimationFrame", js_request_animation_frame);
+    define_function(m_context, window, "cancelAnimationFrame", js_clear_timer);
     JS_SetPropertyStr(m_context, global, "window", JS_DupValue(m_context, window));
 
     // Bare globals too: scripts call setTimeout(...) without a window prefix.
@@ -406,6 +429,12 @@ void Interpreter::setup_globals()
     JS_SetPropertyStr(m_context, global, "clearTimeout", JS_NewCFunction(m_context, js_clear_timer, "clearTimeout", 1));
     JS_SetPropertyStr(m_context, global, "clearInterval", JS_NewCFunction(m_context, js_clear_timer, "clearInterval", 1));
     JS_SetPropertyStr(m_context, global, "queueMicrotask", JS_NewCFunction(m_context, js_queue_microtask, "queueMicrotask", 1));
+    JS_SetPropertyStr(m_context, global, "requestAnimationFrame", JS_NewCFunction(m_context, js_request_animation_frame, "requestAnimationFrame", 1));
+    JS_SetPropertyStr(m_context, global, "cancelAnimationFrame", JS_NewCFunction(m_context, js_clear_timer, "cancelAnimationFrame", 1));
+
+    JSValue performance = JS_NewObject(m_context);
+    define_function(m_context, performance, "now", js_performance_now);
+    JS_SetPropertyStr(m_context, global, "performance", performance);
 
     JS_FreeValue(m_context, global);
     m_document = document;

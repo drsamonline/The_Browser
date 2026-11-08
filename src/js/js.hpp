@@ -46,6 +46,9 @@ public:
     // and setInterval work in a headless renderer.
     void run_event_loop(int max_tasks = 1000);
 
+    // Milliseconds of virtual time since the interpreter started.
+    double now_ms() const { return m_virtual_time * 1000.0; }
+
     // Registers a timer; returns its id. Used by setTimeout/setInterval.
     int add_timer(JSValue callback, double delay_ms, bool repeating);
     void clear_timer(int id);

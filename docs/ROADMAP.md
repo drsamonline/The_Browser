@@ -88,10 +88,10 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
 1. **Vector fonts and text shaping.** The renderer uses a bitmap font, so text
    quality is the single largest visual gap against any real browser. Needs a
    TrueType/OpenType rasteriser, kerning and basic shaping.
-2. **`requestAnimationFrame` and real-time scheduling.** Timers exist and run on
-   virtual time, but there is no animation frame callback, no compositor, and no
-   real clock — a page that expects wall-clock pacing will run its timers as fast
-   as the loop allows.
+2. ~~`requestAnimationFrame`~~ — **done** (`performance.now()` and
+   `requestAnimationFrame` on virtual time). Still missing: a compositor and a
+   real clock, so a page expecting wall-clock pacing runs as fast as the loop
+   allows.
 3. ~~`getComputedStyle`~~ — **done** (read-only resolved values).
 4. **CSS coverage**: complete `flex`/`grid`, pseudo-elements
    (`::before`/`::after` need layout-level synthetic boxes), `@font-face`,

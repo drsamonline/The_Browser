@@ -27,6 +27,7 @@ out. Everything below is covered by the 51-test CTest suite.
   and `getComputedStyle(el).getPropertyValue(name)`.
 - **Networking.** RFC cookies (`Domain`/`Path`/`Expires`/`Max-Age`/`Secure`/
   `HttpOnly`), a keep-alive liveness probe, and `aetheris --dump-dom <url>`.
+- **`performance.now()` and `requestAnimationFrame`.** `now()` returns virtual milliseconds since start, and `requestAnimationFrame` schedules a callback one 16 ms frame ahead on the existing timer queue (`cancelAnimationFrame` cancels it). There is still no compositor or real clock.
 - **CSS transforms.** `transform: translate(...)`, `translateX`/`translateY` and `scale(...)` are applied to painted geometry, composed down the tree so a child inherits its ancestors' transforms. `rotate`/`skew`/`matrix` are not supported yet and are ignored rather than misapplied.
 - **CSS: media queries and structural pseudo-classes.** `@media` blocks are parsed and filtered against the renderer's screen viewport (1024x768), so `@media screen` and `(min-width: ...)` apply while `print` and non-matching widths are dropped. `:first-child`, `:last-child`, `:only-child` and `:nth-child(n)` now match.
 - **Form controls.** `value` (read/write) on `input`, `textarea`, `select` and `option`, `checked` on checkboxes and radios, and `form.submit()`, which fires a cancelable `submit` event so `preventDefault()` stops submission. The DOM is the source of truth, so a script's change is what the renderer paints.

@@ -408,6 +408,20 @@ int main()
             "duplicate listeners are ignored and removeEventListener removes");
     }
 
+    // performance.now advances with virtual time and rAF runs a frame later.
+    {
+        Harness h;
+        h.run("var t0 = performance.now();"
+              "var frames = 0;"
+              "requestAnimationFrame(function (time) { frames++; });"
+              "setTimeout(function () { console.log('elapsed', performance.now() > t0); }, 100);");
+        h.interpreter.run_event_loop();
+        h.run("console.log('frames', frames);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "elapsed true\nframes 1\n",
+            "performance.now advances and requestAnimationFrame runs");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;
