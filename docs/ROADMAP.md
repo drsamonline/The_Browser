@@ -89,8 +89,10 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
    quality is the single largest visual gap against any real browser.
    **Font parsing is done** (`src/rendering/ttf_font.*`: `cmap` formats 4/12,
    `head`/`hhea`/`maxp`/`hmtx`/`loca`/`glyf`, simple-glyph outlines in font
-   units). Still needed: a rasteriser wired into text layout, then kerning and
-   shaping.
+   units). **A glyph rasteriser is done** (`src/rendering/glyph_rasterizer.*`:
+   quadratic flattening, scanline fill with vertical supersampling and exact
+   horizontal coverage, producing anti-aliased coverage bitmaps). Still needed:
+   wiring it into text layout and paint, then kerning and shaping.
 2. ~~`requestAnimationFrame`~~ — **done** (`performance.now()` and
    `requestAnimationFrame` on virtual time). Still missing: a compositor and a
    real clock, so a page expecting wall-clock pacing runs as fast as the loop

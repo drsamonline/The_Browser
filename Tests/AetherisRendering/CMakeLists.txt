@@ -250,3 +250,7 @@ add_test(NAME AetherisQuickJS COMMAND TestAetherisQuickJS)
 add_executable(TestAetherisTtf TestTtfFont.cpp)
 target_link_libraries(TestAetherisTtf PRIVATE AetherisRendering)
 add_test(NAME AetherisTtf COMMAND TestAetherisTtf)
+
+add_executable(TestAetherisGlyphRasterizer TestGlyphRasterizer.cpp)
+target_link_libraries(TestAetherisGlyphRasterizer PRIVATE AetherisRendering)
+add_test(NAME AetherisGlyphRasterizer COMMAND TestAetherisGlyphRasterizer)
