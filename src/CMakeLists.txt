@@ -57,6 +57,7 @@ target_include_directories(AetherisRendering
 )
 
 target_compile_features(AetherisRendering PUBLIC cxx_std_20)
+target_link_libraries(AetherisRendering PUBLIC AetherisGumbo)
 
 # Optional WebP: link the system libwebp (lossy VP8 + lossless VP8L) when it is
 # available. The two decoder functions are declared directly, so only the
@@ -147,6 +148,28 @@ target_compile_features(AetherisJS PUBLIC cxx_std_20)
 # Builds with a C compiler only, which is why it can replace the upstream LibJS
 # engine (that one needs Rust, a clang GC plugin and ICU).
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# gumbo-parser: the HTML5 parsing algorithm (vendored, Apache-2.0).
+# ---------------------------------------------------------------------------
+add_library(AetherisGumbo STATIC
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/attribute.c
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/char_ref.c
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/error.c
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/parser.c
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/string_buffer.c
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/string_piece.c
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/tag.c
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/tokenizer.c
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/utf8.c
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/util.c
+    ${CMAKE_SOURCE_DIR}/third_party/gumbo/vector.c
+)
+
+target_include_directories(AetherisGumbo
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/third_party/gumbo>
+)
+set_target_properties(AetherisGumbo PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)
+
 add_library(AetherisQuickJS STATIC
     ${CMAKE_SOURCE_DIR}/third_party/quickjs/quickjs.c
     ${CMAKE_SOURCE_DIR}/third_party/quickjs/libregexp.c
