@@ -86,8 +86,11 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
 ### High value
 
 1. **Vector fonts and text shaping.** The renderer uses a bitmap font, so text
-   quality is the single largest visual gap against any real browser. Needs a
-   TrueType/OpenType rasteriser, kerning and basic shaping.
+   quality is the single largest visual gap against any real browser.
+   **Font parsing is done** (`src/rendering/ttf_font.*`: `cmap` formats 4/12,
+   `head`/`hhea`/`maxp`/`hmtx`/`loca`/`glyf`, simple-glyph outlines in font
+   units). Still needed: a rasteriser wired into text layout, then kerning and
+   shaping.
 2. ~~`requestAnimationFrame`~~ — **done** (`performance.now()` and
    `requestAnimationFrame` on virtual time). Still missing: a compositor and a
    real clock, so a page expecting wall-clock pacing runs as fast as the loop

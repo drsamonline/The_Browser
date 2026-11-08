@@ -246,3 +246,7 @@ add_test(NAME AetherisDomHost COMMAND TestAetherisDomHost $<TARGET_FILE:aetheris
 add_executable(TestAetherisQuickJS TestAetherisQuickJS.cpp)
 target_link_libraries(TestAetherisQuickJS PRIVATE AetherisQuickJS)
 add_test(NAME AetherisQuickJS COMMAND TestAetherisQuickJS)
+
+add_executable(TestAetherisTtf TestTtfFont.cpp)
+target_link_libraries(TestAetherisTtf PRIVATE AetherisRendering)
+add_test(NAME AetherisTtf COMMAND TestAetherisTtf)
