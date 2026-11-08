@@ -386,29 +386,84 @@ JSValue js_element_tag_name(JSContext* context, JSValueConst this_value, int, JS
     return JS_NewString(context, name.c_str());
 }
 
-// Read-only snapshot of the data-* attributes as camelCase keys.
+// camelCase dataset key -> data-* attribute name (xY -> data-x-y).
+std::string dataset_attribute_name(std::string const& key)
+{
+    std::string name = "data-";
+    for (char c : key) {
+        if (std::isupper(static_cast<unsigned char>(c))) {
+            name += '-';
+            name += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        } else {
+            name += c;
+        }
+    }
+    return name;
+}
+
+std::string to_string_arg(JSContext* context, JSValueConst value)
+{
+    const char* raw = JS_ToCString(context, value);
+    std::string text = raw ? raw : "";
+    if (raw)
+        JS_FreeCString(context, raw);
+    return text;
+}
+
+JSValue js_dataset_get(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc < 2)
+        return JS_UNDEFINED;
+    auto* node = node_of(context, argv[0]);
+    if (!node)
+        return JS_UNDEFINED;
+    std::string name = dataset_attribute_name(to_string_arg(context, argv[1]));
+    auto* value = node->attribute(name);
+    return value ? JS_NewString(context, value->c_str()) : JS_UNDEFINED;
+}
+
+JSValue js_dataset_set(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc < 3)
+        return JS_FALSE;
+    auto* node = node_of(context, argv[0]);
+    if (!node)
+        return JS_FALSE;
+    std::string name = dataset_attribute_name(to_string_arg(context, argv[1]));
+    const char* raw = JS_ToCString(context, argv[2]);
+    node->attributes[name] = raw ? raw : "";
+    if (raw)
+        JS_FreeCString(context, raw);
+    return JS_TRUE;
+}
+
+JSValue js_dataset_has(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc < 2)
+        return JS_FALSE;
+    auto* node = node_of(context, argv[0]);
+    if (!node)
+        return JS_FALSE;
+    return JS_NewBool(context, node->has_attribute(dataset_attribute_name(to_string_arg(context, argv[1]))));
+}
+
+// Writable view of the data-* attributes: a proxy so any key works, not just
+// the ones that existed when the object was built.
 JSValue js_element_dataset(JSContext* context, JSValueConst this_value, int, JSValueConst*)
 {
     auto* node = node_of(context, this_value);
-    JSValue dataset = JS_NewObject(context);
-    if (!node)
-        return dataset;
-    for (auto const& [name, value] : node->attributes) {
-        if (name.rfind("data-", 0) != 0)
-            continue;
-        std::string key;
-        bool upper = false;
-        for (std::size_t i = 5; i < name.size(); ++i) {
-            if (name[i] == '-') {
-                upper = true;
-                continue;
-            }
-            key += upper ? static_cast<char>(std::toupper(static_cast<unsigned char>(name[i]))) : name[i];
-            upper = false;
-        }
-        JS_SetPropertyStr(context, dataset, key.c_str(), JS_NewString(context, value.c_str()));
-    }
-    return dataset;
+    JSValue target = JS_NewObjectClass(context, g_dom_node_class);
+    JS_SetOpaque(target, node);
+
+    JSValue handler = JS_NewObject(context);
+    JS_SetPropertyStr(context, handler, "get", JS_NewCFunction(context, js_dataset_get, "get", 3));
+    JS_SetPropertyStr(context, handler, "set", JS_NewCFunction(context, js_dataset_set, "set", 4));
+    JS_SetPropertyStr(context, handler, "has", JS_NewCFunction(context, js_dataset_has, "has", 2));
+
+    JSValue proxy = JS_NewProxy(context, target, handler);
+    JS_FreeValue(context, target);
+    JS_FreeValue(context, handler);
+    return proxy;
 }
 
 JSValue js_element_remove(JSContext* context, JSValueConst this_value, int, JSValueConst*)
@@ -573,11 +628,64 @@ JSValue js_element_add_event_listener(JSContext* context, JSValueConst this_valu
         list = JS_NewArray(context);
         JS_SetPropertyStr(context, this_value, key.c_str(), JS_DupValue(context, list));
     }
+    // Adding the same listener twice is a no-op, as in the DOM.
     JSValue length_value = JS_GetPropertyStr(context, list, "length");
     uint32_t length = 0;
     JS_ToUint32(context, &length, length_value);
     JS_FreeValue(context, length_value);
+    for (uint32_t index = 0; index < length; ++index) {
+        JSValue entry = JS_GetPropertyUint32(context, list, index);
+        bool same = JS_VALUE_GET_PTR(entry) == JS_VALUE_GET_PTR(argv[1]);
+        JS_FreeValue(context, entry);
+        if (same) {
+            JS_FreeValue(context, list);
+            return JS_UNDEFINED;
+        }
+    }
     JS_SetPropertyUint32(context, list, length, JS_DupValue(context, argv[1]));
+    JS_FreeValue(context, list);
+    return JS_UNDEFINED;
+}
+
+JSValue js_element_remove_event_listener(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    if (argc < 2)
+        return JS_UNDEFINED;
+    bool capture = false;
+    if (argc > 2) {
+        if (JS_IsBool(argv[2]))
+            capture = JS_ToBool(context, argv[2]) > 0;
+        else if (JS_IsObject(argv[2])) {
+            JSValue option = JS_GetPropertyStr(context, argv[2], "capture");
+            capture = JS_ToBool(context, option) > 0;
+            JS_FreeValue(context, option);
+        }
+    }
+    const char* type = JS_ToCString(context, argv[0]);
+    std::string key = capture ? "__capture_" : "__handlers_";
+    key += type ? type : "";
+    if (type)
+        JS_FreeCString(context, type);
+
+    JSValue list = JS_GetPropertyStr(context, this_value, key.c_str());
+    if (!JS_IsArray(list)) {
+        JS_FreeValue(context, list);
+        return JS_UNDEFINED;
+    }
+    JSValue length_value = JS_GetPropertyStr(context, list, "length");
+    uint32_t length = 0;
+    JS_ToUint32(context, &length, length_value);
+    JS_FreeValue(context, length_value);
+
+    JSValue rebuilt = JS_NewArray(context);
+    uint32_t kept = 0;
+    for (uint32_t index = 0; index < length; ++index) {
+        JSValue entry = JS_GetPropertyUint32(context, list, index);
+        if (JS_VALUE_GET_PTR(entry) != JS_VALUE_GET_PTR(argv[1]))
+            JS_SetPropertyUint32(context, rebuilt, kept++, JS_DupValue(context, entry));
+        JS_FreeValue(context, entry);
+    }
+    JS_SetPropertyStr(context, this_value, key.c_str(), rebuilt);
     JS_FreeValue(context, list);
     return JS_UNDEFINED;
 }
@@ -847,6 +955,7 @@ JSValue DomHost::handle_for(rendering::DomNode* node)
     JS_SetPropertyStr(context, handle, "remove", JS_NewCFunction(context, js_element_remove, "remove", 0));
     JS_SetPropertyStr(context, handle, "insertBefore", JS_NewCFunction(context, js_element_insert_before, "insertBefore", 2));
     JS_SetPropertyStr(context, handle, "addEventListener", JS_NewCFunction(context, js_element_add_event_listener, "addEventListener", 3));
+    JS_SetPropertyStr(context, handle, "removeEventListener", JS_NewCFunction(context, js_element_remove_event_listener, "removeEventListener", 3));
 
     auto define_accessor = [&](char const* name, JSCFunction* getter, JSCFunction* setter) {
         JSAtom atom = JS_NewAtom(context, name);
@@ -1430,7 +1539,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         if (arg == "--version" || arg == "-v") {
-            std::cout << "Aetheris Browser v0.2.0" << std::endl;
+            std::cout << "Aetheris Browser v0.3.0" << std::endl;
             return 0;
         }
         if (arg == "--smoke-test") {
@@ -1455,7 +1564,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    std::cout << "=== AETHERIS BROWSER v0.2.0 ===" << std::endl;
+    std::cout << "=== AETHERIS BROWSER v0.3.0 ===" << std::endl;
     std::cout << "Hyper-optimized, zero-bloat cross-platform browser" << std::endl;
     std::cout << std::endl;
     

@@ -26,7 +26,7 @@ and which parts of the tree are Aetheris-specific versus upstream-derived.
 | Path | Provenance | What it contains |
 |------|------------|------------------|
 | `src/rendering/` | **Aetheris** | The standalone C++20 rendering foundation: HTML tokenizer, tree builder, DOM, CSS tokenizer/parser, style resolution, layout (block/flex/grid), paint executor, software surface, resource loading, security policy, cookie jar, navigation, sessions, tabs, and browser chrome. Built as the static library `AetherisRendering`. |
-| `Tests/AetherisRendering/` | **Aetheris** | 39 regression test executables covering every subsystem above, wired into CTest. |
+| `Tests/AetherisRendering/` | **Aetheris** | 51 regression test executables covering every subsystem above, wired into CTest. |
 | `docs/` | **Aetheris** | Project-local documentation (this guide, development workflow, release process, provenance policy). |
 | `AK/`, `Libraries/`, `Services/`, `UI/`, `Meta/`, `Utilities/`, `Base/` | Upstream-derived | Ladybird/SerenityOS infrastructure: core libraries, JS engine, image codecs, services, platform UI shells, build tooling, fuzzers, linters. |
 | `Documentation/` | Upstream-derived | Original Ladybird developer documentation (build instructions, coding style, patterns, DevTools, etc.). Kept intact for reference. |

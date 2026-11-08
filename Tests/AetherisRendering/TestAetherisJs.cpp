@@ -391,6 +391,23 @@ int main()
         require(h.output == "doc\n", "stopPropagation halts dispatch");
     }
 
+    // Duplicate registrations are ignored and removeEventListener works.
+    {
+        Harness h;
+        h.run("var n = 0;"
+              "var f = function () { n++; };"
+              "window.addEventListener('tick', f);"
+              "window.addEventListener('tick', f);");
+        h.interpreter.dispatch_event("tick");
+        h.run("console.log('once', n);"
+              "window.removeEventListener('tick', f);");
+        h.interpreter.dispatch_event("tick");
+        h.run("console.log('after-remove', n);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "once 1\nafter-remove 1\n",
+            "duplicate listeners are ignored and removeEventListener removes");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;

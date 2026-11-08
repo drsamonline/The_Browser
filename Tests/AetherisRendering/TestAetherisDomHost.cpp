@@ -66,6 +66,8 @@ static const char* kPage =
     "console.log('MARK body', document.body.tagName);"
     "console.log('MARK win', window.innerWidth, window.innerHeight);"
     "console.log('MARK data', box.dataset.role);"
+    "box.dataset.role = 'changed';"
+    "console.log('MARK data-set', box.dataset.role, box.getAttribute('data-role'));"
     "console.log('MARK computed', document.getComputedStyle(box).getPropertyValue('color'));"
     "var order = [];"
     "document.getElementById('outer').addEventListener('click', function () { order.push('capture'); }, true);"
@@ -180,6 +182,7 @@ int main(int argc, char* argv[])
     require(contains(captured, "MARK body BODY"), "document.body and tagName");
     require(contains(captured, "MARK win 1024 768"), "window inner size");
     require(contains(captured, "MARK data card"), "element.dataset reads data-* attributes");
+    require(contains(captured, "MARK data-set changed changed"), "element.dataset writes data-* attributes");
     // #box has an inline style set earlier in the script, which must win over
     // the #box rule in the <style> block.
     require(contains(captured, "MARK computed red"), "getComputedStyle applies the cascade (inline wins)");

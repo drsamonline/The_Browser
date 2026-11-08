@@ -98,6 +98,48 @@ bool listener_is_capture(JSContext* context, JSValueConst options)
     return false;
 }
 
+// True when the array already holds this exact function.
+bool list_contains(JSContext* context, JSValueConst list, JSValueConst function)
+{
+    JSValue length_value = JS_GetPropertyStr(context, list, "length");
+    uint32_t length = 0;
+    JS_ToUint32(context, &length, length_value);
+    JS_FreeValue(context, length_value);
+    for (uint32_t index = 0; index < length; ++index) {
+        JSValue entry = JS_GetPropertyUint32(context, list, index);
+        bool same = JS_VALUE_GET_PTR(entry) == JS_VALUE_GET_PTR(function);
+        JS_FreeValue(context, entry);
+        if (same)
+            return true;
+    }
+    return false;
+}
+
+// Rebuilds the array without every entry equal to `function`.
+void list_remove(JSContext* context, JSValueConst target, std::string const& key, JSValueConst function)
+{
+    JSValue list = JS_GetPropertyStr(context, target, key.c_str());
+    if (!JS_IsArray(list)) {
+        JS_FreeValue(context, list);
+        return;
+    }
+    JSValue length_value = JS_GetPropertyStr(context, list, "length");
+    uint32_t length = 0;
+    JS_ToUint32(context, &length, length_value);
+    JS_FreeValue(context, length_value);
+
+    JSValue rebuilt = JS_NewArray(context);
+    uint32_t kept = 0;
+    for (uint32_t index = 0; index < length; ++index) {
+        JSValue entry = JS_GetPropertyUint32(context, list, index);
+        if (JS_VALUE_GET_PTR(entry) != JS_VALUE_GET_PTR(function))
+            JS_SetPropertyUint32(context, rebuilt, kept++, JS_DupValue(context, entry));
+        JS_FreeValue(context, entry);
+    }
+    JS_SetPropertyStr(context, target, key.c_str(), rebuilt);
+    JS_FreeValue(context, list);
+}
+
 // addEventListener(type, handler, options) on window/document/elements.
 JSValue js_add_event_listener(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
 {
@@ -112,12 +154,27 @@ JSValue js_add_event_listener(JSContext* context, JSValueConst this_value, int a
         list = JS_NewArray(context);
         JS_SetPropertyStr(context, this_value, key.c_str(), JS_DupValue(context, list));
     }
+    // Adding the same listener twice is a no-op, as in the DOM.
+    if (list_contains(context, list, argv[1])) {
+        JS_FreeValue(context, list);
+        return JS_UNDEFINED;
+    }
     JSValue length_value = JS_GetPropertyStr(context, list, "length");
     uint32_t length = 0;
     JS_ToUint32(context, &length, length_value);
     JS_FreeValue(context, length_value);
     JS_SetPropertyUint32(context, list, length, JS_DupValue(context, argv[1]));
     JS_FreeValue(context, list);
+    return JS_UNDEFINED;
+}
+
+JSValue js_remove_event_listener(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    if (argc < 2)
+        return JS_UNDEFINED;
+    bool capture = argc > 2 && listener_is_capture(context, argv[2]);
+    std::string key = (capture ? "__capture_" : "__handlers_") + to_string(context, argv[0]);
+    list_remove(context, this_value, key, argv[1]);
     return JS_UNDEFINED;
 }
 
@@ -329,11 +386,13 @@ void Interpreter::setup_globals()
     define_function(m_context, document, "querySelector", js_query_selector);
     define_function(m_context, document, "querySelectorAll", js_query_selector_all);
     define_function(m_context, document, "addEventListener", js_add_event_listener);
+    define_function(m_context, document, "removeEventListener", js_remove_event_listener);
     JS_SetPropertyStr(m_context, global, "document", JS_DupValue(m_context, document));
 
     // window
     JSValue window = JS_NewObject(m_context);
     define_function(m_context, window, "addEventListener", js_add_event_listener);
+    define_function(m_context, window, "removeEventListener", js_remove_event_listener);
     define_function(m_context, window, "setTimeout", js_set_timeout);
     define_function(m_context, window, "setInterval", js_set_interval);
     define_function(m_context, window, "clearTimeout", js_clear_timer);

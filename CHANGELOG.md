@@ -4,6 +4,38 @@
 
 All notable Aetheris-specific changes should be documented here. Upstream-derived changes should retain their original provenance and must not be presented as newly authored Aetheris work.
 
+## v0.3 — 2026-11-08
+
+The engine was rebuilt on two upstream components and the DOM surface was filled
+out. Everything below is covered by the 51-test CTest suite.
+
+- **JavaScript: QuickJS replaces the hand-written interpreter.** ES2025 instead
+  of a subset — arrow functions, template literals, destructuring, spread/rest,
+  optional chaining, `Symbol`/`WeakMap`, real `Date`/`Map`/`Set` and correct
+  number formatting.
+- **HTML: gumbo replaces the hand-written tokenizer.** The HTML5
+  tree-construction algorithm: implied end tags, the stray-`</p>` rule,
+  automatic `<tbody>`, character references and error recovery.
+- **Full event model.** Capture, target and bubble phases, event objects,
+  `preventDefault`, `stopPropagation`, `stopImmediatePropagation`, and
+  `removeEventListener` with de-duplicated registrations.
+- **Timers.** `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` and
+  `queueMicrotask` on virtual time.
+- **DOM surface.** `document.body`/`head`/`documentElement`/`title`,
+  `window.innerWidth`/`innerHeight`, `element.tagName`, a writable
+  `element.dataset`, `remove()`, `insertBefore()`, live `children`/`parentNode`,
+  and `getComputedStyle(el).getPropertyValue(name)`.
+- **Networking.** RFC cookies (`Domain`/`Path`/`Expires`/`Max-Age`/`Secure`/
+  `HttpOnly`), a keep-alive liveness probe, and `aetheris --dump-dom <url>`.
+- **Data tables** taken from upstream: the full HTML5 character-reference table
+  and the 148 CSS named colours.
+- **Build.** Vendored gumbo and QuickJS build with `-w` so their warnings do not
+  break the project's `-Werror` set; CI's full-tree job is opt-in and releases
+  publish from the standalone size profile.
+
+Size profile: 2,515,056 bytes (~2.40 MB), up from ~1.10 MB at v0.2 — the cost of
+a real JavaScript engine and a real HTML5 parser.
+
 ## v0.2 — 2026-11-07
 
 ### Added

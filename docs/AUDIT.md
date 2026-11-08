@@ -28,26 +28,22 @@ Ordered by severity. Each names the file and line.
 
 ### P1 — release integrity
 
-**1. The version string misrepresents the build.**
-`src/main.cpp:1433` (`--version`) and `src/main.cpp:1458` (banner) print
-`v0.2.0`. Since that release the engine has replaced its JavaScript engine with
-QuickJS, replaced its HTML parser with gumbo, and gained a full event model,
-timers, `getComputedStyle` and the DOM surface. `CHANGELOG.md:7` still has `v0.2`
-as its newest released section. A user running `--version` is told they have a
-build they do not have.
+**1. ~~The version string misrepresents the build.~~ — FIXED in batch 1.**
+`--version` and the banner now report **v0.3.0**, and `CHANGELOG.md` has a `v0.3`
+section covering QuickJS, gumbo, events, timers and the DOM surface.
 
 ### P2 — correctness and API gaps
 
-**2. `removeEventListener` does not exist.**
-`grep removeEventListener src/` returns nothing. Every `addEventListener` call
-appends to a per-element array (`__handlers_<type>` / `__capture_<type>`) with
-no way to remove an entry, and duplicates are not de-duplicated. On a long-lived
-page this grows without bound — a real leak, not a style issue.
+**2. ~~`removeEventListener` does not exist.~~ — FIXED in batch 1.**
+`removeEventListener` is available on window, document and elements, and adding
+the same `(type, listener, capture)` twice is now a no-op, so listener arrays
+cannot grow without bound. Covered by a test that adds a listener twice, checks
+it fires once, removes it, and checks it stops firing.
 
-**3. `element.dataset` is read-only and silent about it.**
-`js_element_dataset` in `src/main.cpp` returns a fresh object built from the
-`data-*` attributes. Assigning `el.dataset.x = '1'` writes to that throwaway
-object and disappears. Nothing in the docs says so.
+**3. ~~`element.dataset` is read-only and silent about it.~~ — FIXED in batch 1.**
+`dataset` is now a Proxy over the element: reads, writes and new keys all work,
+and a write lands in the `data-*` attribute (`dataset.newKey = 'v'` creates
+`data-new-key`). Covered end to end.
 
 **4. `children` and `parentNode` allocate on every access.**
 `js_children_get` builds a new array per read. That is correct and fixes the
@@ -68,8 +64,8 @@ state plainly that these are library-only APIs.
 
 ### P4 — documentation
 
-**6. `docs/USER_GUIDE.md:29` claims "39 regression test executables".**
-The suite is 51. Stale.
+**6. ~~`docs/USER_GUIDE.md:29` claims "39 regression test executables".~~ — FIXED.**
+Now states 51.
 
 ### P5 — housekeeping
 
