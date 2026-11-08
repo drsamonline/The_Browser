@@ -27,6 +27,7 @@ out. Everything below is covered by the 51-test CTest suite.
   and `getComputedStyle(el).getPropertyValue(name)`.
 - **Networking.** RFC cookies (`Domain`/`Path`/`Expires`/`Max-Age`/`Secure`/
   `HttpOnly`), a keep-alive liveness probe, and `aetheris --dump-dom <url>`.
+- **Content-Security-Policy is enforced for scripts.** A meta tag with http-equiv=Content-Security-Policy whose script-src (or default-src fallback) lacks 'unsafe-inline' - including 'none' - stops inline scripts from running, and the block is reported on stderr.
 - **TLS certificate validation is verified, not just implemented.** The TLS layer already set `SSL_VERIFY_PEER`, matched the host with `SSL_set1_host` and checked `SSL_get_verify_result`; `Tools/check_tls_verification.sh` now proves it end to end: an untrusted self-signed certificate is refused, the same certificate trusted via `AETHERIS_CA_FILE` is accepted, and a trusted certificate for the wrong host is refused.
 - **`performance.now()` and `requestAnimationFrame`.** `now()` returns virtual milliseconds since start, and `requestAnimationFrame` schedules a callback one 16 ms frame ahead on the existing timer queue (`cancelAnimationFrame` cancels it). There is still no compositor or real clock.
 - **CSS transforms.** `transform: translate(...)`, `translateX`/`translateY` and `scale(...)` are applied to painted geometry, composed down the tree so a child inherits its ancestors' transforms. `rotate`/`skew`/`matrix` are not supported yet and are ignored rather than misapplied.
