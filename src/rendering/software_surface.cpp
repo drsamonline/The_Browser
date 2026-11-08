@@ -167,7 +167,7 @@ void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, f
         int baseline = static_cast<int>(std::lround(rect.y + static_cast<float>(font->ascender()) * scale));
         for (unsigned char character : text) {
             auto glyph = font->glyph_index(character);
-            auto bitmap = rasterize_glyph(*font, glyph, font_size);
+            auto const& bitmap = cached_glyph(*font, glyph, font_size);
             for (int y = 0; y < bitmap.height; ++y) {
                 for (int x = 0; x < bitmap.width; ++x) {
                     auto coverage = bitmap.at(x, y);

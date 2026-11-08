@@ -77,6 +77,7 @@ without them.
 | libwebp | WebP decoding (`AETHERIS_HAS_WEBP`) | BSD-3-Clause |
 | QuickJS (quickjs-ng, vendored in `third_party/quickjs/`) | JavaScript engine for the standalone profile | MIT |
 | gumbo-parser (vendored in `third_party/gumbo/`) | HTML5 parsing (the HTML5 tree-construction algorithm) | Apache-2.0 |
+| DejaVu Sans subset (`src/rendering/embedded_font.inc`) | Embedded outline font so text renders without a system font | Bitstream Vera + Arev licence (see `src/rendering/DEJAVU_LICENSE.txt`) |
 | LZ4 | Ghost-cache compression (optional) | BSD-2-Clause |
 | X11 | Window-manager backend (optional) | MIT |
 

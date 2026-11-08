@@ -254,3 +254,7 @@ add_test(NAME AetherisTtf COMMAND TestAetherisTtf)
 add_executable(TestAetherisGlyphRasterizer TestGlyphRasterizer.cpp)
 target_link_libraries(TestAetherisGlyphRasterizer PRIVATE AetherisRendering)
 add_test(NAME AetherisGlyphRasterizer COMMAND TestAetherisGlyphRasterizer)
+
+add_executable(TestAetherisEmbeddedFont TestEmbeddedFont.cpp)
+target_link_libraries(TestAetherisEmbeddedFont PRIVATE AetherisRendering)
+add_test(NAME AetherisEmbeddedFont COMMAND TestAetherisEmbeddedFont)

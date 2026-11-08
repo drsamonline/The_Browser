@@ -1,10 +1,17 @@
 #include "font_library.hpp"
 
+#include "glyph_rasterizer.hpp"
+
+#include <map>
+#include <utility>
+
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <string>
 #include <vector>
+
+#include "embedded_font.inc"
 
 namespace aetheris::rendering {
 
@@ -20,18 +27,39 @@ std::vector<uint8_t> read_file(std::string const& path)
 
 TtfFont* load_font()
 {
-    std::vector<std::string> candidates;
-    if (auto* from_env = std::getenv("AETHERIS_FONT")) {
-        // "none" forces the embedded bitmap font, which is what the test suite
-        // and a font-free machine use.
-        if (std::string(from_env) == "none")
-            return nullptr;
-        candidates.push_back(from_env);
-    }
-    candidates.push_back("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
-    candidates.push_back("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf");
-    candidates.push_back("/usr/local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf");
+    auto* from_env = std::getenv("AETHERIS_FONT");
+    // "none" forces the embedded bitmap font, which is what a font-free machine
+    // and the test suite use.
+    if (from_env && std::string(from_env) == "none")
+        return nullptr;
 
+    // An explicit path wins over everything.
+    if (from_env) {
+        auto data = read_file(from_env);
+        if (!data.empty()) {
+            auto* font = new TtfFont;
+            if (font->load(data))
+                return font;
+            delete font;
+        }
+    }
+
+    // The embedded subset is the default, so the binary renders identically on a
+    // machine with no fonts installed.
+    {
+        auto* font = new TtfFont;
+        std::vector<uint8_t> bytes(kEmbeddedFontData, kEmbeddedFontData + kEmbeddedFontSize);
+        if (font->load(bytes))
+            return font;
+        delete font;
+    }
+
+    // Last resort: a system font, in case the embedded data ever fails to parse.
+    std::vector<std::string> candidates {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/local/lib/python3.12/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf",
+    };
     for (auto const& path : candidates) {
         auto data = read_file(path);
         if (data.empty())
@@ -50,6 +78,23 @@ TtfFont const* active_font()
 {
     static TtfFont* font = load_font();
     return font;
+}
+
+} // namespace aetheris::rendering
+
+namespace aetheris::rendering {
+
+GlyphBitmap const& cached_glyph(TtfFont const& font, uint16_t glyph, float pixel_size)
+{
+    // Key on the rounded size so 16px and 16.2px share an entry.
+    auto size_key = static_cast<int>(pixel_size * 4.0f + 0.5f);
+    static std::map<std::pair<int, int>, GlyphBitmap> cache;
+    auto key = std::make_pair(static_cast<int>(glyph), size_key);
+    auto found = cache.find(key);
+    if (found != cache.end())
+        return found->second;
+    auto inserted = cache.emplace(key, rasterize_glyph(font, glyph, static_cast<float>(size_key) / 4.0f));
+    return inserted.first->second;
 }
 
 } // namespace aetheris::rendering
