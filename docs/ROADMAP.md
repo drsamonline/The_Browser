@@ -25,8 +25,10 @@ Last verified: 51/51 CTest passing, size profile **2,490,416 bytes (~2.38 MB)**.
 - **Paint**: ordered paint commands with clipping onto a software surface.
 - **Text**: anti-aliased bitmap font.
 - **Images**: PNG (own DEFLATE inflater), JPEG, GIF, SVG, WebP (via libwebp).
-- **Networking**: HTTP/1.1 client with redirects, a host-scoped cookie jar, a
-  `Cache-Control: max-age` response cache, and per-origin keep-alive reuse.
+- **Networking**: HTTP/1.1 client with redirects, a cookie jar honouring
+  `Domain`/`Path`/`Expires`/`Max-Age`/`Secure`/`HttpOnly`, a
+  `Cache-Control: max-age` response cache, and per-origin keep-alive reuse that
+  probes a pooled connection before sending into it.
 - **TLS**: HTTPS via OpenSSL, optional at build time (`AETHERIS_HAS_TLS`).
 - **Upstream data tables**: the full HTML5 character-reference table (2,125
   entries) and the 148 CSS named colours, generated from upstream Ladybird /
@@ -42,8 +44,12 @@ Last verified: 51/51 CTest passing, size profile **2,490,416 bytes (~2.38 MB)**.
   `innerHTML` (get/set), `style` (string set plus `setProperty`/
   `removeProperty`), `classList`, `parentNode`/`children`,
   `querySelector`/`querySelectorAll`.
-- **Events**: `addEventListener` and `on<type>` on window, document and
-  elements, with bubbling up the ancestor chain. `DOMContentLoaded` and `load`.
+- **Events**: `addEventListener` (with a capture option) and `on<type>` on
+  window, document and elements, dispatched through the full three phases —
+  capture (root to target), target, bubble (target to root) — with event
+  objects (`type`, `target`, `currentTarget`, `defaultPrevented`) and
+  `preventDefault`/`stopPropagation`/`stopImmediatePropagation`.
+  `DOMContentLoaded` and `load`.
 - **Promise jobs** are drained after each script and each event.
 - **Timers**: `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval` and
   `queueMicrotask`, run on **virtual time** — timers fire in due order without
@@ -89,11 +95,10 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
 
 ### Medium value
 
-6. **Event model completeness**: capture phase, `stopPropagation`,
-   `preventDefault`, event objects with `target`/`currentTarget`.
-7. **Networking**: HTTP/2, complete certificate validation, RFC-complete cookies
-   (`Domain`/`Expires`/`Secure`/`HttpOnly`), retry when a pooled keep-alive
-   connection was closed by the server.
+6. ~~Event model completeness~~ — **done** (capture, `stopPropagation`,
+   `preventDefault`, event objects).
+7. **Networking**: HTTP/2 and complete certificate validation. RFC cookie
+   attributes and the keep-alive liveness probe are done.
 8. **Security model**: process/site isolation, CSP, mixed-content blocking,
    same-origin policy enforcement in the script bindings.
 9. **A real UI shell**: the browser is headless and renders to PPM. There is no

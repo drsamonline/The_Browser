@@ -111,9 +111,14 @@ inline ParsedHttpUrl parse_http_url(std::string_view url)
 // --- Redirect and cookie helpers -------------------------------------------
 
 struct HttpCookie {
-    std::string host;
+    std::string host;      // host that set it (or the Domain attribute)
     std::string name;
     std::string value;
+    std::string path { "/" };
+    std::string domain;    // empty unless the Domain attribute was present
+    std::int64_t expires { 0 }; // 0 = session cookie
+    bool secure { false };
+    bool http_only { false };
 };
 
 inline std::string http_trim(std::string text)
@@ -147,43 +152,180 @@ inline std::vector<HttpCookie>& http_cookie_jar()
     return jar;
 }
 
-// Records Set-Cookie headers (name=value; attributes are ignored).
+// Defined with the response cache below; the cookie jar needs it for expiry.
+inline std::int64_t http_now_seconds();
+
+inline std::string http_lower_copy(std::string text)
+{
+    for (auto& c : text)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
+}
+
+// Parses an HTTP date (RFC 1123, RFC 850 or asctime) into epoch seconds.
+inline std::int64_t http_parse_cookie_date(std::string const& text)
+{
+    static char const* months[] = { "jan", "feb", "mar", "apr", "may", "jun",
+        "jul", "aug", "sep", "oct", "nov", "dec" };
+    std::string lowered = http_lower_copy(text);
+
+    int day = 0, month = -1, year = 0;
+    int hour = 0, minute = 0, second = 0;
+
+    // Scan tokens; a "12:34:56" token is the time, a month name sets the month.
+    std::string token;
+    auto flush = [&] {
+        if (token.empty())
+            return;
+        if (token.find(':') != std::string::npos) {
+            std::sscanf(token.c_str(), "%d:%d:%d", &hour, &minute, &second);
+        } else if (month < 0) {
+            for (int index = 0; index < 12; ++index) {
+                if (token.rfind(months[index], 0) == 0) {
+                    month = index;
+                    break;
+                }
+            }
+            if (month < 0) {
+                int value = std::atoi(token.c_str());
+                if (value > 31)
+                    year = value; // four-digit year
+                else if (value > 0)
+                    day = value;
+            }
+        } else {
+            int value = std::atoi(token.c_str());
+            if (value > 31)
+                year = value;
+            else if (value > 0)
+                day = value;
+        }
+        token.clear();
+    };
+    for (char c : lowered) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == ':')
+            token += c;
+        else
+            flush();
+    }
+    flush();
+
+    if (month < 0 || day <= 0 || year <= 0)
+        return 0;
+    if (year < 100)
+        year += year < 70 ? 2000 : 1900;
+
+    // Days since the epoch (Howard Hinnant's civil_from_days, inverted).
+    int y = year;
+    int m = month + 1;
+    y -= m <= 2;
+    int era = (y >= 0 ? y : y - 399) / 400;
+    unsigned yoe = static_cast<unsigned>(y - era * 400);
+    unsigned doy = static_cast<unsigned>((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + day - 1);
+    unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    long days = static_cast<long>(era) * 146097 + static_cast<long>(doe) - 719468;
+    return static_cast<std::int64_t>(days) * 86400 + hour * 3600 + minute * 60 + second;
+}
+
+// Records Set-Cookie headers, honouring Domain, Path, Expires, Max-Age, Secure
+// and HttpOnly.
 inline void http_store_cookies(std::string const& host, HttpResponseData const& response)
 {
     for (auto const& header : response.headers) {
-        if (header.name.size() != 10)
+        if (http_lower_copy(header.name) != "set-cookie")
             continue;
-        std::string lower;
-        for (char c : header.name)
-            lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (lower != "set-cookie")
-            continue;
+
         auto semicolon = header.value.find(';');
         std::string pair = header.value.substr(0, semicolon);
         auto equals = pair.find('=');
         if (equals == std::string::npos)
             continue;
-        std::string name = http_trim(pair.substr(0, equals));
-        std::string value = http_trim(pair.substr(equals + 1));
-        if (name.empty())
+
+        HttpCookie cookie;
+        cookie.host = host;
+        cookie.name = http_trim(pair.substr(0, equals));
+        cookie.value = http_trim(pair.substr(equals + 1));
+        if (cookie.name.empty())
             continue;
-        auto& jar = http_cookie_jar();
-        bool replaced = false;
-        for (auto& cookie : jar)
-            if (cookie.host == host && cookie.name == name) {
-                cookie.value = value;
-                replaced = true;
+
+        std::string attributes = semicolon == std::string::npos ? std::string() : header.value.substr(semicolon + 1);
+        std::size_t start = 0;
+        while (start < attributes.size()) {
+            auto next = attributes.find(';', start);
+            std::string attribute = http_trim(attributes.substr(start, next == std::string::npos ? std::string::npos : next - start));
+            start = next == std::string::npos ? attributes.size() : next + 1;
+            if (attribute.empty())
+                continue;
+            auto attribute_equals = attribute.find('=');
+            std::string key = http_lower_copy(http_trim(attribute.substr(0, attribute_equals)));
+            std::string value = attribute_equals == std::string::npos
+                ? std::string()
+                : http_trim(attribute.substr(attribute_equals + 1));
+
+            if (key == "domain" && !value.empty()) {
+                if (!value.empty() && value.front() == '.')
+                    value.erase(value.begin());
+                cookie.domain = http_lower_copy(value);
+            } else if (key == "path" && !value.empty()) {
+                cookie.path = value;
+            } else if (key == "expires") {
+                cookie.expires = http_parse_cookie_date(value);
+            } else if (key == "max-age") {
+                auto seconds = std::strtoll(value.c_str(), nullptr, 10);
+                if (seconds <= 0)
+                    cookie.expires = 1; // already expired
+                else
+                    cookie.expires = http_now_seconds() + seconds;
+            } else if (key == "secure") {
+                cookie.secure = true;
+            } else if (key == "httponly") {
+                cookie.http_only = true;
             }
-        if (!replaced)
-            jar.push_back({ host, name, value });
+        }
+
+        auto& jar = http_cookie_jar();
+        for (auto it = jar.begin(); it != jar.end();) {
+            if (it->name == cookie.name && it->host == cookie.host && it->path == cookie.path)
+                it = jar.erase(it);
+            else
+                ++it;
+        }
+        // An expired cookie deletes rather than stores.
+        if (cookie.expires == 1)
+            continue;
+        jar.push_back(cookie);
     }
 }
 
-inline std::string http_cookie_header(std::string const& host)
+inline bool http_host_matches_domain(std::string const& host, std::string const& domain)
+{
+    if (domain.empty())
+        return false;
+    if (host == domain)
+        return true;
+    if (host.size() > domain.size() && host.compare(host.size() - domain.size(), domain.size(), domain) == 0) {
+        auto dot = host.size() - domain.size() - 1;
+        return dot < host.size() && host[dot] == '.';
+    }
+    return false;
+}
+
+// Builds the Cookie header for a request, honouring domain, path, expiry and
+// the Secure flag.
+inline std::string http_cookie_header(std::string const& host, std::string const& path = "/", bool secure = false)
 {
     std::string result;
+    auto now = http_now_seconds();
     for (auto const& cookie : http_cookie_jar()) {
-        if (cookie.host != host)
+        if (cookie.expires != 0 && cookie.expires <= now)
+            continue;
+        bool host_ok = cookie.domain.empty() ? cookie.host == host : http_host_matches_domain(host, cookie.domain);
+        if (!host_ok)
+            continue;
+        // Path match: exact, or a prefix ending on a boundary.
+        if (cookie.path != "/" && path.rfind(cookie.path, 0) != 0)
+            continue;
+        if (cookie.secure && !secure)
             continue;
         if (!result.empty())
             result += "; ";
@@ -378,6 +520,13 @@ private:
             }
         }
 
+        // A pooled keep-alive connection can be closed by the server while
+        // idle; probe before use so the request is not sent into a dead socket.
+        if (connection.socket && !connection.socket->is_alive()) {
+            connection.socket.reset();
+            connection.tls.reset();
+        }
+
         HttpTransport transport;
         transport.socket = connection.socket.get();
         transport.tls = connection.tls.get();
@@ -386,7 +535,7 @@ private:
         request_text += "Host: " + parsed.host + "\r\n";
         request_text += "User-Agent: Aetheris/1.0\r\n";
         request_text += "Accept: */*\r\n";
-        auto cookie_header = http_cookie_header(parsed.host);
+        auto cookie_header = http_cookie_header(parsed.host, parsed.path, parsed.scheme == "https");
         if (!cookie_header.empty())
             request_text += "Cookie: " + cookie_header + "\r\n";
         request_text += "Connection: keep-alive\r\n";

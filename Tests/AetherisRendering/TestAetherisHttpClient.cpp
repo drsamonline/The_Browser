@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 #include <thread>
 
 using namespace aetheris::network;
@@ -243,6 +244,71 @@ static uint16_t start_keepalive_server(std::thread& server_thread, int& accepted
     return port;
 }
 
+
+// Serves Set-Cookie headers once, then records the Cookie header it receives.
+static uint16_t start_cookie_server(std::thread& server_thread, std::vector<std::string>& seen)
+{
+    int listener = ::socket(AF_INET, SOCK_STREAM, 0);
+    require(listener >= 0, "cookie listener");
+    int reuse = 1;
+    ::setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    struct sockaddr_in address {};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = 0;
+    require(::bind(listener, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) == 0, "cookie bind");
+    require(::listen(listener, 4) == 0, "cookie listen");
+    socklen_t length = sizeof(address);
+    require(::getsockname(listener, reinterpret_cast<struct sockaddr*>(&address), &length) == 0, "cookie getsockname");
+    uint16_t port = ntohs(address.sin_port);
+
+    server_thread = std::thread([listener, &seen]() {
+        for (int index = 0; index < 3; ++index) {
+            fd_set readable;
+            FD_ZERO(&readable);
+            FD_SET(listener, &readable);
+            struct timeval timeout {};
+            timeout.tv_sec = 2;
+            if (::select(listener + 1, &readable, nullptr, nullptr, &timeout) <= 0)
+                break;
+            int connection = ::accept(listener, nullptr, nullptr);
+            if (connection < 0)
+                break;
+            std::string request;
+            char buffer[2048];
+            while (request.find("\r\n\r\n") == std::string::npos) {
+                auto bytes = ::recv(connection, buffer, sizeof(buffer), 0);
+                if (bytes <= 0)
+                    break;
+                request.append(buffer, static_cast<size_t>(bytes));
+            }
+            std::string cookie;
+            auto cookie_at = request.find("Cookie: ");
+            if (cookie_at != std::string::npos) {
+                auto end = request.find("\r\n", cookie_at);
+                cookie = request.substr(cookie_at + 8, end - cookie_at - 8);
+            }
+            seen.push_back(cookie);
+
+            std::string body = "ok";
+            std::string response = "HTTP/1.1 200 OK\r\n";
+            if (request.rfind("GET /set", 0) == 0) {
+                response += "Set-Cookie: a=1; Path=/; HttpOnly\r\n";
+                response += "Set-Cookie: b=2; Path=/other\r\n";
+                response += "Set-Cookie: s=3; Path=/; Secure\r\n";
+                response += "Set-Cookie: gone=4; Path=/; Max-Age=0\r\n";
+            }
+            response += "Content-Length: " + std::to_string(body.size()) + "\r\n";
+            response += "Connection: close\r\n\r\n";
+            response += body;
+            ::send(connection, response.data(), response.size(), 0);
+            ::close(connection);
+        }
+        ::close(listener);
+    });
+    return port;
+}
+
 int main()
 {
     require(Socket::initialize() == SocketError::None, "socket init");
@@ -311,6 +377,28 @@ int main()
         server.join();
         require(first.body == "ok" && second.body == "ok", "keep-alive: both bodies arrive");
         require(accepted == 1, "keep-alive: one connection serves two requests");
+    }
+
+    // Cookies honour Path, Secure and Max-Age.
+    {
+        HttpClient::clear_connections();
+        HttpClient::clear_cache();
+        HttpClient::clear_cookies();
+        std::thread server;
+        std::vector<std::string> seen;
+        auto port = start_cookie_server(server, seen);
+        auto base = "http://127.0.0.1:" + std::to_string(port);
+        HttpClient::get(base + "/set");
+        HttpClient::get(base + "/");
+        HttpClient::get(base + "/other");
+        server.join();
+        require(seen.size() == 3, "cookie: three requests seen");
+        require(seen[0].empty(), "cookie: none sent before any were set");
+        require(seen[1].find("a=1") != std::string::npos, "cookie: Path=/ cookie is sent");
+        require(seen[1].find("b=2") == std::string::npos, "cookie: Path=/other cookie is not sent to /");
+        require(seen[1].find("s=3") == std::string::npos, "cookie: Secure cookie is not sent over http");
+        require(seen[1].find("gone=4") == std::string::npos, "cookie: expired cookie is dropped");
+        require(seen[2].find("b=2") != std::string::npos, "cookie: Path=/other cookie is sent to /other");
     }
 
     Socket::cleanup();

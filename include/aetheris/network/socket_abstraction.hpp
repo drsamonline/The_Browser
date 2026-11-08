@@ -28,6 +28,7 @@
     #include <arpa/inet.h>
     #include <unistd.h>
     #include <fcntl.h>
+    #include <sys/select.h>
     #include <errno.h>
     #include <netdb.h>
     #include <sys/select.h>
@@ -215,6 +216,27 @@ public:
     /**
      * Send data over socket
      */
+    // True when the peer has not closed the connection. A pooled keep-alive
+    // connection can be closed by the server while idle; probing before reuse
+    // avoids sending a request into a dead socket.
+    bool is_alive() const noexcept {
+        if (m_socket == INVALID_SOCKET_VALUE)
+            return false;
+        fd_set readable;
+        FD_ZERO(&readable);
+        FD_SET(m_socket, &readable);
+        timeval timeout {};
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 0;
+        int result = ::select(static_cast<int>(m_socket) + 1, &readable, nullptr, nullptr, &timeout);
+        if (result < 0)
+            return false;
+        if (result == 0)
+            return true; // nothing pending: idle and still connected
+        // Readable while idle means the peer closed, or sent unsolicited data.
+        return false;
+    }
+
     SocketError send(std::string_view data) {
         if (!is_valid()) {
             return SocketError::InvalidSocket;

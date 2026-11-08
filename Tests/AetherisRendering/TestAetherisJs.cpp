@@ -367,6 +367,30 @@ int main()
         require(h.output == "v 9\n", "timer callback can settle a promise");
     }
 
+    // Event objects carry type/target and support preventDefault.
+    {
+        Harness h;
+        h.run("window.addEventListener('ping', function (e) {"
+              "  console.log('type', e.type);"
+              "  console.log('before', e.defaultPrevented);"
+              "  e.preventDefault();"
+              "  console.log('after', e.defaultPrevented);"
+              "});");
+        h.interpreter.dispatch_event("ping");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "type ping\nbefore false\nafter true\n", "event object and preventDefault");
+    }
+
+    // stopPropagation stops the remaining phases.
+    {
+        Harness h;
+        h.run("document.addEventListener('stop', function (e) { console.log('doc'); e.stopPropagation(); });"
+              "window.addEventListener('stop', function () { console.log('win'); });");
+        h.interpreter.dispatch_event("stop");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "doc\n", "stopPropagation halts dispatch");
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;

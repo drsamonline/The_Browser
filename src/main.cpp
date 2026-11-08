@@ -123,6 +123,30 @@ static int run_smoke_test() {
 
 // Headless fetch mode: resolve and GET a URL over the network, then report the
 // result. Validates the networking path without needing a display server.
+static void serialize_html(rendering::DomNode const& node, std::string& out);
+
+// Prints the parsed DOM after scripts have run, so layout/DOM bugs can be
+// inspected without rendering an image.
+static int run_dump_dom(std::string const& url) {
+    if (network::Socket::initialize() != network::SocketError::None) {
+        std::cerr << "Failed to initialize network subsystem" << std::endl;
+        return 1;
+    }
+    auto response = network::HttpClient::get(url);
+    network::Socket::cleanup();
+
+    if (!response.error.empty()) {
+        std::cerr << "Fetch failed: " << response.error << std::endl;
+        return 1;
+    }
+
+    auto document = rendering::Document::parse_html(response.body);
+    std::string out;
+    serialize_html(document.root(), out);
+    std::cout << out << std::endl;
+    return 0;
+}
+
 static int run_fetch(std::string const& url) {
     if (network::Socket::initialize() != network::SocketError::None) {
         std::cerr << "Failed to initialize network subsystem" << std::endl;
@@ -360,8 +384,18 @@ JSValue js_element_add_event_listener(JSContext* context, JSValueConst this_valu
 {
     if (argc < 2 || !JS_IsFunction(context, argv[1]))
         return JS_UNDEFINED;
+    bool capture = false;
+    if (argc > 2) {
+        if (JS_IsBool(argv[2]))
+            capture = JS_ToBool(context, argv[2]) > 0;
+        else if (JS_IsObject(argv[2])) {
+            JSValue option = JS_GetPropertyStr(context, argv[2], "capture");
+            capture = JS_ToBool(context, option) > 0;
+            JS_FreeValue(context, option);
+        }
+    }
     const char* type = JS_ToCString(context, argv[0]);
-    std::string key = "__handlers_";
+    std::string key = capture ? "__capture_" : "__handlers_";
     key += type ? type : "";
     if (type)
         JS_FreeCString(context, type);
@@ -644,7 +678,7 @@ JSValue DomHost::handle_for(rendering::DomNode* node)
     JS_SetPropertyStr(context, handle, "setAttribute", JS_NewCFunction(context, js_set_attribute, "setAttribute", 2));
     JS_SetPropertyStr(context, handle, "getAttribute", JS_NewCFunction(context, js_get_attribute, "getAttribute", 1));
     JS_SetPropertyStr(context, handle, "appendChild", JS_NewCFunction(context, js_append_child, "appendChild", 1));
-    JS_SetPropertyStr(context, handle, "addEventListener", JS_NewCFunction(context, js_element_add_event_listener, "addEventListener", 2));
+    JS_SetPropertyStr(context, handle, "addEventListener", JS_NewCFunction(context, js_element_add_event_listener, "addEventListener", 3));
 
     auto define_accessor = [&](char const* name, JSCFunction* getter, JSCFunction* setter) {
         JSAtom atom = JS_NewAtom(context, name);
@@ -1193,6 +1227,7 @@ int main(int argc, char* argv[]) {
                       << "                 With --render, fire an event on the element with this id.\n"
                       << "  --click <x>,<y>\n"
                       << "                 With --render, hit-test the point and fire a click there.\n"
+                      << "  --dump-dom <url>  Fetch a URL and print the parsed DOM.\n"
                       << "  --version      Print version information.\n"
                       << "  -h, --help     Print this help.\n";
             return 0;
@@ -1209,6 +1244,9 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--eval" && i + 1 < argc) {
             return run_eval(argv[++i]);
+        }
+        if (arg == "--dump-dom" && i + 1 < argc) {
+            return run_dump_dom(argv[++i]);
         }
         if (arg == "--render" && i + 1 < argc) {
             std::string url = argv[++i];

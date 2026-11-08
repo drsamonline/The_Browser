@@ -62,6 +62,13 @@ static const char* kPage =
     "console.log('MARK text', box.textContent);"
     "document.getElementById('inner').onclick = function () { console.log('MARK inner'); };"
     "document.getElementById('outer').onclick = function () { console.log('MARK outer'); };"
+    "var order = [];"
+    "document.getElementById('outer').addEventListener('click', function () { order.push('capture'); }, true);"
+    "document.getElementById('inner').addEventListener('click', function () { order.push('target'); });"
+    "document.getElementById('outer').addEventListener('click', function () {"
+    "  order.push('bubble');"
+    "  console.log('ORDER ' + order.join('>'));"
+    "});"
     "</script></body></html>";
 
 static uint16_t start_server(std::thread& server_thread)
@@ -172,6 +179,8 @@ int main(int argc, char* argv[])
     require_clean_run(captured_dispatch);
     require(contains(captured_dispatch, "MARK inner"), "the target handler runs");
     require(contains(captured_dispatch, "MARK outer"), "the event bubbles to the ancestor");
+    require(contains(captured_dispatch, "ORDER capture>target>bubble"),
+        "capture runs before the target and bubbling runs after");
 
     server.join();
     return 0;
