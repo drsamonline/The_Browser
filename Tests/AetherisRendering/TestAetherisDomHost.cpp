@@ -43,8 +43,8 @@ int main() { return 0; }
 #include <unistd.h>
 
 static const char* kPage =
-    "<html><body>"
-    "<div id='box'><span id='old'>old</span></div>"
+    "<html><head><title>harness</title><style>#box { color: green; }</style></head><body>"
+    "<div id='box' data-role='card'><span id='old'>old</span></div>"
     "<div id='outer'><span id='inner'>tap</span></div>"
     "<script>"
     "var box = document.getElementById('box');"
@@ -62,6 +62,11 @@ static const char* kPage =
     "console.log('MARK text', box.textContent);"
     "document.getElementById('inner').onclick = function () { console.log('MARK inner'); };"
     "document.getElementById('outer').onclick = function () { console.log('MARK outer'); };"
+    "console.log('MARK title', document.title);"
+    "console.log('MARK body', document.body.tagName);"
+    "console.log('MARK win', window.innerWidth, window.innerHeight);"
+    "console.log('MARK data', box.dataset.role);"
+    "console.log('MARK computed', document.getComputedStyle(box).getPropertyValue('color'));"
     "var order = [];"
     "document.getElementById('outer').addEventListener('click', function () { order.push('capture'); }, true);"
     "document.getElementById('inner').addEventListener('click', function () { order.push('target'); });"
@@ -171,6 +176,13 @@ int main(int argc, char* argv[])
     require(contains(captured, "MARK class1 true"), "classList.add updates the class attribute");
     require(contains(captured, "MARK style color: red"), "style assignment writes the style attribute");
     require(contains(captured, "MARK text replaced"), "textContent accessor reads back the new text");
+    require(contains(captured, "MARK title harness"), "document.title reads the title element");
+    require(contains(captured, "MARK body BODY"), "document.body and tagName");
+    require(contains(captured, "MARK win 1024 768"), "window inner size");
+    require(contains(captured, "MARK data card"), "element.dataset reads data-* attributes");
+    // #box has an inline style set earlier in the script, which must win over
+    // the #box rule in the <style> block.
+    require(contains(captured, "MARK computed red"), "getComputedStyle applies the cascade (inline wins)");
 
     // Pass 2: an element event bubbles to its ancestor.
     std::string captured_dispatch;

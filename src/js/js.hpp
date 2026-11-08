@@ -49,6 +49,8 @@ public:
 
     JSRuntime* runtime() const { return m_runtime; }
     JSContext* context() const { return m_context; }
+    JSValue document_object() const { return m_document; }
+    JSValue window_object() const { return m_window; }
 
     // Host hooks. Each returns a JS value owned by the caller's context.
     std::function<void(std::string const&)> print_handler; // console.log

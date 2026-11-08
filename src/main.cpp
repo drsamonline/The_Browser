@@ -9,7 +9,9 @@
 #include "aetheris/cache/ghost_cache.hpp"
 #include "aetheris/ui/window_manager.hpp"
 
+#include "css_parser.hpp"
 #include "render_document.hpp"
+#include "style.hpp"
 #include "image_output.hpp"
 #include "resource_loader.hpp"
 #include "resource.hpp"
@@ -287,6 +289,8 @@ namespace {
 
 // One browser per process, so the class id and host are file-static.
 JSClassID g_dom_node_class { 0 };
+rendering::CssStyleSheet const* g_stylesheet { nullptr };
+rendering::DomNode* g_document_root { nullptr };
 struct DomHost;
 DomHost* g_dom_host { nullptr };
 
@@ -339,6 +343,168 @@ rendering::DomNode* node_of(JSContext* context, JSValueConst value)
 }
 
 // ---- element methods -------------------------------------------------------
+
+JSValue js_children_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    JSValue array = JS_NewArray(context);
+    if (!node || !g_dom_host)
+        return array;
+    uint32_t index = 0;
+    for (auto& child : node->children) {
+        if (child->type != rendering::DomNodeType::Element)
+            continue;
+        auto it = g_dom_host->handle_by_node.find(child.get());
+        if (it != g_dom_host->handle_by_node.end())
+            JS_SetPropertyUint32(context, array, index++, JS_DupValue(context, it->second));
+    }
+    return array;
+}
+
+JSValue js_parent_node_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || !g_dom_host)
+        return JS_NULL;
+    auto parent = g_dom_host->parent_of.find(node);
+    if (parent == g_dom_host->parent_of.end())
+        return JS_NULL;
+    auto handle = g_dom_host->handle_by_node.find(parent->second);
+    if (handle == g_dom_host->handle_by_node.end())
+        return JS_NULL;
+    return JS_DupValue(context, handle->second);
+}
+
+JSValue js_element_tag_name(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    std::string name = node->name;
+    for (auto& c : name)
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return JS_NewString(context, name.c_str());
+}
+
+// Read-only snapshot of the data-* attributes as camelCase keys.
+JSValue js_element_dataset(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    JSValue dataset = JS_NewObject(context);
+    if (!node)
+        return dataset;
+    for (auto const& [name, value] : node->attributes) {
+        if (name.rfind("data-", 0) != 0)
+            continue;
+        std::string key;
+        bool upper = false;
+        for (std::size_t i = 5; i < name.size(); ++i) {
+            if (name[i] == '-') {
+                upper = true;
+                continue;
+            }
+            key += upper ? static_cast<char>(std::toupper(static_cast<unsigned char>(name[i]))) : name[i];
+            upper = false;
+        }
+        JS_SetPropertyStr(context, dataset, key.c_str(), JS_NewString(context, value.c_str()));
+    }
+    return dataset;
+}
+
+JSValue js_element_remove(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || !g_dom_host)
+        return JS_UNDEFINED;
+    auto parent = g_dom_host->parent_of.find(node);
+    if (parent == g_dom_host->parent_of.end())
+        return JS_UNDEFINED;
+    g_dom_host->purge_subtree(*node);
+    auto detached = detach_child(*parent->second, node);
+    g_dom_host->parent_of.erase(node);
+    return JS_UNDEFINED;
+}
+
+JSValue js_element_insert_before(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 1 || !g_dom_host)
+        return JS_UNDEFINED;
+    auto* child = node_of(context, argv[0]);
+    auto* reference = argc > 1 ? node_of(context, argv[1]) : nullptr;
+    if (!child)
+        return JS_UNDEFINED;
+
+    std::unique_ptr<rendering::DomNode> moved;
+    auto pending_it = g_dom_host->pending.find(child);
+    if (pending_it != g_dom_host->pending.end()) {
+        moved = std::move(pending_it->second);
+        g_dom_host->pending.erase(pending_it);
+    } else {
+        auto parent_it = g_dom_host->parent_of.find(child);
+        if (parent_it != g_dom_host->parent_of.end())
+            moved = detach_child(*parent_it->second, child);
+        if (!moved)
+            return JS_UNDEFINED;
+    }
+
+    if (reference) {
+        auto position = std::find_if(node->children.begin(), node->children.end(),
+            [reference](std::unique_ptr<rendering::DomNode> const& entry) { return entry.get() == reference; });
+        node->children.insert(position, std::move(moved));
+        g_dom_host->parent_of[child] = node;
+    } else {
+        node->append_child(std::move(moved));
+        g_dom_host->parent_of[child] = node;
+    }
+    return JS_UNDEFINED;
+}
+
+JSValue js_computed_property(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || !g_stylesheet || argc < 1)
+        return JS_NewString(context, "");
+    const char* raw = JS_ToCString(context, argv[0]);
+    std::string property = raw ? raw : "";
+    if (raw)
+        JS_FreeCString(context, raw);
+    rendering::StyleResolver resolver;
+    auto properties = resolver.resolve(*node, *g_stylesheet);
+    auto* value = properties.get(property);
+    return JS_NewString(context, value ? value->c_str() : "");
+}
+
+JSValue js_get_computed_style(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    JSValue style = JS_NewObjectClass(context, g_dom_node_class);
+    JS_SetOpaque(style, argc > 0 ? node_of(context, argv[0]) : nullptr);
+    JS_SetPropertyStr(context, style, "getPropertyValue",
+        JS_NewCFunction(context, js_computed_property, "getPropertyValue", 1));
+    return style;
+}
+
+JSValue js_document_title_get(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    if (!g_document_root)
+        return JS_NewString(context, "");
+    auto* title = find_element(*g_document_root, "title");
+    return JS_NewString(context, title ? node_text(*title).c_str() : "");
+}
+
+JSValue js_document_title_set(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (!g_document_root)
+        return JS_UNDEFINED;
+    auto* title = find_element(*g_document_root, "title");
+    if (!title)
+        return JS_UNDEFINED;
+    const char* raw = argc > 0 ? JS_ToCString(context, argv[0]) : nullptr;
+    set_node_text(*title, raw ? raw : "");
+    if (raw)
+        JS_FreeCString(context, raw);
+    return JS_UNDEFINED;
+}
 
 JSValue js_set_attribute(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
 {
@@ -678,6 +844,8 @@ JSValue DomHost::handle_for(rendering::DomNode* node)
     JS_SetPropertyStr(context, handle, "setAttribute", JS_NewCFunction(context, js_set_attribute, "setAttribute", 2));
     JS_SetPropertyStr(context, handle, "getAttribute", JS_NewCFunction(context, js_get_attribute, "getAttribute", 1));
     JS_SetPropertyStr(context, handle, "appendChild", JS_NewCFunction(context, js_append_child, "appendChild", 1));
+    JS_SetPropertyStr(context, handle, "remove", JS_NewCFunction(context, js_element_remove, "remove", 0));
+    JS_SetPropertyStr(context, handle, "insertBefore", JS_NewCFunction(context, js_element_insert_before, "insertBefore", 2));
     JS_SetPropertyStr(context, handle, "addEventListener", JS_NewCFunction(context, js_element_add_event_listener, "addEventListener", 3));
 
     auto define_accessor = [&](char const* name, JSCFunction* getter, JSCFunction* setter) {
@@ -691,6 +859,27 @@ JSValue DomHost::handle_for(rendering::DomNode* node)
     define_accessor("textContent", js_text_content_get, js_text_content_set);
     define_accessor("innerHTML", js_inner_html_get, js_inner_html_set);
     define_accessor("style", js_style_get, js_style_set);
+
+    auto define_getter = [&](char const* name, JSCFunction* getter) {
+        JSAtom atom = JS_NewAtom(context, name);
+        JS_DefinePropertyGetSet(context, handle, atom,
+            JS_NewCFunction(context, getter, name, 0), JS_UNDEFINED, JS_PROP_CONFIGURABLE);
+        JS_FreeAtom(context, atom);
+    };
+    define_getter("children", js_children_get);
+    define_getter("parentNode", js_parent_node_get);
+
+    JSAtom tag_atom = JS_NewAtom(context, "tagName");
+    JS_DefinePropertyGetSet(context, handle, tag_atom,
+        JS_NewCFunction(context, js_element_tag_name, "get tagName", 0),
+        JS_UNDEFINED, JS_PROP_CONFIGURABLE);
+    JS_FreeAtom(context, tag_atom);
+
+    JSAtom dataset_atom = JS_NewAtom(context, "dataset");
+    JS_DefinePropertyGetSet(context, handle, dataset_atom,
+        JS_NewCFunction(context, js_element_dataset, "get dataset", 0),
+        JS_UNDEFINED, JS_PROP_CONFIGURABLE);
+    JS_FreeAtom(context, dataset_atom);
 
     handle_by_node[node] = JS_DupValue(context, handle);
     if (id)
@@ -770,32 +959,8 @@ static void build_handles(rendering::DomNode& node, DomHost& dom)
         build_handles(*child, dom);
 }
 
-// Links each element handle to its parent handle and its child elements.
-static void wire_tree(DomHost& dom, rendering::DomNode& node, JSValue parent)
-{
-    JSValue current = JS_UNDEFINED;
-    if (node.type == rendering::DomNodeType::Element) {
-        auto it = dom.handle_by_node.find(&node);
-        if (it != dom.handle_by_node.end())
-            current = it->second;
-    }
-    if (!JS_IsUndefined(current)) {
-        if (!JS_IsUndefined(parent))
-            JS_SetPropertyStr(dom.context, current, "parentNode", JS_DupValue(dom.context, parent));
-        JSValue children = JS_NewArray(dom.context);
-        uint32_t index = 0;
-        for (auto& child : node.children) {
-            if (child->type != rendering::DomNodeType::Element)
-                continue;
-            auto it = dom.handle_by_node.find(child.get());
-            if (it != dom.handle_by_node.end())
-                JS_SetPropertyUint32(dom.context, children, index++, JS_DupValue(dom.context, it->second));
-        }
-        JS_SetPropertyStr(dom.context, current, "children", children);
-    }
-    for (auto& child : node.children)
-        wire_tree(dom, *child, JS_IsUndefined(current) ? parent : current);
-}
+// Handles are linked lazily: children and parentNode are getters that read the
+// live tree, so insertBefore/remove are reflected immediately.
 
 // Fires an event at the node and up its ancestor chain.
 static void dispatch_bubbling(aetheris::js::Interpreter& js, DomHost& dom, rendering::DomNode* node, std::string const& type)
@@ -1068,6 +1233,10 @@ static int run_render(std::string const& url, std::string const& output_path, st
     std::string html = response.body;
     rendering::Document document = rendering::Document::parse_html(html);
 
+    rendering::CssParser computed_parser;
+    rendering::CssStyleSheet computed_sheet = computed_parser.parse(css);
+    g_stylesheet = &computed_sheet;
+
     std::string script_output;
     aetheris::js::Interpreter js;
     js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
@@ -1077,7 +1246,35 @@ static int run_render(std::string const& url, std::string const& output_path, st
     dom.initialize(js.context());
     dom.collect(document.root());
     build_handles(document.root(), dom);
-    wire_tree(dom, document.root(), JS_UNDEFINED);
+
+    // document / window surface
+    {
+        g_document_root = &document.root();
+        auto* html = find_element(document.root(), "html");
+        auto* body = find_element(document.root(), "body");
+        auto* head = find_element(document.root(), "head");
+        JSValue document_object = js.document_object();
+        if (body)
+            JS_SetPropertyStr(js.context(), document_object, "body", dom.handle_for(body));
+        if (head)
+            JS_SetPropertyStr(js.context(), document_object, "head", dom.handle_for(head));
+        if (html)
+            JS_SetPropertyStr(js.context(), document_object, "documentElement", dom.handle_for(html));
+
+        JS_SetPropertyStr(js.context(), document_object, "getComputedStyle",
+            JS_NewCFunction(js.context(), js_get_computed_style, "getComputedStyle", 1));
+
+        JSAtom title_atom = JS_NewAtom(js.context(), "title");
+        JS_DefinePropertyGetSet(js.context(), document_object, title_atom,
+            JS_NewCFunction(js.context(), js_document_title_get, "get title", 0),
+            JS_NewCFunction(js.context(), js_document_title_set, "set title", 1),
+            JS_PROP_CONFIGURABLE);
+        JS_FreeAtom(js.context(), title_atom);
+
+        JSValue window_object = js.window_object();
+        JS_SetPropertyStr(js.context(), window_object, "innerWidth", JS_NewInt32(js.context(), 1024));
+        JS_SetPropertyStr(js.context(), window_object, "innerHeight", JS_NewInt32(js.context(), 768));
+    }
 
     js.element_lookup = [&dom](std::string const& id) -> JSValue {
         auto it = dom.handle_by_id.find(id);

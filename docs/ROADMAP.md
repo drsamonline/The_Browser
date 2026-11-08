@@ -40,10 +40,13 @@ Last verified: 51/51 CTest passing, size profile **2,490,416 bytes (~2.38 MB)**.
   functions, template literals, destructuring, spread/rest, optional chaining,
   `Symbol`/`WeakMap`, real `Date`/`Map`/`Set`, correct number formatting.
 - **DOM bindings**: `document.write`, `getElementById`, `createElement`,
-  `appendChild`, `setAttribute`/`getAttribute`, `textContent` (accessor),
-  `innerHTML` (get/set), `style` (string set plus `setProperty`/
-  `removeProperty`), `classList`, `parentNode`/`children`,
-  `querySelector`/`querySelectorAll`.
+  `appendChild`, `insertBefore`, `remove`, `setAttribute`/`getAttribute`,
+  `textContent` (accessor), `innerHTML` (get/set), `style` (string set plus
+  `setProperty`/`removeProperty`), `classList`, `tagName`, `dataset`,
+  `parentNode`/`children` (live getters), `querySelector`/`querySelectorAll`,
+  `document.body`/`head`/`documentElement`/`title`, `window.innerWidth`/
+  `innerHeight`, and `getComputedStyle(el).getPropertyValue(name)` resolved
+  through the cascade.
 - **Events**: `addEventListener` (with a capture option) and `on<type>` on
   window, document and elements, dispatched through the full three phases —
   capture (root to target), target, bubble (target to root) — with event
@@ -87,7 +90,7 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
    virtual time, but there is no animation frame callback, no compositor, and no
    real clock — a page that expects wall-clock pacing will run its timers as fast
    as the loop allows.
-3. **`getComputedStyle`.** Resolved styles are not exposed to scripts.
+3. ~~`getComputedStyle`~~ — **done** (read-only resolved values).
 4. **CSS coverage**: `transform`, complete `flex`/`grid`, pseudo-elements,
    media queries, `@font-face`, `position: sticky`, transitions/animations.
 5. **Form elements**: `input`/`select`/`textarea` values, `submit` events,
