@@ -333,6 +333,7 @@ namespace {
 JSClassID g_dom_node_class { 0 };
 rendering::CssStyleSheet const* g_stylesheet { nullptr };
 rendering::DomNode* g_document_root { nullptr };
+aetheris::js::Interpreter* g_js { nullptr };
 struct DomHost;
 DomHost* g_dom_host { nullptr };
 
@@ -385,6 +386,113 @@ rendering::DomNode* node_of(JSContext* context, JSValueConst value)
 }
 
 // ---- element methods -------------------------------------------------------
+
+// ---- form controls ---------------------------------------------------------
+
+bool node_is(rendering::DomNode const* node, char const* name)
+{
+    return node && node->type == rendering::DomNodeType::Element && node->name == name;
+}
+
+// The value of a control, with the DOM as the source of truth: <input> uses its
+// value attribute, <textarea> its text, <select> the selected <option>.
+std::string control_value(rendering::DomNode const* node)
+{
+    if (!node)
+        return {};
+    if (node_is(node, "textarea"))
+        return node_text(*node);
+    if (node_is(node, "option")) {
+        if (auto* value = node->attribute("value"))
+            return *value;
+        return node_text(*node);
+    }
+    if (node_is(node, "select")) {
+        rendering::DomNode const* first = nullptr;
+        for (auto const& child : node->children) {
+            if (!node_is(child.get(), "option"))
+                continue;
+            if (!first)
+                first = child.get();
+            if (child->has_attribute("selected"))
+                return control_value(child.get());
+        }
+        return first ? control_value(first) : std::string();
+    }
+    if (auto* value = node->attribute("value"))
+        return *value;
+    return {};
+}
+
+void set_control_value(rendering::DomNode* node, std::string const& value)
+{
+    if (!node)
+        return;
+    if (node_is(node, "textarea")) {
+        if (g_dom_host)
+            g_dom_host->purge_subtree(*node);
+        set_node_text(*node, value);
+        return;
+    }
+    if (node_is(node, "option") || node_is(node, "select")) {
+        node->attributes["value"] = value;
+        return;
+    }
+    node->attributes["value"] = value;
+}
+
+JSValue js_value_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    return JS_NewString(context, control_value(node).c_str());
+}
+
+JSValue js_value_set(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    const char* raw = argc > 0 ? JS_ToCString(context, argv[0]) : nullptr;
+    set_control_value(node, raw ? raw : "");
+    if (raw)
+        JS_FreeCString(context, raw);
+    return JS_UNDEFINED;
+}
+
+JSValue js_checked_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    return JS_NewBool(context, node && node->has_attribute("checked"));
+}
+
+JSValue js_checked_set(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    bool checked = argc > 0 && JS_ToBool(context, argv[0]) > 0;
+    if (checked)
+        node->attributes["checked"] = "";
+    else
+        node->attributes.erase("checked");
+    return JS_UNDEFINED;
+}
+
+// form.submit(): fires a cancelable submit event. Nothing navigates yet, so the
+// observable behaviour is that preventDefault() can stop it.
+JSValue js_form_submit(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || !g_dom_host || !g_js)
+        return JS_UNDEFINED;
+    auto handle = g_dom_host->handle_by_node.find(node);
+    if (handle == g_dom_host->handle_by_node.end())
+        return JS_UNDEFINED;
+    g_js->dispatch_event_to(JS_DupValue(context, handle->second), "submit");
+    if (g_js->last_event_prevented())
+        return JS_UNDEFINED;
+    return JS_UNDEFINED;
+}
 
 JSValue js_children_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
 {
@@ -1018,6 +1126,19 @@ JSValue DomHost::handle_for(rendering::DomNode* node)
         JS_FreeAtom(context, atom);
     };
     define_getter("children", js_children_get);
+
+    auto define_accessor_pair = [&](char const* name, JSCFunction* getter, JSCFunction* setter) {
+        JSAtom atom = JS_NewAtom(context, name);
+        JS_DefinePropertyGetSet(context, handle, atom,
+            JS_NewCFunction(context, getter, name, 0),
+            JS_NewCFunction(context, setter, name, 1),
+            JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE);
+        JS_FreeAtom(context, atom);
+    };
+    define_accessor_pair("value", js_value_get, js_value_set);
+    define_accessor_pair("checked", js_checked_get, js_checked_set);
+
+    JS_SetPropertyStr(context, handle, "submit", JS_NewCFunction(context, js_form_submit, "submit", 0));
     define_getter("parentNode", js_parent_node_get);
 
     JSAtom tag_atom = JS_NewAtom(context, "tagName");
@@ -1393,6 +1514,8 @@ static int run_render(std::string const& url, std::string const& output_path, st
     aetheris::js::Interpreter js;
     js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
     js.write_handler = [&script_output](std::string const& text) { script_output += text; };
+
+    g_js = &js;
 
     DomHost dom;
     dom.initialize(js.context());

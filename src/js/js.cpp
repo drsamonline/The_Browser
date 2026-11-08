@@ -491,6 +491,7 @@ void Interpreter::dispatch_event_to(JSValue target, std::string const& type, std
 
     JSValue event = make_event(m_context, type, target);
     auto* state = event_state(m_context, event);
+    m_last_event_prevented = false;
 
     std::string capture_key = "__capture_" + type;
     std::string bubble_key = "__handlers_" + type;
@@ -554,6 +555,8 @@ void Interpreter::dispatch_event_to(JSValue target, std::string const& type, std
         call_list(chain[index], bubble_key);
         call_on(chain[index]);
     }
+
+    m_last_event_prevented = state && state->default_prevented;
 
     for (auto& node : chain)
         JS_FreeValue(m_context, node);

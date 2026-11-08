@@ -46,6 +46,10 @@ static const char* kPage =
     "<html><head><title>harness</title><style>#box { color: green; }</style></head><body>"
     "<div id='box' data-role='card'><span id='old'>old</span></div>"
     "<div id='outer'><span id='inner'>tap</span></div>"
+    "<input id='q' value='v0'><input id='cb' type='checkbox' checked>"
+    "<textarea id='ta'>t1</textarea>"
+    "<select id='sel'><option value='a'>A</option><option value='b' selected>B</option></select>"
+    "<form id='f'><input name='n' value='x'></form>"
     "<script>"
     "var box = document.getElementById('box');"
     "console.log('MARK before', box.innerHTML);"
@@ -68,6 +72,18 @@ static const char* kPage =
     "console.log('MARK data', box.dataset.role);"
     "box.dataset.role = 'changed';"
     "console.log('MARK data-set', box.dataset.role, box.getAttribute('data-role'));"
+    "console.log('MARK value', document.getElementById('q').value);"
+    "document.getElementById('q').value = 'v1';"
+    "console.log('MARK value-set', document.getElementById('q').value);"
+    "console.log('MARK textarea', document.getElementById('ta').value);"
+    "console.log('MARK select', document.getElementById('sel').value);"
+    "console.log('MARK checked', document.getElementById('cb').checked);"
+    "document.getElementById('cb').checked = false;"
+    "console.log('MARK checked-set', document.getElementById('cb').checked);"
+    "var submits = 0;"
+    "document.getElementById('f').addEventListener('submit', function (e) { submits++; e.preventDefault(); });"
+    "document.getElementById('f').submit();"
+    "console.log('MARK submit', submits);"
     "console.log('MARK computed', document.getComputedStyle(box).getPropertyValue('color'));"
     "var order = [];"
     "document.getElementById('outer').addEventListener('click', function () { order.push('capture'); }, true);"
@@ -183,6 +199,13 @@ int main(int argc, char* argv[])
     require(contains(captured, "MARK win 1024 768"), "window inner size");
     require(contains(captured, "MARK data card"), "element.dataset reads data-* attributes");
     require(contains(captured, "MARK data-set changed changed"), "element.dataset writes data-* attributes");
+    require(contains(captured, "MARK value v0"), "input value reads the attribute");
+    require(contains(captured, "MARK value-set v1"), "input value writes back");
+    require(contains(captured, "MARK textarea t1"), "textarea value is its text");
+    require(contains(captured, "MARK select b"), "select value is the selected option");
+    require(contains(captured, "MARK checked true"), "checked reads the attribute");
+    require(contains(captured, "MARK checked-set false"), "checked writes back");
+    require(contains(captured, "MARK submit 1"), "form.submit fires a cancelable submit event");
     // #box has an inline style set earlier in the script, which must win over
     // the #box rule in the <style> block.
     require(contains(captured, "MARK computed red"), "getComputedStyle applies the cascade (inline wins)");

@@ -95,8 +95,8 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
 3. ~~`getComputedStyle`~~ — **done** (read-only resolved values).
 4. **CSS coverage**: `transform`, complete `flex`/`grid`, pseudo-elements,
    media queries, `@font-face`, `position: sticky`, transitions/animations.
-5. **Form elements**: `input`/`select`/`textarea` values, `submit` events,
-   `preventDefault`.
+5. ~~Form elements~~ — **done**: `value` on `input`/`textarea`/`select`/`option`,
+   `checked`, and `form.submit()` firing a cancelable `submit` event.
 
 ### Medium value
 

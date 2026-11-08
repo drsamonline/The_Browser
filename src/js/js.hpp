@@ -24,6 +24,9 @@ public:
     // Evaluates a script. Returns false when it threw (see error()).
     bool run(std::string const& source);
 
+    // True when the most recent dispatch had preventDefault() called on it.
+    bool last_event_prevented() const { return m_last_event_prevented; }
+
     bool has_error() const { return m_has_error; }
     std::string const& error() const { return m_error; }
 
@@ -77,6 +80,7 @@ private:
     JSValue m_window { JS_UNDEFINED };
     JSValue m_document { JS_UNDEFINED };
     bool m_has_error { false };
+    bool m_last_event_prevented { false };
     std::string m_error;
     std::vector<Timer> m_timers;
     int m_next_timer_id { 1 };
