@@ -52,15 +52,18 @@ O(n²). Worth a doc note or a cached array invalidated on mutation.
 
 ### P3 — architecture
 
-**5. Two parallel resource-loading paths.**
+**5. ~~Two parallel resource-loading paths.~~ — FIXED in batch 2.**
 `SecureResourceLoader`, `HttpResourceBackend`, `FileResourceBackend`,
 `DocumentRuntime` and `BrowserChrome` are compiled into `AetherisRendering` and
 covered by tests (`TestSecurityPolicy`, `TestResourceBackends`,
 `TestHttpState`, `TestDynamicRuntime`, `TestBrowserChrome`, `TestReleaseSmoke`),
 but the `aetheris` binary never uses them — `src/main.cpp` fetches through
 `HttpClient` directly. So the tested security policy and content-type handling
-are not on the path a real page takes. Either wire the loader into the binary or
-state plainly that these are library-only APIs.
+are not on the path a real page takes. The binary now fetches through `SecureResourceLoader`
+(via `HttpResourceBackend`) for the document and every subresource, so the
+same-origin, mixed-content, scheme and content-type policy the tests exercise is
+the one a real page gets. A resource with an unsupported scheme (e.g. `ftp://`)
+is refused by the policy and skipped.
 
 ### P4 — documentation
 

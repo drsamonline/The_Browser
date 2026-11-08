@@ -495,6 +495,15 @@ private:
         }
         auto const key = http_origin_key(parsed);
         HttpConnection connection = http_take_connection(key);
+
+        // A pooled keep-alive connection can be closed by the server while
+        // idle. Probe it before deciding whether to reconnect, otherwise the
+        // request is written into a dead (or already-reset) socket.
+        if (connection.socket && !connection.socket->is_alive()) {
+            connection.socket.reset();
+            connection.tls.reset();
+        }
+
         if (!connection.socket && !connection.tls) {
             if (parsed.scheme == "https") {
                 if (!TlsStream::available()) {
@@ -518,13 +527,6 @@ private:
                 }
                 connection.socket = std::move(socket);
             }
-        }
-
-        // A pooled keep-alive connection can be closed by the server while
-        // idle; probe before use so the request is not sent into a dead socket.
-        if (connection.socket && !connection.socket->is_alive()) {
-            connection.socket.reset();
-            connection.tls.reset();
         }
 
         HttpTransport transport;

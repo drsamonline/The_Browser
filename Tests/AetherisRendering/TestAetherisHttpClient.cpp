@@ -309,6 +309,55 @@ static uint16_t start_cookie_server(std::thread& server_thread, std::vector<std:
     return port;
 }
 
+
+// Accepts two connections, answering each with keep-alive headers but closing
+// the socket afterwards. The client pools the first connection and must notice
+// it is dead and reconnect instead of writing into it.
+static uint16_t start_closing_server(std::thread& server_thread, int& accepted)
+{
+    int listener = ::socket(AF_INET, SOCK_STREAM, 0);
+    require(listener >= 0, "closing listener");
+    int reuse = 1;
+    ::setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    struct sockaddr_in address {};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = 0;
+    require(::bind(listener, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) == 0, "closing bind");
+    require(::listen(listener, 4) == 0, "closing listen");
+    socklen_t length = sizeof(address);
+    require(::getsockname(listener, reinterpret_cast<struct sockaddr*>(&address), &length) == 0, "closing getsockname");
+    uint16_t port = ntohs(address.sin_port);
+
+    server_thread = std::thread([listener, &accepted]() {
+        for (int index = 0; index < 2; ++index) {
+            fd_set readable;
+            FD_ZERO(&readable);
+            FD_SET(listener, &readable);
+            struct timeval timeout {};
+            timeout.tv_sec = 2;
+            if (::select(listener + 1, &readable, nullptr, nullptr, &timeout) <= 0)
+                break;
+            int connection = ::accept(listener, nullptr, nullptr);
+            if (connection < 0)
+                break;
+            ++accepted;
+            char buffer[2048];
+            ::recv(connection, buffer, sizeof(buffer), 0);
+            std::string body = "ok";
+            std::string response = "HTTP/1.1 200 OK\r\n";
+            response += "Content-Length: " + std::to_string(body.size()) + "\r\n";
+            // No Connection: close, so the client keeps the connection pooled.
+            response += "\r\n";
+            response += body;
+            ::send(connection, response.data(), response.size(), 0);
+            ::close(connection); // ... and then closes it anyway
+        }
+        ::close(listener);
+    });
+    return port;
+}
+
 int main()
 {
     require(Socket::initialize() == SocketError::None, "socket init");
@@ -399,6 +448,22 @@ int main()
         require(seen[1].find("s=3") == std::string::npos, "cookie: Secure cookie is not sent over http");
         require(seen[1].find("gone=4") == std::string::npos, "cookie: expired cookie is dropped");
         require(seen[2].find("b=2") != std::string::npos, "cookie: Path=/other cookie is sent to /other");
+    }
+
+    // A pooled connection closed by the server must be detected and replaced.
+    {
+        HttpClient::clear_connections();
+        HttpClient::clear_cache();
+        HttpClient::clear_cookies();
+        std::thread server;
+        int accepted = 0;
+        auto port = start_closing_server(server, accepted);
+        auto base = "http://127.0.0.1:" + std::to_string(port);
+        auto first = HttpClient::get(base + "/one");
+        auto second = HttpClient::get(base + "/two");
+        server.join();
+        require(first.body == "ok" && second.body == "ok", "stale keep-alive: both requests succeed");
+        require(accepted == 2, "stale keep-alive: the dead connection is replaced");
     }
 
     Socket::cleanup();

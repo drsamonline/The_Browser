@@ -13,7 +13,10 @@
 #include "render_document.hpp"
 #include "style.hpp"
 #include "image_output.hpp"
+#include "http_resource_backend.hpp"
+#include "resource_backend.hpp"
 #include "resource_loader.hpp"
+#include "secure_resource_loader.hpp"
 #include "resource.hpp"
 #include "url.hpp"
 
@@ -125,6 +128,42 @@ static int run_smoke_test() {
 
 // Headless fetch mode: resolve and GET a URL over the network, then report the
 // result. Validates the networking path without needing a display server.
+// Every network fetch goes through SecureResourceLoader so the security policy
+// that the tests exercise is the one a real page actually gets.
+namespace {
+
+struct SecureFetcher {
+    rendering::ResourceCache cache;
+    std::shared_ptr<rendering::HttpResourceBackend> backend;
+    std::shared_ptr<rendering::ResourceLoader> loader;
+    std::shared_ptr<rendering::SecureResourceLoader> secure;
+
+    explicit SecureFetcher(rendering::Url const& document_url)
+    {
+        backend = std::make_shared<rendering::HttpResourceBackend>([](rendering::HttpRequest const& request) {
+            rendering::HttpResponse out;
+            auto response = network::HttpClient::get(request.url.serialized());
+            out.status = response.status;
+            out.body.assign(response.body.begin(), response.body.end());
+            out.message = response.error;
+            out.content_type = response.header("Content-Type");
+            for (auto const& header : response.headers)
+                out.headers[header.name] = header.value;
+            return out;
+        });
+        loader = std::make_shared<rendering::ResourceLoader>(cache,
+            std::vector<std::shared_ptr<rendering::ResourceBackend>> { backend });
+        secure = std::make_shared<rendering::SecureResourceLoader>(*loader, document_url);
+    }
+
+    rendering::ResourceLoadResult fetch(rendering::ResourceRequestContext context, rendering::Url const& url)
+    {
+        return secure->load(context, url);
+    }
+};
+
+} // namespace
+
 static void serialize_html(rendering::DomNode const& node, std::string& out);
 
 // Prints the parsed DOM after scripts have run, so layout/DOM bugs can be
@@ -134,15 +173,18 @@ static int run_dump_dom(std::string const& url) {
         std::cerr << "Failed to initialize network subsystem" << std::endl;
         return 1;
     }
-    auto response = network::HttpClient::get(url);
+    rendering::Url document_url = rendering::Url::parse(url);
+    SecureFetcher fetcher(document_url);
+    auto loaded = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
     network::Socket::cleanup();
 
-    if (!response.error.empty()) {
-        std::cerr << "Fetch failed: " << response.error << std::endl;
+    if (!loaded.succeeded()) {
+        std::cerr << "Fetch failed: " << loaded.message << std::endl;
         return 1;
     }
+    std::string body(loaded.resource->bytes.begin(), loaded.resource->bytes.end());
 
-    auto document = rendering::Document::parse_html(response.body);
+    auto document = rendering::Document::parse_html(body);
     std::string out;
     serialize_html(document.root(), out);
     std::cout << out << std::endl;
@@ -155,18 +197,18 @@ static int run_fetch(std::string const& url) {
         return 1;
     }
 
-    auto response = network::HttpClient::get(url);
+    rendering::Url document_url = rendering::Url::parse(url);
+    SecureFetcher fetcher(document_url);
+    auto loaded = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
     network::Socket::cleanup();
 
-    if (!response.error.empty()) {
-        std::cerr << "Fetch failed: " << response.error << std::endl;
+    if (!loaded.succeeded()) {
+        std::cerr << "Fetch failed: " << loaded.message << std::endl;
         return 1;
     }
-
-    std::cout << response.status_line << std::endl;
-    std::cout << "  Content-Type: " << response.header("Content-Type") << std::endl;
-    std::cout << "  Bytes: " << response.body.size() << std::endl;
-    return response.ok() ? 0 : 2;
+    std::cout << "OK " << loaded.resource->url << std::endl;
+    std::cout << "  Bytes: " << loaded.resource->bytes.size() << std::endl;
+    return 0;
 }
 
 
@@ -1287,17 +1329,15 @@ static int run_render(std::string const& url, std::string const& output_path, st
         return 1;
     }
 
-    auto response = network::HttpClient::get(url);
-    if (!response.error.empty()) {
+    rendering::Url document_url = rendering::Url::parse(url);
+    SecureFetcher fetcher(document_url);
+    auto document_result = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
+    if (!document_result.succeeded()) {
         network::Socket::cleanup();
-        std::cerr << "Fetch failed: " << response.error << std::endl;
+        std::cerr << "Fetch failed: " << document_result.message << std::endl;
         return 1;
     }
-    if (!response.ok()) {
-        network::Socket::cleanup();
-        std::cerr << "HTTP error: " << response.status_line << std::endl;
-        return 2;
-    }
+    std::string document_body(document_result.resource->bytes.begin(), document_result.resource->bytes.end());
 
     // Discover and fetch the document's linked resources: stylesheets are
     // concatenated into the cascade, images are cached for the engine to resolve.
@@ -1307,30 +1347,33 @@ static int run_render(std::string const& url, std::string const& output_path, st
     rendering::ResourceData document_resource {
         rendering::ResourceType::Document,
         url,
-        std::vector<unsigned char>(response.body.begin(), response.body.end()),
+        std::vector<unsigned char>(document_body.begin(), document_body.end()),
     };
 
     std::string css;
     std::size_t fetched_count = 0;
     for (auto const& dependency : loader.discover_dependencies(document_resource, base)) {
-        auto fetched = network::HttpClient::get(dependency.serialized());
-        if (!fetched.error.empty() || !fetched.ok())
-            continue;
-        ++fetched_count;
         std::string path = dependency.path();
         bool is_css = path.size() >= 4 && path.compare(path.size() - 4, 4, ".css") == 0;
-        std::vector<unsigned char> bytes(fetched.body.begin(), fetched.body.end());
+        auto fetched = fetcher.fetch(is_css ? rendering::ResourceRequestContext::Style
+                                            : rendering::ResourceRequestContext::Image,
+            dependency);
+        if (!fetched.succeeded())
+            continue;
+        ++fetched_count;
+        std::string fetched_text(fetched.resource->bytes.begin(), fetched.resource->bytes.end());
+        std::vector<unsigned char> bytes(fetched.resource->bytes.begin(), fetched.resource->bytes.end());
         if (is_css) {
             if (!css.empty())
                 css.push_back('\n');
-            css += fetched.body;
+            css += fetched_text;
             resources.put({ rendering::ResourceType::Stylesheet, dependency.serialized(), std::move(bytes) });
         } else {
             resources.put({ rendering::ResourceType::Image, dependency.serialized(), std::move(bytes) });
         }
     }
     // Inline <style> blocks join the cascade after the linked stylesheets.
-    for (auto const& block : extract_styles(response.body)) {
+    for (auto const& block : extract_styles(document_body)) {
         if (!css.empty())
             css.push_back('\n');
         css += block;
@@ -1339,7 +1382,7 @@ static int run_render(std::string const& url, std::string const& output_path, st
     network::Socket::cleanup();
 
     // Parse the document so inline scripts can read and mutate it.
-    std::string html = response.body;
+    std::string html = document_body;
     rendering::Document document = rendering::Document::parse_html(html);
 
     rendering::CssParser computed_parser;
@@ -1486,7 +1529,7 @@ static int run_render(std::string const& url, std::string const& output_path, st
         return 1;
     }
 
-    std::cout << "Rendered " << response.body.size() << " bytes of HTML and "
+    std::cout << "Rendered " << document_body.size() << " bytes of HTML and "
               << css.size() << " bytes of CSS (" << fetched_count << " linked resources) to "
               << output_path << std::endl;
 

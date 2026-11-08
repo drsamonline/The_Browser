@@ -27,6 +27,8 @@ out. Everything below is covered by the 51-test CTest suite.
   and `getComputedStyle(el).getPropertyValue(name)`.
 - **Networking.** RFC cookies (`Domain`/`Path`/`Expires`/`Max-Age`/`Secure`/
   `HttpOnly`), a keep-alive liveness probe, and `aetheris --dump-dom <url>`.
+- **The security policy is on the real fetch path.** The document and every subresource now go through `SecureResourceLoader` (backed by `HttpResourceBackend`) instead of calling the HTTP client directly, so unsupported schemes, mixed content and file-document network access are actually refused for a rendered page.
+- **Fixed a crash introduced with the keep-alive probe:** the liveness check ran after the reconnect decision, so a pooled connection closed by the server was reset to null and the next request aborted. The probe now runs before the decision, with a regression test (a server that closes a pooled connection) verified to fail without the fix.
 - **Data tables** taken from upstream: the full HTML5 character-reference table
   and the 148 CSS named colours.
 - **Build.** Vendored gumbo and QuickJS build with `-w` so their warnings do not
