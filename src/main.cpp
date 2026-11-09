@@ -242,7 +242,10 @@ static void set_node_text(rendering::DomNode& node, std::string const& text)
     node.append_child(std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", text));
 }
 
-std::unique_ptr<rendering::DomNode> detach_child(rendering::DomNode& parent, rendering::DomNode* child)
+// File-local: used by the DOM manipulation entry points below and nowhere else.
+// Without `static` this is an external symbol with no previous declaration,
+// which -Wmissing-declarations (and -Werror) reject.
+static std::unique_ptr<rendering::DomNode> detach_child(rendering::DomNode& parent, rendering::DomNode* child)
 {
     for (auto it = parent.children.begin(); it != parent.children.end(); ++it) {
         if (it->get() == child) {
