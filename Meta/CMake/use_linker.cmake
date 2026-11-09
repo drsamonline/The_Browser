@@ -19,6 +19,12 @@ if (NOT APPLE AND NOT ANDROID AND NOT VCPKG_TARGET_ANDROID AND NOT WIN32 AND NOT
 endif()
 
 if (WIN32 AND NOT LAGOM_USE_LINKER)
+    # Unset means "choose": every other linker mode in this file defaults rather
+    # than failing, and the Windows standalone job does not pass the flag, so an
+    # empty value used to stop the build at configure time.
+    if (NOT AETHERIS_WINDOWS_LINKER_MODE)
+        set(AETHERIS_WINDOWS_LINKER_MODE "AUTO")
+    endif()
     string(TOUPPER "${AETHERIS_WINDOWS_LINKER_MODE}" aetheris_windows_linker_mode)
 
     if (NOT aetheris_windows_linker_mode MATCHES "^(AUTO|SYSTEM|LLD)$")

@@ -70,7 +70,12 @@ jobs:
       # both with the X11 backend (graceful fallback when no display exists)
       # and the headless backend (when libX11 dev packages are absent).
       - name: Smoke-run the aetheris executable
-        run: ./build-standalone/bin/aetheris --smoke-test
+        # A runner has no display, and the smoke run creates a window. Without a
+        # virtual one the binary exits with "Failed to create window" and the job
+        # is red for the runner's sake, not the code's.
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb
+          xvfb-run -a ./build-standalone/bin/aetheris --smoke-test
 
   # Fast MSVC-based validation of the Aetheris targets on Windows WITHOUT the
   # multi-hour vcpkg bootstrap (the standalone profile has no hard external
