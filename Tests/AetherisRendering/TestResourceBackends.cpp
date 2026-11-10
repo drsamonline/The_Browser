@@ -4,14 +4,26 @@
 #include "resource_loader.hpp"
 
 #include <cassert>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 
 using namespace aetheris::rendering;
 
+// Progress markers. This test timed out at 180 s on Windows with no output at all,
+// which says nothing about where it was. Each step prints and flushes before it
+// runs, so the next run names the step that hung instead of the whole file.
+static void step(char const* name)
+{
+    std::fprintf(stderr, "[step] %s\n", name);
+    std::fflush(stderr);
+}
+
 int main()
 {
+    step("temp dir");
+
     auto temp = std::filesystem::temp_directory_path() / "aetheris_resource_backend_test";
     std::filesystem::create_directories(temp);
     auto html = temp / "index.html";
@@ -30,24 +42,31 @@ int main()
         return Url("file://" + path.generic_string());
 #endif
     };
+    step("file urls");
     Url html_url = file_url(html);
     Url css_url = file_url(css);
+    step("content types");
     assert(classify_content_type(html_url).resource_type == ResourceType::Document);
     assert(classify_content_type(css_url).resource_type == ResourceType::Stylesheet);
     assert(classify_content_type(Url("file:///tmp/blob.bin")).resource_type == ResourceType::Binary);
 
+    step("loader construct");
     ResourceCache cache;
     ResourceLoader loader(cache, std::vector<std::shared_ptr<ResourceBackend>> { std::make_shared<FileResourceBackend>() });
+    step("load document");
     auto document = loader.load(ResourceType::Document, html_url);
     assert(document.succeeded());
     assert(cache.contains(html_url.serialized()));
+    step("load stylesheet");
     auto stylesheet = loader.load(ResourceType::Stylesheet, css_url);
     assert(stylesheet.succeeded());
     auto again = loader.load(html_url);
     assert(again.succeeded());
+    step("load missing");
     auto missing = loader.load(Url("file:///definitely/not/aetheris-resource.html"));
     assert(!missing.succeeded());
 
+    step("navigate");
     NavigationController navigation;
     NavigationRequest request { .document_url = html_url, .stylesheet_url = css_url, .viewport_width = 640.0f };
     auto result = navigation.navigate(request, loader);
@@ -55,6 +74,8 @@ int main()
     assert(navigation.has_document());
     assert(navigation.current_url().serialized() == html_url.serialized());
 
+    step("cleanup");
     std::filesystem::remove_all(temp);
+    std::fprintf(stderr, "[step] done\n");
     return 0;
 }
