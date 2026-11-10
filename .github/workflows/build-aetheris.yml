@@ -63,7 +63,7 @@ jobs:
         run: cmake --build build-standalone --parallel
 
       - name: Test
-        run: ctest --test-dir build-standalone --output-on-failure --no-tests=error
+        run: ctest --test-dir build-standalone --output-on-failure --no-tests=error --timeout 180
 
       # Headless smoke run: `--smoke-test` initializes every subsystem, runs
       # a bounded frame loop and exits 0. No xvfb needed - the binary works
@@ -111,7 +111,11 @@ jobs:
         run: cmake --build build-standalone --config Debug --parallel
 
       - name: Test
-        run: ctest --test-dir build-standalone -C Debug --output-on-failure --no-tests=error
+        # --timeout: a test that hangs names itself in a minute instead of
+        # holding the job open for the runner's whole hour. The first Windows run
+        # of this suite sat in Test for 45 minutes with no indication of which
+        # test it was on.
+        run: ctest --test-dir build-standalone -C Debug --output-on-failure --no-tests=error --timeout 180
 
       - name: Smoke-run the aetheris executable
         run: ./build-standalone/bin/Debug/aetheris.exe --smoke-test
