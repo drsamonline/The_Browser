@@ -53,6 +53,14 @@ int main()
     step("loader construct");
     ResourceCache cache;
     ResourceLoader loader(cache, std::vector<std::shared_ptr<ResourceBackend>> { std::make_shared<FileResourceBackend>() });
+    step("url accessors");
+    { auto p = html_url.path(); auto sz = html_url.serialized(); std::fprintf(stderr, "[step]   path=%s serialized=%s\n", p.c_str(), sz.c_str()); std::fflush(stderr); }
+    step("backend supports");
+    { FileResourceBackend backend; std::fprintf(stderr, "[step]   supports=%d\n", (int)backend.supports(html_url)); std::fflush(stderr); }
+    step("backend load");
+    { FileResourceBackend backend; auto r = backend.load(html_url); std::fprintf(stderr, "[step]   state=%d\n", (int)r.state); std::fflush(stderr); }
+    step("classify");
+    { auto ct = classify_content_type(html_url); std::fprintf(stderr, "[step]   type=%d\n", (int)ct.resource_type); std::fflush(stderr); }
     step("load document");
     auto document = loader.load(ResourceType::Document, html_url);
     assert(document.succeeded());
