@@ -9,7 +9,9 @@
 
 using namespace aetheris::network;
 
-static void require(bool condition, char const* message)
+// [[maybe_unused]]: the calls sit in POSIX-only blocks, so on Windows this helper
+// is unreferenced and C4505 (removed as unused) is fatal under /WX.
+[[maybe_unused]] static void require(bool condition, char const* message)
 {
     if (!condition) {
         std::fprintf(stderr, "FAILED: %s\n", message);

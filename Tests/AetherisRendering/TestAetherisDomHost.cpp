@@ -14,7 +14,9 @@
 #include <thread>
 #include <vector>
 
-static void require(bool condition, char const* message)
+// [[maybe_unused]]: used only in blocks that do not compile on every platform;
+// C4505 is fatal under /WX.
+[[maybe_unused]] static void require(bool condition, char const* message)
 {
     if (!condition) {
         std::fprintf(stderr, "FAILED: %s\n", message);
@@ -22,7 +24,7 @@ static void require(bool condition, char const* message)
     }
 }
 
-static bool contains(std::string const& haystack, std::string const& needle)
+[[maybe_unused]] static bool contains(std::string const& haystack, std::string const& needle)
 {
     return haystack.find(needle) != std::string::npos;
 }

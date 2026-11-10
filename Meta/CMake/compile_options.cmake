@@ -15,6 +15,19 @@ macro(add_cxx_compile_options)
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,ASM>:${args}>)
 endmacro()
 
+# A warning flag that only exists for C++. A C compiler rejects these outright
+# ("command-line option '-Wno-literal-suffix' is valid for C++/ObjC++ but not for
+# C"), and with -Werror that is a failed build rather than a warning: on
+# 2026-11-09 this stopped the Linux and Windows standalone builds dead, on
+# third_party/gumbo/*.c, which is C.
+macro(add_cxx_only_compile_options)
+    set(args "")
+    foreach(arg ${ARGN})
+        string(APPEND args ${arg}$<SEMICOLON>)
+    endforeach()
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:${args}>)
+endmacro()
+
 macro(add_cxx_compile_definitions)
     set(args "")
     foreach(arg ${ARGN})
@@ -106,7 +119,7 @@ if (NOT MSVC)
     add_cxx_compile_options(-Wno-shorten-64-to-32)
     add_cxx_compile_options(-Wno-unknown-warning-option)
     add_cxx_compile_options(-Wno-unused-command-line-argument)
-    add_cxx_compile_options(-Wno-user-defined-literals)
+    add_cxx_only_compile_options(-Wno-user-defined-literals)
 
     add_cxx_compile_options(-Werror)
 else()
@@ -138,13 +151,13 @@ endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CXX_SIMULATE_ID MATCHES "MSVC")
     # Clang's default constexpr-steps limit is 1048576(2^20), GCC doesn't have one
-    add_cxx_compile_options(-fconstexpr-steps=16777216)
+    add_cxx_only_compile_options(-fconstexpr-steps=16777216)
 
     add_cxx_compile_options(-Wmissing-prototypes)
 
-    add_cxx_compile_options(-Wno-implicit-const-int-float-conversion)
-    add_cxx_compile_options(-Wno-user-defined-literals)
-    add_cxx_compile_options(-Wno-unqualified-std-cast-call)
+    add_cxx_only_compile_options(-Wno-implicit-const-int-float-conversion)
+    add_cxx_only_compile_options(-Wno-user-defined-literals)
+    add_cxx_only_compile_options(-Wno-unqualified-std-cast-call)
 
     # Used for the #embed directive.
     # FIXME: Remove this once #embed is no longer an extension.
@@ -152,8 +165,8 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CXX_SIMULATE_ID MATCHES 
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # Only ignore expansion-to-defined for g++, clang's implementation doesn't complain about function-like macros
     add_cxx_compile_options(-Wno-expansion-to-defined)
-    add_cxx_compile_options(-Wno-literal-suffix)
-    add_cxx_compile_options(-Wno-unqualified-std-cast-call)
+    add_cxx_only_compile_options(-Wno-literal-suffix)
+    add_cxx_only_compile_options(-Wno-unqualified-std-cast-call)
     add_cxx_compile_options(-Wvla)
 
     # FIXME: These warnings trigger on Function and ByteBuffer in GCC (only when LTO is disabled...)
@@ -162,7 +175,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     add_cxx_compile_options(-Wno-stringop-overflow)
 
     # FIXME: This warning seems useful but has too many false positives with GCC 13.
-    add_cxx_compile_options(-Wno-dangling-reference)
+    add_cxx_only_compile_options(-Wno-dangling-reference)
 elseif (MSVC)
     # Warning options and defines
     add_cxx_compile_options(/W4)
@@ -185,6 +198,15 @@ elseif (MSVC)
     # Compiler options
     # disable exceptions
     add_cxx_compile_options(/EHs-)
+    # ...but the standard library's own headers use try/catch, so C4530 fires
+    # inside <__msvc_ostream.hpp> and /WX turns a header's warning into our failed
+    # build. Silence that one warning; the project still compiles with unwind
+    # semantics off, which is what /EHs- above is for.
+    add_cxx_compile_options(/wd4530)
+    # The sources carry UTF-8 (arrows, dashes, non-ASCII in comments and test
+    # strings). Without this MSVC reads them in the system code page and emits
+    # C4566 "character cannot be represented", which /WX makes fatal.
+    add_cxx_compile_options(/utf-8)
     # disable floating-point expression contraction
     add_cxx_compile_options(/fp:precise)
     # reduces object size

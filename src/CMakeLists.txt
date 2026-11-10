@@ -174,6 +174,15 @@ add_library(AetherisGumbo STATIC
 target_include_directories(AetherisGumbo
     SYSTEM PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/third_party/gumbo>
 )
+
+if (MSVC)
+    # gumbo includes <strings.h>, which MSVC does not ship; compat/strings.h maps
+    # strcasecmp/strncasecmp onto _stricmp/_strnicmp. MSVC only, so every other
+    # platform keeps the real system header.
+    target_include_directories(AetherisGumbo PRIVATE
+        ${CMAKE_SOURCE_DIR}/third_party/gumbo/compat
+    )
+endif()
 set_target_properties(AetherisGumbo PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)
 
 # Vendored third-party code is not held to this project's warning set (-Werror).
@@ -205,7 +214,12 @@ target_compile_options(AetherisQuickJS PRIVATE
     $<$<NOT:$<C_COMPILER_ID:MSVC>>:-w>
 )
 
-target_link_libraries(AetherisQuickJS PUBLIC m)
+# `m` is the POSIX maths library; on Windows the maths functions live in the CRT
+# and there is no m.lib to link, so the link step failed with
+#   lld-link: error: could not open 'm.lib': no such file or directory
+if (NOT WIN32)
+    target_link_libraries(AetherisQuickJS PUBLIC m)
+endif()
 
 # ---------------------------------------------------------------------------
 # The Aetheris browser executable: main entry point over the prototype runtime.

@@ -21,12 +21,14 @@ bool RoundedRect::contains(float x, float y) const
     if (value.radius <= 0)
         return true;
 
-    float radius = value.radius;
-    float cx = std::clamp(x, r.x + radius, r.x + r.width - radius);
-    float cy = std::clamp(y, r.y + radius, r.y + r.height - radius);
+    // `rad`, not `radius`: this is a member function and RoundedRect::radius is in
+    // scope, so a local called `radius` shadows it (MSVC C4458, fatal under /WX).
+    float rad = value.radius;
+    float cx = std::clamp(x, r.x + rad, r.x + r.width - rad);
+    float cy = std::clamp(y, r.y + rad, r.y + r.height - rad);
     float dx = x - cx;
     float dy = y - cy;
-    return dx * dx + dy * dy <= radius * radius;
+    return dx * dx + dy * dy <= rad * rad;
 }
 
 } // namespace aetheris::rendering

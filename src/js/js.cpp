@@ -366,7 +366,10 @@ Interpreter::~Interpreter()
 }
 
 
-JSValue make_event(JSContext* context, std::string const& type, JSValueConst target)
+// File-local: the only caller is dispatch below, in this file. Without `static`
+// it is an external symbol with no previous declaration, which
+// -Wmissing-declarations (and -Werror) reject.
+static JSValue make_event(JSContext* context, std::string const& type, JSValueConst target)
 {
     auto* state = new EventState;
     state->target = JS_DupValue(context, target);

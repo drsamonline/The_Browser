@@ -17,8 +17,14 @@
 #include <cstdint>
 
 #if AETHERIS_PLATFORM_WINDOWS
+    // Guarded: the build defines these too, and a second identical #define is
+    // C4005 ("macro redefinition") - a warning, which /WX makes fatal.
+    #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
     #define NOMINMAX
+    #endif
     #include <windows.h>
 #elif AETHERIS_PLATFORM_MACOS
     // Forward declarations for Objective-C types
@@ -300,6 +306,13 @@ private:
     HWND m_hwnd{nullptr};
     HDC m_hdc{nullptr};
     bool m_wc_registered{false};
+
+    // Saved window state for the fullscreen toggle. This declaration used to sit
+    // inside toggle_fullscreen()'s own body, below a stray `private:` — so the
+    // function referred to a member that was not in scope (MSVC C2065 at 506/521)
+    // and `private:` was a syntax error (C2059). Nothing on Linux compiled this
+    // block, which is why only Windows was red.
+    WINDOWPLACEMENT m_window_placement{sizeof(WINDOWPLACEMENT)};
     
     static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     
@@ -520,9 +533,6 @@ inline void WindowManager::toggle_fullscreen() noexcept {
         SetWindowLong(m_hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
         SetWindowPlacement(m_hwnd, &m_window_placement);
     }
-    
-private:
-    WINDOWPLACEMENT m_window_placement{sizeof(WINDOWPLACEMENT)};
 }
 
 inline void WindowManager::draw_debug_overlay(std::string_view text) noexcept {
