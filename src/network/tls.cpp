@@ -48,7 +48,15 @@ void TlsStream::close()
         m_ctx = nullptr;
     }
     if (m_fd >= 0) {
+        // A socket, not a file descriptor: Windows closes it with closesocket()
+        // and has no ::close at all, which is also why the unqualified name
+        // resolved to TlsStream::close and MSVC reported "does not take 1
+        // argument". Same idiom as socket_abstraction.hpp.
+#if AETHERIS_PLATFORM_WINDOWS
+        ::closesocket(m_fd);
+#else
         ::close(m_fd);
+#endif
         m_fd = -1;
     }
 }

@@ -17,8 +17,14 @@
 #include <cstdint>
 
 #if AETHERIS_PLATFORM_WINDOWS
+    // Guarded: the build defines these too, and a second identical #define is
+    // C4005 ("macro redefinition") - a warning, which /WX makes fatal.
+    #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
     #define NOMINMAX
+    #endif
     #include <windows.h>
 #elif AETHERIS_PLATFORM_MACOS
     // Forward declarations for Objective-C types
