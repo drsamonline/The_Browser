@@ -19,8 +19,19 @@ int main()
     { std::ofstream out(html); out << "<div>backend document</div>"; }
     { std::ofstream out(css); out << "div { width: 80px; height: 20px; }"; }
 
-    Url html_url("file://" + html.generic_string());
-    Url css_url("file://" + css.generic_string());
+    // Three slashes on Windows: a path there is C:/Users/..., so "file://" + path
+    // gives "file://C:/Users/..." and the parser reads "C:" as the HOST. The
+    // loader then tries to fetch that host and the test hangs on the resolve
+    // (Timeout 180 on the first Windows run that reached this point).
+    auto file_url = [](std::filesystem::path const& path) {
+#if defined(_WIN32)
+        return Url("file:///" + path.generic_string());
+#else
+        return Url("file://" + path.generic_string());
+#endif
+    };
+    Url html_url = file_url(html);
+    Url css_url = file_url(css);
     assert(classify_content_type(html_url).resource_type == ResourceType::Document);
     assert(classify_content_type(css_url).resource_type == ResourceType::Stylesheet);
     assert(classify_content_type(Url("file:///tmp/blob.bin")).resource_type == ResourceType::Binary);
