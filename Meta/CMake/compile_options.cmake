@@ -198,6 +198,11 @@ elseif (MSVC)
     # Compiler options
     # disable exceptions
     add_cxx_compile_options(/EHs-)
+    # ...but the standard library's own headers use try/catch, so C4530 fires
+    # inside <__msvc_ostream.hpp> and /WX turns a header's warning into our failed
+    # build. Silence that one warning; the project still compiles with unwind
+    # semantics off, which is what /EHs- above is for.
+    add_cxx_compile_options(/wd4530)
     # disable floating-point expression contraction
     add_cxx_compile_options(/fp:precise)
     # reduces object size
