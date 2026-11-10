@@ -14,6 +14,21 @@
 #include <string>
 #include <thread>
 
+#if defined(_WIN32)
+// Skipped on Windows. This test stands up an in-process socket server on POSIX
+// headers (netinet/in.h, sys/socket.h, unistd.h) and performs a real handshake
+// against it. Porting it to Winsock is its own change; until then it compiles to
+// a skip and says so, rather than failing to build.
+#include <cstdio>
+
+int main()
+{
+    std::fprintf(stderr, "SKIP: TestAetherisTls needs POSIX sockets\n");
+    return 0;
+}
+
+#else
+
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -109,3 +124,5 @@ int main()
     ::close(listen_fd);
     return 0;
 }
+
+#endif // !_WIN32

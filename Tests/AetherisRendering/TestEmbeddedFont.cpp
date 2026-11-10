@@ -22,7 +22,11 @@ static void require(bool condition, char const* message)
 int main()
 {
     // Unset any override so the embedded font is the one under test.
+#if defined(_WIN32)
+    _putenv_s("AETHERIS_FONT", "");   // no unsetenv on Windows
+#else
     ::unsetenv("AETHERIS_FONT");
+#endif
 
     TtfFont const* font = active_font();
     require(font != nullptr, "an embedded font is available without any system font");
