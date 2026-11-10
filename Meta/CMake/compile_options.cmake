@@ -203,6 +203,10 @@ elseif (MSVC)
     # build. Silence that one warning; the project still compiles with unwind
     # semantics off, which is what /EHs- above is for.
     add_cxx_compile_options(/wd4530)
+    # The sources carry UTF-8 (arrows, dashes, non-ASCII in comments and test
+    # strings). Without this MSVC reads them in the system code page and emits
+    # C4566 "character cannot be represented", which /WX makes fatal.
+    add_cxx_compile_options(/utf-8)
     # disable floating-point expression contraction
     add_cxx_compile_options(/fp:precise)
     # reduces object size
