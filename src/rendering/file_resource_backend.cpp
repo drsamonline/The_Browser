@@ -1,6 +1,7 @@
 #include "file_resource_backend.hpp"
 #include "content_type.hpp"
 
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 
@@ -15,7 +16,18 @@ ResourceBackendResult FileResourceBackend::load(Url const& url)
 {
     if (!supports(url))
         return { ResourceBackendState::Unsupported, std::nullopt, "File backend only supports file:// URLs" };
-    std::filesystem::path path(url.path());
+    auto raw_path = url.path();
+#if defined(_WIN32)
+    // A Windows file URL is file:///C:/dir/file, and path() gives "/C:/dir/file".
+    // std::filesystem::path reads a leading separator as "root of the current
+    // drive", so that became \C:\dir\file and every file:// load failed with
+    // "does not exist" — which is why the resource test asserted and then sat in
+    // the CRT's abort dialog until ctest killed it at 180 s.
+    if (raw_path.size() >= 3 && raw_path[0] == '/'
+        && std::isalpha(static_cast<unsigned char>(raw_path[1])) && raw_path[2] == ':')
+        raw_path.erase(raw_path.begin());
+#endif
+    std::filesystem::path path(raw_path);
     if (path.empty())
         return { ResourceBackendState::Missing, std::nullopt, "File URL has no path" };
     std::error_code ec;
