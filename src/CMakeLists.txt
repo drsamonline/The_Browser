@@ -214,7 +214,12 @@ target_compile_options(AetherisQuickJS PRIVATE
     $<$<NOT:$<C_COMPILER_ID:MSVC>>:-w>
 )
 
-target_link_libraries(AetherisQuickJS PUBLIC m)
+# `m` is the POSIX maths library; on Windows the maths functions live in the CRT
+# and there is no m.lib to link, so the link step failed with
+#   lld-link: error: could not open 'm.lib': no such file or directory
+if (NOT WIN32)
+    target_link_libraries(AetherisQuickJS PUBLIC m)
+endif()
 
 # ---------------------------------------------------------------------------
 # The Aetheris browser executable: main entry point over the prototype runtime.
