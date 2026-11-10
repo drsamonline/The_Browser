@@ -48,21 +48,23 @@ int main()
     // Media queries are resolved against the screen viewport (1024x768).
     {
         CssParser parser;
-        auto sheet = parser.parse(
+        // `media_sheet`, not `sheet`: an outer sheet is in scope here and C4456 is
+        // fatal under /WX.
+        auto media_sheet = parser.parse(
             "p { color: black; }"
             "@media screen { p { color: green; } }"
             "@media print { p { color: red; } }"
             "@media (min-width: 600px) { #a { color: blue; } }"
             "@media (max-width: 500px) { #b { color: orange; } }");
         // screen and min-width survive; print and max-width are dropped.
-        require(sheet.rules.size() == 3, "media queries filter by the viewport");
+        require(media_sheet.rules.size() == 3, "media queries filter by the viewport");
         bool has_blue = false;
-        for (auto const& rule : sheet.rules)
+        for (auto const& rule : media_sheet.rules)
             for (auto const& selector : rule.selectors)
                 if (selector == "#a")
                     has_blue = true;
         require(has_blue, "min-width rule is kept");
-        for (auto const& rule : sheet.rules)
+        for (auto const& rule : media_sheet.rules)
             for (auto const& selector : rule.selectors) {
                 require(selector != "#b", "max-width rule is dropped");
                 require(selector.rfind("@media", 0) != 0, "media blocks do not leak as selectors");

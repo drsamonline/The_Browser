@@ -1825,7 +1825,9 @@ static int run_render(std::string const& url, std::string const& output_path, st
     // document / window surface
     {
         g_document_root = &document.root();
-        auto* html = find_element(document.root(), "html");
+        // `html_element`, not `html`: an outer std::string html is in scope here
+        // and C4456 (declaration hides previous local) is fatal under /WX.
+        auto* html_element = find_element(document.root(), "html");
         auto* body = find_element(document.root(), "body");
         auto* head = find_element(document.root(), "head");
         JSValue document_object = js.document_object();
@@ -1833,8 +1835,8 @@ static int run_render(std::string const& url, std::string const& output_path, st
             JS_SetPropertyStr(js.context(), document_object, "body", dom.handle_for(body));
         if (head)
             JS_SetPropertyStr(js.context(), document_object, "head", dom.handle_for(head));
-        if (html)
-            JS_SetPropertyStr(js.context(), document_object, "documentElement", dom.handle_for(html));
+        if (html_element)
+            JS_SetPropertyStr(js.context(), document_object, "documentElement", dom.handle_for(html_element));
 
         JS_SetPropertyStr(js.context(), document_object, "getComputedStyle",
             JS_NewCFunction(js.context(), js_get_computed_style, "getComputedStyle", 1));
