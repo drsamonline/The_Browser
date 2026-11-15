@@ -546,3 +546,46 @@ jobs:
           files: aetheris-windows-x86_64.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+  # The SDL2 backend is compiled by nothing else, so without this job it can
+  # break silently. SDL_VIDEODRIVER=dummy runs it without a display.
+  test-sdl2-backend:
+    name: Test SDL2 window backend (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config g++ libx11-dev liblz4-dev libedit-dev \
+            uuid-dev libssl-dev libwebp-dev libsdl2-dev
+
+      - name: Configure with SDL2
+        run: >
+          cmake -S . -B build-sdl -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          -DAETHERIS_STANDALONE_BUILD=ON
+          -DAETHERIS_WITH_SDL2=ON
+          -DAETHERIS_ENABLE_TESTING=ON
+          -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build-sdl --parallel
+
+      - name: Confirm the backend is linked in
+        run: ./build-sdl/bin/aetheris --version
+
+      - name: Run the window loop with the dummy video driver
+        env:
+          SDL_VIDEODRIVER: dummy
+        # No || true: if the backend cannot open a window or the loop fails,
+        # this job must fail. That is the whole point of the job.
+        run: ./build-sdl/bin/aetheris --window https://example.com 2
+
+      - name: Smoke-test
+        run: ./build-sdl/bin/aetheris --smoke-test

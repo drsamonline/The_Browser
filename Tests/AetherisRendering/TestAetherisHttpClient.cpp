@@ -171,7 +171,10 @@ static uint16_t start_counting_server(std::thread& server_thread, int& request_c
             FD_ZERO(&readable);
             FD_SET(listener, &readable);
             struct timeval timeout {};
-            timeout.tv_sec = 1;
+            // Generous idle timeout: at 1s the accept thread could exit between
+            // two connections on a loaded runner, and the next request then
+            // failed to connect. That was the intermittent failure.
+            timeout.tv_sec = 10;
             if (::select(listener + 1, &readable, nullptr, nullptr, &timeout) <= 0)
                 break;
             int connection = ::accept(listener, nullptr, nullptr);
@@ -270,7 +273,7 @@ static uint16_t start_cookie_server(std::thread& server_thread, std::vector<std:
             FD_ZERO(&readable);
             FD_SET(listener, &readable);
             struct timeval timeout {};
-            timeout.tv_sec = 2;
+            timeout.tv_sec = 10;
             if (::select(listener + 1, &readable, nullptr, nullptr, &timeout) <= 0)
                 break;
             int connection = ::accept(listener, nullptr, nullptr);
@@ -337,7 +340,7 @@ static uint16_t start_closing_server(std::thread& server_thread, int& accepted)
             FD_ZERO(&readable);
             FD_SET(listener, &readable);
             struct timeval timeout {};
-            timeout.tv_sec = 2;
+            timeout.tv_sec = 10;
             if (::select(listener + 1, &readable, nullptr, nullptr, &timeout) <= 0)
                 break;
             int connection = ::accept(listener, nullptr, nullptr);

@@ -1,7 +1,7 @@
 # gumbo-parser — vendored
 
 - Upstream: https://github.com/google/gumbo-parser
-- Licence: Apache-2.0 (see `LICENSE`)
+- Licence: Apache-2.0 (full text in `COPYING`)
 - Taken at commit: see the vendoring commit message.
 
 gumbo is an implementation of the HTML5 parsing algorithm in C99 with no
