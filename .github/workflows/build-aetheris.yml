@@ -584,10 +584,10 @@ jobs:
           $sdl = Get-ChildItem -Directory | Where-Object { $_.Name -like "SDL2-*" } | Select-Object -First 1
           if ($sdl) { $searchDirs += (Join-Path $sdl.FullName 'lib/x64') }
           foreach ($d in @(
-              "$env:VCPKG_ROOT\installed\x64-windows\bin",
               "C:\Program Files\OpenSSL-Win64\bin",
-              "C:\OpenSSL-Win64\bin",
               "C:\Program Files\OpenSSL\bin",
+              "C:\OpenSSL-Win64\bin",
+              "$env:VCPKG_ROOT\installed\x64-windows\bin",
               "C:\vcpkg\installed\x64-windows\bin")) {
             if ($d -and (Test-Path $d)) { $searchDirs += $d }
           }
@@ -597,15 +597,19 @@ jobs:
             if ($crt) { $searchDirs += $crt.FullName }
           }
 
+          # Explicit directories first: PATH is unreliable on the runner, where
+          # MySQL's OpenSSL copy appears before the real one. Bundling a DLL from
+          # an unrelated product risks a version mismatch against what the
+          # executable was linked with.
           function Find-Dll($name) {
-            $onPath = (Get-Command $name -ErrorAction SilentlyContinue)
-            if ($onPath) { return $onPath.Source }
-            $found = where.exe $name 2>$null | Select-Object -First 1
-            if ($found) { return $found }
             foreach ($dir in $searchDirs) {
               $candidate = Join-Path $dir $name
               if (Test-Path $candidate) { return $candidate }
             }
+            $onPath = (Get-Command $name -ErrorAction SilentlyContinue)
+            if ($onPath) { return $onPath.Source }
+            $found = where.exe $name 2>$null | Select-Object -First 1
+            if ($found) { return $found }
             return $null
           }
 
@@ -629,7 +633,23 @@ jobs:
           }
 
           Get-ChildItem dist | Format-Table Name, Length
-          Compress-Archive -Path dist/* -DestinationPath aetheris-windows-x86_64.zip -Force
+
+          # Compress-Archive exits 1 without a message here. Use the .NET API so
+          # a failure reports why, and so the archive is written deterministically.
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path (Get-Location) 'aetheris-windows-x86_64.zip'
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          try {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            [System.IO.Compression.ZipFile]::CreateFromDirectory(
+              (Join-Path (Get-Location) 'dist'), $zip,
+              [System.IO.Compression.CompressionLevel]::Optimal, $false)
+          } catch {
+            Write-Host "::error::Packaging failed: $($_.Exception.Message)"
+            throw
+          }
+          if (-not (Test-Path $zip)) { throw "zip was not created at $zip" }
+          Write-Host "wrote $zip ($((Get-Item $zip).Length) bytes)"
 
       - name: Publish tagged release
         uses: softprops/action-gh-release@v3
