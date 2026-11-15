@@ -460,13 +460,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             cmake ninja-build pkg-config g++ libx11-dev liblz4-dev libedit-dev \
-            uuid-dev libssl-dev libwebp-dev
+            uuid-dev libssl-dev libwebp-dev libsdl2-dev
 
       - name: Configure (size profile)
         run: >
           cmake -S . -B build-size -G Ninja -DCMAKE_BUILD_TYPE=Release
           -DAETHERIS_STANDALONE_BUILD=ON
           -DAETHERIS_SIZE_OPTIMIZED=ON
+          -DAETHERIS_WITH_SDL2=ON
           -DAETHERIS_ENABLE_TESTING=ON
           -DBUILD_TESTING=ON
 
@@ -513,11 +514,22 @@ jobs:
         with:
           arch: x64
 
+      - name: Fetch SDL2 development package
+        shell: pwsh
+        run: |
+          $url = "https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-devel-2.30.9-VC.zip"
+          Invoke-WebRequest -Uri $url -OutFile sdl2.zip
+          Expand-Archive -Path sdl2.zip -DestinationPath .
+          Get-ChildItem -Directory | Where-Object { $_.Name -like "SDL2-*" } | Select-Object -ExpandProperty FullName
+
       - name: Configure
         shell: pwsh
         run: |
+          $sdl = (Get-ChildItem -Directory | Where-Object { $_.Name -like "SDL2-*" } | Select-Object -First 1).FullName
           cmake -S . -B build-standalone -G "Ninja Multi-Config" `
             -DAETHERIS_STANDALONE_BUILD=ON `
+            -DAETHERIS_WITH_SDL2=ON `
+            -DSDL2_DIR="$sdl/cmake" `
             -DAETHERIS_ENABLE_TESTING=ON `
             -DBUILD_TESTING=ON `
             -DCMAKE_C_COMPILER=cl `
@@ -537,8 +549,12 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item build-standalone/bin/Release/aetheris.exe dist/aetheris-windows-x86_64.exe
+          # SDL2 is linked dynamically on Windows; ship its runtime DLL alongside
+          # the executable so the download runs without a separate install.
+          $sdl = (Get-ChildItem -Directory | Where-Object { $_.Name -like "SDL2-*" } | Select-Object -First 1).FullName
+          Copy-Item "$sdl/lib/x64/SDL2.dll" dist/ -ErrorAction SilentlyContinue
           Get-ChildItem dist | Format-Table Name, Length
-          Compress-Archive -Path dist/aetheris-windows-x86_64.exe -DestinationPath aetheris-windows-x86_64.zip
+          Compress-Archive -Path dist/* -DestinationPath aetheris-windows-x86_64.zip
 
       - name: Publish tagged release
         uses: softprops/action-gh-release@v3
