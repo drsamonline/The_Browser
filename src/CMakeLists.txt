@@ -143,6 +143,11 @@ endif()
 
 if (OpenSSL_FOUND)
     target_compile_definitions(AetherisRuntime PRIVATE AETHERIS_HAS_TLS=1)
+    if (WIN32)
+        # CertOpenSystemStore / CertEnumCertificatesInStore live in Crypt32; the
+        # TLS code uses them to load the Windows root store.
+        target_link_libraries(AetherisRuntime PRIVATE Crypt32)
+    endif()
     target_link_libraries(AetherisRuntime PRIVATE OpenSSL::SSL OpenSSL::Crypto)
     message(STATUS "Aetheris: OpenSSL found - HTTPS/TLS enabled")
 else()
