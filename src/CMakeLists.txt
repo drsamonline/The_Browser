@@ -9,6 +9,7 @@ add_library(AetherisRendering STATIC
     rendering/security_policy.cpp
     rendering/secure_resource_loader.cpp
     rendering/font_library.cpp
+    rendering/user_agent_stylesheet.cpp
     ui/browser_session.cpp
     ui/input_router.cpp
     ui/window_host.cpp

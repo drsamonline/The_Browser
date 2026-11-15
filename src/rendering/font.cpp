@@ -1,5 +1,6 @@
 #include "font.hpp"
 
+#include "css_units.hpp"
 #include "font_library.hpp"
 #include "bitmap_font.hpp"
 #include <cctype>
@@ -11,7 +12,7 @@ namespace aetheris::rendering { static float num(std::string const* v,float f){i
         return static_cast<float>(font->advance_width(glyph)) * scale;
     }
     return bitmap_advance(size);
-} Font Font::from_style(StyleProperties const&s){Font f;f.m_metrics.size=num(s.get("font-size"),16);f.m_metrics.ascent=f.m_metrics.size*.8f;f.m_metrics.descent=f.m_metrics.size*.2f;f.m_metrics.line_gap=f.m_metrics.size*.2f;f.m_weight=num(s.get("font-weight"),400);return f;} float Font::measure(std::string_view v)const{
+} Font Font::from_style(StyleProperties const&s){Font f;f.m_metrics.size=css_length_px(s.get("font-size"),16.0f,16.0f);f.m_metrics.ascent=f.m_metrics.size*.8f;f.m_metrics.descent=f.m_metrics.size*.2f;f.m_metrics.line_gap=f.m_metrics.size*.2f;f.m_weight=num(s.get("font-weight"),400);return f;} float Font::measure(std::string_view v)const{
     float n=0;
     auto* font=active_font();
     unsigned previous=0;

@@ -1,6 +1,7 @@
 #include "render_document.hpp"
 
 #include "css_parser.hpp"
+#include "user_agent_stylesheet.hpp"
 #include "layout.hpp"
 #include "url.hpp"
 
@@ -21,7 +22,15 @@ RenderDocument RenderDocument::create(std::string_view html, std::string_view cs
 
 RenderDocument RenderDocument::create_from_document(Document document, std::string_view css, float viewport_width, ResourceCache* resources, std::string_view source_url)
 {
-    auto sheet = CssParser {}.parse(css);
+    // The UA stylesheet is the base layer: parsing it before the author CSS
+    // means author rules of equal specificity win on source order, which is the
+    // behaviour a page expects.
+    std::string combined;
+    combined.reserve(user_agent_stylesheet().size() + css.size() + 2);
+    combined.append(user_agent_stylesheet());
+    combined.push_back('\n');
+    combined.append(css);
+    auto sheet = CssParser {}.parse(combined);
 
     auto layout_root = LayoutTreeBuilder {}.build(document.root(), sheet);
     LayoutEngine {}.layout(*layout_root, viewport_width);
