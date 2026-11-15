@@ -10,6 +10,14 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
+
+#if defined(_WIN32)
+// Windows has no OpenSSL-style CA bundle directory: SSL_CTX_set_default_verify_paths
+// finds nothing and every HTTPS site fails with "certificate verify failed".
+// Enumerate the Windows ROOT store into the SSL context instead.
+#include <windows.h>
+#include <wincrypt.h>
+#endif
 #endif
 
 namespace aetheris::network {
@@ -17,6 +25,32 @@ namespace aetheris::network {
 #if AETHERIS_HAS_TLS
 
 namespace {
+
+#if AETHERIS_HAS_TLS && defined(_WIN32)
+// Adds every certificate in the Windows "ROOT" store to `store`. Returns how
+// many were added, so a caller can tell "no roots" from "roots loaded".
+int load_windows_root_store(X509_STORE* store)
+{
+    if (!store)
+        return 0;
+    HCERTSTORE handle = CertOpenSystemStoreA(0, "ROOT");
+    if (!handle)
+        return 0;
+    int added = 0;
+    PCCERT_CONTEXT certificate = nullptr;
+    while ((certificate = CertEnumCertificatesInStore(handle, certificate)) != nullptr) {
+        const unsigned char* encoded = certificate->pbCertEncoded;
+        X509* parsed = d2i_X509(nullptr, &encoded, static_cast<long>(certificate->cbCertEncoded));
+        if (!parsed)
+            continue;
+        if (X509_STORE_add_cert(store, parsed) == 1)
+            ++added;
+        X509_free(parsed);
+    }
+    CertCloseStore(handle, 0);
+    return added;
+}
+#endif
 
 std::string last_openssl_error()
 {
@@ -77,7 +111,13 @@ bool TlsStream::connect(std::string const& host, unsigned short port, int timeou
     SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
 
     if (ca_file.empty()) {
-        if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
+        // The default paths are the whole story on Linux. On Windows they are
+        // usually empty, so the OS root store is loaded as well.
+        bool have_roots = SSL_CTX_set_default_verify_paths(ctx) == 1;
+#if defined(_WIN32)
+        have_roots = load_windows_root_store(SSL_CTX_get_cert_store(ctx)) > 0 || have_roots;
+#endif
+        if (!have_roots) {
             m_error = "failed to load the system trust store";
             close();
             return false;
