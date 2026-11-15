@@ -80,8 +80,10 @@ public:
         m_width = width;
         m_height = height;
 
+        // Created hidden and shown on the first present: showing it up front
+        // gives the user a black window for however long the first page takes.
         m_window = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-            width, height, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+            width, height, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE);
         if (!m_window) {
             m_error = SDL_GetError();
             close();
@@ -132,6 +134,12 @@ public:
         SDL_RenderClear(m_renderer);
         SDL_RenderCopy(m_renderer, m_texture, nullptr, nullptr);
         SDL_RenderPresent(m_renderer);
+
+        // Show only once there is something painted.
+        if (!m_shown) {
+            SDL_ShowWindow(m_window);
+            m_shown = true;
+        }
     }
 
     bool poll(WindowEvent& event) override
@@ -238,6 +246,7 @@ private:
     int m_width { 0 };
     int m_height { 0 };
     bool m_open { false };
+    bool m_shown { false };
     bool m_initialised { false };
     std::string m_error;
 };
