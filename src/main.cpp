@@ -1658,6 +1658,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     rendering::SoftwareSurface window(kWidth, kHeight, rendering::Color { 255, 255, 255, 255 });
     bool need_render = true;
     int handled = 0;
+    int presented = 0;
     bool done = false;
 
     ui::WindowEvent event;
@@ -1671,9 +1672,17 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             compose_chrome(window);
             host->present(window);
             need_render = false;
+            ++presented;
         } else {
             host->present(window);
+            ++presented;
         }
+
+        // A frame budget must stop the loop whatever the backend. Without this
+        // the SDL host runs until the user closes the window, which hangs a CI
+        // runner that has no one to click it.
+        if (frames > 0 && presented >= frames)
+            done = true;
 
         while (host->poll(event)) {
             auto action = router.handle(event);
