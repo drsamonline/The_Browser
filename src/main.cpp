@@ -94,36 +94,54 @@ static int run_smoke_test() {
     config.height = 720;
     config.title = "Aetheris Browser (smoke test)";
 
-    if (!window->create(config)) {
-        std::cerr << "Failed to create window" << std::endl;
-        network::Socket::cleanup();
-        return 1;
-    }
+    // A CI runner has no display server. Creating a window there is expected to
+    // fail, so fall back to the headless path instead of failing the smoke test:
+    // the point is to prove the subsystems initialise, not to paint a window.
+    bool has_window = window->create(config);
+    if (!has_window)
+        std::cout << "No display server; running the headless smoke path." << std::endl;
 
     auto ghost_cache = std::make_unique<cache::GhostCache>();
 
     constexpr int kMaxSmokeFrames = 10;
     int frames = 0;
-    window->show();
-    for (; frames < kMaxSmokeFrames; ++frames) {
-        // Poll first: on the X11 backend a failed poll (no display server,
-        // e.g. CI without xvfb) must abort the loop instead of driving the
-        // render path with uninitialized platform state.
-        if (!window->poll_events()) {
-            break;
-        }
+    if (has_window) {
+        window->show();
+        for (; frames < kMaxSmokeFrames; ++frames) {
+            // Poll first: on the X11 backend a failed poll (no display server,
+            // e.g. CI without xvfb) must abort the loop instead of driving the
+            // render path with uninitialized platform state.
+            if (!window->poll_events()) {
+                break;
+            }
 
-        window->clear();
-        window->draw_debug_overlay("AETHERIS SMOKE TEST");
-        window->swap_buffers();
+            window->clear();
+            window->draw_debug_overlay("AETHERIS SMOKE TEST");
+            window->swap_buffers();
+        }
     }
 
+    // Even without a window, exercise the parts that must work everywhere: the
+    // HTML parser, the cascade and layout.
+    auto parsed = rendering::Document::parse_html(
+        "<html><body><h1>smoke</h1><p style='color:red'>text</p></body></html>");
+    auto rendered = rendering::RenderDocument::create_from_document(std::move(parsed), "", 800.0f);
+    auto surface = rendered.render_to_surface(200, 100, rendering::Color { 255, 255, 255, 255 });
+    bool painted = !surface.pixels().empty();
+
     std::cout << "Smoke test finished after " << frames << " frame(s)." << std::endl;
+    std::cout << "  Display: " << (has_window ? "window" : "headless") << std::endl;
     std::cout << "  Active cache entries: " << ghost_cache->active_entries() << std::endl;
+    std::cout << "  Layout and paint: " << (painted ? "ok" : "failed") << std::endl;
 
     ghost_cache->clear_all();
     window->destroy();
     network::Socket::cleanup();
+
+    if (!painted) {
+        std::cerr << "Smoke test failed: the engine could not lay out and paint a document." << std::endl;
+        return 1;
+    }
 
     std::cout << "Aetheris smoke test passed." << std::endl;
     return 0;
