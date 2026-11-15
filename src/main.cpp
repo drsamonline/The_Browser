@@ -1605,6 +1605,48 @@ static std::string chrome_document(std::string const& title, std::string const& 
 // Runs the browser in a window: render, present, pump events. Without a display
 // backend this still works headlessly for a fixed number of frames, which is
 // what CI and the tests use.
+// Collects a page's CSS: linked stylesheets, then inline <style> blocks. Both
+// the CLI render path and the browser window use this — the window used to pass
+// an empty stylesheet, so every page rendered unstyled.
+struct PageStyle {
+    std::string css;
+    std::size_t linked_stylesheets { 0 };
+};
+
+static PageStyle collect_page_style(std::string const& body, std::string const& url, SecureFetcher& fetcher)
+{
+    PageStyle style;
+    rendering::ResourceCache scratch;
+    rendering::ResourceLoader loader(scratch);
+    rendering::Url base = rendering::Url::parse(url);
+    rendering::ResourceData document_resource {
+        rendering::ResourceType::Document,
+        url,
+        std::vector<unsigned char>(body.begin(), body.end()),
+    };
+
+    for (auto const& dependency : loader.discover_dependencies(document_resource, base)) {
+        std::string path = dependency.path();
+        bool is_css = path.size() >= 4 && path.compare(path.size() - 4, 4, ".css") == 0;
+        if (!is_css)
+            continue;
+        auto fetched = fetcher.fetch(rendering::ResourceRequestContext::Style, dependency);
+        if (!fetched.succeeded())
+            continue;
+        ++style.linked_stylesheets;
+        if (!style.css.empty())
+            style.css.push_back('\n');
+        style.css.append(fetched.resource->bytes.begin(), fetched.resource->bytes.end());
+    }
+
+    for (auto const& block : extract_styles(body)) {
+        if (!style.css.empty())
+            style.css.push_back('\n');
+        style.css += block;
+    }
+    return style;
+}
+
 static int run_window(std::string const& url, int frames, std::string const& frame_directory)
 {
     constexpr int kWidth = 1024;
@@ -1633,7 +1675,8 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             return false;
         }
         std::string body(loaded.resource->bytes.begin(), loaded.resource->bytes.end());
-        auto page = rendering::RenderDocument::create(body, "", static_cast<float>(kWidth), nullptr, session.current_url());
+        auto style = collect_page_style(body, session.current_url(), fetcher);
+        auto page = rendering::RenderDocument::create(body, style.css, static_cast<float>(kWidth), nullptr, session.current_url());
         session.set_page_title(document_title(page.document().root()));
         session.set_loading(false);
         auto page_surface = page.render_to_surface(kWidth, content_height, rendering::Color { 255, 255, 255, 255 });
@@ -1749,7 +1792,8 @@ static int run_render_window(std::string const& url, std::string const& output_p
     constexpr int kHeight = 768;
     int content_height = kHeight - kChromeHeight;
 
-    auto page = rendering::RenderDocument::create(body, "", static_cast<float>(kWidth), nullptr, url);
+    auto style = collect_page_style(body, url, fetcher);
+    auto page = rendering::RenderDocument::create(body, style.css, static_cast<float>(kWidth), nullptr, url);
     auto page_surface = page.render_to_surface(kWidth, content_height, rendering::Color { 255, 255, 255, 255 });
 
     // The title comes from the page so the tab reads like a real browser.
