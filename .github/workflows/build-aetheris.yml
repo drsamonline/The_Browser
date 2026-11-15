@@ -493,3 +493,56 @@ jobs:
           files: aetheris-linux-x86_64.tar.gz
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+  # Windows gets a packaged binary too, so a release is not Linux-only. The
+  # standalone profile is used: the full Ladybird-derived tree is not supported
+  # on Windows yet (see build-windows above).
+  release-windows-standalone:
+    name: Publish release (standalone, Windows)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Add MSVC to PATH
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build-standalone -G "Ninja Multi-Config" `
+            -DAETHERIS_STANDALONE_BUILD=ON `
+            -DAETHERIS_ENABLE_TESTING=ON `
+            -DBUILD_TESTING=ON `
+            -DCMAKE_C_COMPILER=cl `
+            -DCMAKE_CXX_COMPILER=cl
+
+      - name: Build
+        run: cmake --build build-standalone --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build-standalone -C Release --output-on-failure --no-tests=error
+
+      - name: Smoke-run
+        run: ./build-standalone/bin/Release/aetheris.exe --smoke-test
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item build-standalone/bin/Release/aetheris.exe dist/aetheris-windows-x86_64.exe
+          Get-ChildItem dist | Format-Table Name, Length
+          Compress-Archive -Path dist/aetheris-windows-x86_64.exe -DestinationPath aetheris-windows-x86_64.zip
+
+      - name: Publish tagged release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: aetheris-windows-x86_64.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true

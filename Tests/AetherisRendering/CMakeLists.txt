@@ -270,3 +270,17 @@ add_test(NAME AetherisInputRouter COMMAND TestAetherisInputRouter)
 add_executable(TestAetherisBrowserSession TestBrowserSession.cpp)
 target_link_libraries(TestAetherisBrowserSession PRIVATE AetherisRendering)
 add_test(NAME AetherisBrowserSession COMMAND TestAetherisBrowserSession)
+
+# Tests must always evaluate their assertions. Release builds define NDEBUG,
+# which compiles assert() away: an assert-based test then passes silently, and
+# under -Werror the variables it used become unused and break the build — that
+# is what stopped the v0.4 release. -UNDEBUG is appended after the config flags
+# (CMAKE_CXX_FLAGS_RELEASE carries -DNDEBUG), so it wins and assert() stays live
+# in every configuration.
+get_property(aetheris_test_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(aetheris_test_target IN LISTS aetheris_test_targets)
+    get_target_property(aetheris_test_type ${aetheris_test_target} TYPE)
+    if(aetheris_test_type STREQUAL "EXECUTABLE")
+        target_compile_options(${aetheris_test_target} PRIVATE -UNDEBUG)
+    endif()
+endforeach()

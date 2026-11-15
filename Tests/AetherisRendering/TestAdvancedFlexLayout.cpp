@@ -1,6 +1,50 @@
+// justify-content: space-between pushes flex items to the edges.
+//
+// require() rather than assert(): assert() disappears under -DNDEBUG, so an
+// assert-based test passes silently in Release and fails to compile under
+// -Werror because the variable it used becomes unused.
+
 #include "css_parser.hpp"
 #include "dom.hpp"
 #include "layout.hpp"
-#include <cassert>
+
+#include <cstdio>
+#include <cstdlib>
+
 using namespace aetheris::rendering;
-int main(){ auto r=std::make_unique<DomNode>();r->type=DomNodeType::Document;auto b=std::make_unique<DomNode>();b->type=DomNodeType::Element;b->name="div";for(int i=0;i<2;i++){auto c=std::make_unique<DomNode>();c->type=DomNodeType::Element;c->name="span";b->append_child(std::move(c));}r->append_child(std::move(b));CssParser p;auto s=p.parse("div{display:flex;width:100;justify-content:space-between;}span{width:20;height:10;}");auto t=LayoutTreeBuilder{}.build(*r,s);LayoutEngine{}.layout(*t,100);auto& x=*t->children[0];assert(x.children[1]->rect.x>x.children[0]->rect.x+20); }
+
+static void require(bool condition, char const* message)
+{
+    if (!condition) {
+        std::fprintf(stderr, "FAILED: %s\n", message);
+        std::exit(1);
+    }
+}
+
+int main()
+{
+    auto root = std::make_unique<DomNode>();
+    root->type = DomNodeType::Document;
+    auto box = std::make_unique<DomNode>();
+    box->type = DomNodeType::Element;
+    box->name = "div";
+    for (int i = 0; i < 2; ++i) {
+        auto child = std::make_unique<DomNode>();
+        child->type = DomNodeType::Element;
+        child->name = "span";
+        box->append_child(std::move(child));
+    }
+    root->append_child(std::move(box));
+
+    CssParser parser;
+    auto sheet = parser.parse("div{display:flex;width:100;justify-content:space-between;}span{width:20;height:10;}");
+    auto tree = LayoutTreeBuilder {}.build(*root, sheet);
+    LayoutEngine {}.layout(*tree, 100);
+
+    auto& container = *tree->children[0];
+    require(container.children[1]->rect.x > container.children[0]->rect.x + 20,
+        "space-between separates the items");
+
+    std::printf("advanced flex layout: space-between verified\n");
+    return 0;
+}
