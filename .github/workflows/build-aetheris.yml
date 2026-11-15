@@ -566,17 +566,70 @@ jobs:
       - name: Smoke-run
         run: ./build-standalone/bin/Release/aetheris.exe --smoke-test
 
+      # The executable links SDL2, OpenSSL and the MSVC runtime dynamically. A
+      # user who downloads a zip missing any of them gets 0xC0000135
+      # (STATUS_DLL_NOT_FOUND) and no explanation. Ship every one, and fail the
+      # build if one cannot be found rather than publishing a broken zip.
       - name: Package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item build-standalone/bin/Release/aetheris.exe dist/aetheris-windows-x86_64.exe
-          # SDL2 is linked dynamically on Windows; ship its runtime DLL alongside
-          # the executable so the download runs without a separate install.
-          $sdl = (Get-ChildItem -Directory | Where-Object { $_.Name -like "SDL2-*" } | Select-Object -First 1).FullName
-          Copy-Item "$sdl/lib/x64/SDL2.dll" dist/ -ErrorAction SilentlyContinue
+
+          $required = @('SDL2.dll', 'libcrypto-3-x64.dll', 'libssl-3-x64.dll')
+          $optional = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcpp140.dll', 'msvcp140.dll')
+
+          # Where a DLL might live on a GitHub runner.
+          $searchDirs = @()
+          $sdl = Get-ChildItem -Directory | Where-Object { $_.Name -like "SDL2-*" } | Select-Object -First 1
+          if ($sdl) { $searchDirs += (Join-Path $sdl.FullName 'lib/x64') }
+          foreach ($d in @(
+              "$env:VCPKG_ROOT\installed\x64-windows\bin",
+              "C:\Program Files\OpenSSL-Win64\bin",
+              "C:\OpenSSL-Win64\bin",
+              "C:\Program Files\OpenSSL\bin",
+              "C:\vcpkg\installed\x64-windows\bin")) {
+            if ($d -and (Test-Path $d)) { $searchDirs += $d }
+          }
+          if ($env:VCToolsRedistDir) {
+            $crt = Get-ChildItem -Path $env:VCToolsRedistDir -Directory -Recurse -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Name -like "Microsoft.VC*.CRT" } | Select-Object -First 1
+            if ($crt) { $searchDirs += $crt.FullName }
+          }
+
+          function Find-Dll($name) {
+            $onPath = (Get-Command $name -ErrorAction SilentlyContinue)
+            if ($onPath) { return $onPath.Source }
+            $found = where.exe $name 2>$null | Select-Object -First 1
+            if ($found) { return $found }
+            foreach ($dir in $searchDirs) {
+              $candidate = Join-Path $dir $name
+              if (Test-Path $candidate) { return $candidate }
+            }
+            return $null
+          }
+
+          $missing = @()
+          foreach ($name in $required) {
+            $source = Find-Dll $name
+            if (-not $source) { $missing += $name; continue }
+            Copy-Item $source dist/ -Force
+            Write-Host "bundled $name from $source"
+          }
+          foreach ($name in $optional) {
+            $source = Find-Dll $name
+            if ($source) {
+              Copy-Item $source dist/ -Force
+              Write-Host "bundled $name from $source"
+            }
+          }
+
+          if ($missing.Count -gt 0) {
+            throw "Required runtime DLLs not found: $($missing -join ', '). Publishing this zip would ship a binary that cannot start (0xC0000135)."
+          }
+
           Get-ChildItem dist | Format-Table Name, Length
-          Compress-Archive -Path dist/* -DestinationPath aetheris-windows-x86_64.zip
+          Compress-Archive -Path dist/* -DestinationPath aetheris-windows-x86_64.zip -Force
 
       - name: Publish tagged release
         uses: softprops/action-gh-release@v3
