@@ -20,9 +20,12 @@ namespace aetheris::ui {
 
 namespace {
 
-// Our surface stores colours as 0xRRGGBBAA, which on a little-endian machine
-// places the bytes in memory as A, B, G, R — SDL's ABGR8888.
-constexpr Uint32 kTextureFormat = SDL_PIXELFORMAT_ABGR8888;
+// Our surface stores colours as 0xRRGGBBAA, so on a little-endian machine the
+// bytes in memory are A, B, G, R. SDL names formats by the 32-bit word, not by
+// memory order: RGBA8888 is the word R<<24|G<<16|B<<8|A, which is exactly those
+// bytes. ABGR8888 would be the word A<<24|B<<16|G<<8|R — memory R,G,B,A — and
+// reads our alpha byte as red, which is why the chrome strip rendered red.
+constexpr Uint32 kTextureFormat = SDL_PIXELFORMAT_RGBA8888;
 
 // SDL keysym to the names the input router expects.
 std::string key_name(SDL_Keysym const& keysym)

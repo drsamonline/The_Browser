@@ -2040,7 +2040,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         if (arg == "--version" || arg == "-v") {
-            std::cout << "Aetheris Browser v0.4.0" << std::endl;
+            std::cout << "Aetheris Browser v0.5.3" << std::endl;
             return 0;
         }
         if (arg == "--smoke-test") {
@@ -2084,7 +2084,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    std::cout << "=== AETHERIS BROWSER v0.4.0 ===" << std::endl;
+    std::cout << "=== AETHERIS BROWSER v0.5.3 ===" << std::endl;
     std::cout << "Hyper-optimized, zero-bloat cross-platform browser" << std::endl;
     std::cout << std::endl;
     
