@@ -60,6 +60,10 @@ void HeadlessWindowHost::close()
 std::unique_ptr<WindowHost> make_window_host(int frame_limit, std::string output_directory)
 {
 #ifdef AETHERIS_HAS_SDL2
+    // The SDL host owns its own frame handling; these two only configure the
+    // headless host. Naming them as unused keeps -Werror happy in this branch.
+    (void)frame_limit;
+    (void)output_directory;
     return make_sdl_window_host();
 #else
     // No display backend in this build; the headless host keeps the binary
