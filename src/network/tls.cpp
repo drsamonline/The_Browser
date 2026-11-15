@@ -130,6 +130,8 @@ std::string bundled_ca_file()
     return {};
 }
 
+} // namespace
+
 bool TlsStream::connect(std::string const& host, unsigned short port, int timeout_ms, std::string const& ca_file)
 {
     close();

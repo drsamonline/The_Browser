@@ -30,9 +30,11 @@ public:
     static bool available();
 
 private:
-    void* m_ctx { nullptr };
-    void* m_ssl { nullptr };
-    int m_fd { -1 };
+    // Unused when the build has no TLS, and -Werror rejects unused private
+    // fields, so a build without OpenSSL used to fail here.
+    [[maybe_unused]] void* m_ctx { nullptr };
+    [[maybe_unused]] void* m_ssl { nullptr };
+    [[maybe_unused]] int m_fd { -1 };
     std::string m_error;
 };
 
