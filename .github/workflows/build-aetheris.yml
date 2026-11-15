@@ -592,8 +592,11 @@ jobs:
             if ($d -and (Test-Path $d)) { $searchDirs += $d }
           }
           if ($env:VCToolsRedistDir) {
+            # Filter to x64: a recursive search finds arm64 first, and shipping
+            # arm64 runtime DLLs in an x64 package is worse than shipping none.
             $crt = Get-ChildItem -Path $env:VCToolsRedistDir -Directory -Recurse -ErrorAction SilentlyContinue |
-                   Where-Object { $_.Name -like "Microsoft.VC*.CRT" } | Select-Object -First 1
+                   Where-Object { $_.Name -like "Microsoft.VC*.CRT" -and $_.FullName -match '\\x64\\' } |
+                   Select-Object -First 1
             if ($crt) { $searchDirs += $crt.FullName }
           }
 
@@ -650,6 +653,12 @@ jobs:
           }
           if (-not (Test-Path $zip)) { throw "zip was not created at $zip" }
           Write-Host "wrote $zip ($((Get-Item $zip).Length) bytes)"
+
+          # GitHub's pwsh shell exits with $LASTEXITCODE, and the where.exe
+          # fallback in Find-Dll leaves it at 1 when a lookup misses. That made a
+          # fully successful package step report failure. Clear it explicitly.
+          $global:LASTEXITCODE = 0
+          exit 0
 
       - name: Publish tagged release
         uses: softprops/action-gh-release@v3
