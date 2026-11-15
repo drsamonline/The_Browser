@@ -4,6 +4,11 @@
 
 All notable Aetheris-specific changes should be documented here. Upstream-derived changes should retain their original provenance and must not be presented as newly authored Aetheris work.
 
+## Unreleased
+
+- **SDL2 window backend.** `src/ui/sdl_window.cpp` implements `WindowHost` on SDL2: a resizable window, a streaming ARGB texture blitted from the software surface, and key, text, mouse, wheel, resize and close events translated into the router's vocabulary. Enable with `-DAETHERIS_WITH_SDL2=ON`; without SDL2 the build is unchanged and headless. Compiles clean against SDL 2.30 under `-Wall -Wextra -Werror`; not yet run against a real display.
+- **Release pipeline fixed.** Test targets compile with `-UNDEBUG` so assertions stay live in Release, and a Windows packaging job was added.
+
 ## v0.4 — 2026-11-08
 
 The browser became an application: real outline text, a compact chrome, a

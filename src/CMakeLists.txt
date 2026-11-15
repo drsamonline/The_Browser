@@ -120,7 +120,27 @@ endif()
 # Optional TLS: when OpenSSL is available, the runtime gains real HTTPS with
 # certificate and hostname verification (vetted crypto). Without it, the TLS
 # stream compiles to a stub that reports TLS as unavailable.
+option(AETHERIS_WITH_SDL2 "Build the SDL2 window backend" OFF)
+if(AETHERIS_WITH_SDL2)
+    find_package(SDL2 QUIET)
+    if(NOT SDL2_FOUND)
+        # Some packagers only ship the config under a different name.
+        find_package(sdl2 CONFIG QUIET)
+    endif()
+endif()
+
 find_package(OpenSSL QUIET)
+# SDL2 window backend: compiled only when SDL2 was found, so a build without it
+# still works and simply has no display host.
+if (AETHERIS_WITH_SDL2 AND SDL2_FOUND)
+    target_sources(AetherisRendering PRIVATE ui/sdl_window.cpp)
+    target_link_libraries(AetherisRendering PRIVATE SDL2::SDL2)
+    target_compile_definitions(AetherisRendering PRIVATE AETHERIS_HAS_SDL2=1)
+    message(STATUS "Aetheris: SDL2 window backend enabled")
+elseif (AETHERIS_WITH_SDL2)
+    message(WARNING "AETHERIS_WITH_SDL2 is on but SDL2 was not found; building headless")
+endif()
+
 if (OpenSSL_FOUND)
     target_compile_definitions(AetherisRuntime PRIVATE AETHERIS_HAS_TLS=1)
     target_link_libraries(AetherisRuntime PRIVATE OpenSSL::SSL OpenSSL::Crypto)

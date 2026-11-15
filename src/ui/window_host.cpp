@@ -59,14 +59,22 @@ void HeadlessWindowHost::close()
 
 std::unique_ptr<WindowHost> make_window_host(int frame_limit, std::string output_directory)
 {
-    // The SDL2 backend is compiled in only when the build found SDL2; until
-    // then the headless host keeps the binary runnable everywhere.
+#ifdef AETHERIS_HAS_SDL2
+    return make_sdl_window_host();
+#else
+    // No display backend in this build; the headless host keeps the binary
+    // runnable everywhere.
     return std::make_unique<HeadlessWindowHost>(frame_limit, std::move(output_directory));
+#endif
 }
 
 bool has_display_backend()
 {
+#ifdef AETHERIS_HAS_SDL2
+    return true;
+#else
     return false;
+#endif
 }
 
 } // namespace aetheris::ui

@@ -85,6 +85,10 @@ private:
 // host so the binary still runs everywhere.
 std::unique_ptr<WindowHost> make_window_host(int frame_limit = 1, std::string output_directory = {});
 
+// The SDL2 backend, compiled only when AETHERIS_WITH_SDL2 is on and SDL2 was
+// found. Declared unconditionally so callers need no #ifdef.
+std::unique_ptr<WindowHost> make_sdl_window_host();
+
 // True when this build has a real window backend.
 bool has_display_backend();
 

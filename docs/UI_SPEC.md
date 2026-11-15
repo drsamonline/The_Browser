@@ -71,10 +71,12 @@ display backend it uses `HeadlessWindowHost`, which accepts a fixed number of
 frames and writes each one to the given directory — that is how CI and the test
 suite exercise the loop.
 
-**Not yet written:** the SDL2 backend. This environment has no SDL2 headers and
-no display, so a backend written here could not be compiled or verified. The
-interface and the headless host are done and tested; the SDL2 implementation is
-the next step and needs a machine that can build and run it.
+**SDL2 backend** (`src/ui/sdl_window.cpp`) is written and compiles cleanly
+against SDL 2.30 headers under `-Wall -Wextra -Werror`. Enable it with
+`-DAETHERIS_WITH_SDL2=ON` and an installed SDL2; without SDL2 the build stays
+headless and nothing breaks. It has not been run against a real display here —
+CI has no window system — so `SDL_VIDEODRIVER=dummy` is the way to exercise it
+without one.
 
 ## Input routing
 
