@@ -78,6 +78,11 @@ headless and nothing breaks. It has not been run against a real display here —
 CI has no window system — so `SDL_VIDEODRIVER=dummy` is the way to exercise it
 without one.
 
+On Windows SDL2 is linked dynamically, so `SDL2.dll` must sit beside the
+executable. The release zip includes it; a local build needs it on `PATH` or
+copied next to `aetheris.exe`, otherwise Windows shows a modal "SDL2.dll was not
+found" dialog and nothing proceeds.
+
 ## Input routing
 
 `src/ui/input_router.hpp` decides what an event means; the caller acts. It is a

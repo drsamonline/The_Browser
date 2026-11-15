@@ -538,6 +538,22 @@ jobs:
       - name: Build
         run: cmake --build build-standalone --config Release --parallel
 
+      # SDL2 is linked dynamically. Without the DLL beside the executables,
+      # Windows raises a modal "SDL2.dll was not found" dialog, which nothing
+      # dismisses on a headless runner — the test then times out with no output.
+      # Copy it before the tests, and fail loudly if it is not there.
+      - name: Stage SDL2 runtime DLL for the tests
+        shell: pwsh
+        run: |
+          $sdl = (Get-ChildItem -Directory | Where-Object { $_.Name -like "SDL2-*" } | Select-Object -First 1).FullName
+          if (-not $sdl) { throw "SDL2 development package directory not found" }
+          $dll = Join-Path $sdl "lib/x64/SDL2.dll"
+          if (-not (Test-Path $dll)) { throw "SDL2.dll not found at $dll" }
+          $bin = "build-standalone/bin/Release"
+          if (-not (Test-Path $bin)) { throw "build output directory $bin not found" }
+          Copy-Item $dll $bin -Force
+          Write-Host "Copied SDL2.dll to $bin"
+
       - name: Test
         run: ctest --test-dir build-standalone -C Release --output-on-failure --no-tests=error
 
