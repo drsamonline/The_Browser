@@ -107,8 +107,22 @@ public:
 
     void present(rendering::SoftwareSurface const& surface) override
     {
-        if (!m_open || !m_texture)
+        if (!m_open || !m_renderer)
             return;
+
+        // The texture must match the surface exactly: SDL_UpdateTexture reads
+        // width*height*4 bytes from the source, so a texture larger than the
+        // surface reads past the buffer. A caller may present any size.
+        if (!m_texture || surface.width() != m_width || surface.height() != m_height) {
+            if (m_texture)
+                SDL_DestroyTexture(m_texture);
+            m_width = surface.width();
+            m_height = surface.height();
+            m_texture = SDL_CreateTexture(m_renderer, kTextureFormat, SDL_TEXTUREACCESS_STREAMING, m_width, m_height);
+            if (!m_texture)
+                return;
+        }
+
         auto const& pixels = surface.pixels();
         SDL_UpdateTexture(m_texture, nullptr, pixels.data(),
             static_cast<int>(sizeof(uint32_t)) * surface.width());

@@ -284,3 +284,10 @@ foreach(aetheris_test_target IN LISTS aetheris_test_targets)
         target_compile_options(${aetheris_test_target} PRIVATE -UNDEBUG)
     endif()
 endforeach()
+
+# The window host test opens a real backend. A hang there should report as a
+# timeout in seconds rather than stalling the whole job until the runner's
+# limit, which is how the Windows failure first appeared.
+if(TARGET TestAetherisWindowHost)
+    set_tests_properties(AetherisWindowHost PROPERTIES TIMEOUT 30)
+endif()
