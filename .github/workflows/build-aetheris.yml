@@ -489,6 +489,9 @@ jobs:
         run: |
           mkdir -p dist
           cp build-size/bin/aetheris dist/aetheris-linux-x86_64
+          # Ship a CA bundle so TLS does not depend on the host's trust store.
+          curl -fsSL https://curl.se/ca/cacert.pem -o dist/cacert.pem
+          test -s dist/cacert.pem
           # Report the size in the log so the release records it.
           ls -l dist/aetheris-linux-x86_64
           tar -C dist -czf aetheris-linux-x86_64.tar.gz aetheris-linux-x86_64
@@ -580,6 +583,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item build-standalone/bin/Release/aetheris.exe dist/aetheris-windows-x86_64.exe
+
+          # The CA bundle travels with the executable: OpenSSL's default paths are
+          # empty on Windows, so without this every https:// site fails
+          # verification. The binary loads "cacert.pem" from its own directory.
+          Invoke-WebRequest -Uri "https://curl.se/ca/cacert.pem" -OutFile "dist/cacert.pem"
+          if (-not (Test-Path "dist/cacert.pem")) { throw "failed to fetch cacert.pem" }
+          Write-Host "bundled cacert.pem ($((Get-Item 'dist/cacert.pem').Length) bytes)"
 
           $required = @('SDL2.dll', 'libcrypto-3-x64.dll', 'libssl-3-x64.dll')
           $optional = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcpp140.dll', 'msvcp140.dll')

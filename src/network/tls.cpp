@@ -7,6 +7,9 @@
 #endif
 
 #if AETHERIS_HAS_TLS
+#include <cstdio>
+#include <string>
+
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
@@ -17,6 +20,8 @@
 // Enumerate the Windows ROOT store into the SSL context instead.
 #include <windows.h>
 #include <wincrypt.h>
+#else
+#include <unistd.h>
 #endif
 #endif
 
@@ -95,6 +100,36 @@ void TlsStream::close()
     }
 }
 
+namespace {
+
+// Looks for a CA bundle beside the executable. A shipped bundle is the only
+// approach that behaves the same on every machine: OpenSSL's default paths are
+// empty on Windows, and the system store varies by build.
+std::string bundled_ca_file()
+{
+    char path[4096] = { 0 };
+#if defined(_WIN32)
+    DWORD length = GetModuleFileNameA(nullptr, path, sizeof(path));
+    if (length == 0 || length >= sizeof(path))
+        return {};
+#else
+    ssize_t length = ::readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (length <= 0)
+        return {};
+    path[length] = '\0';
+#endif
+    std::string executable(path);
+    auto slash = executable.find_last_of("/\\");
+    if (slash == std::string::npos)
+        return {};
+    std::string candidate = executable.substr(0, slash + 1) + "cacert.pem";
+    if (std::FILE* file = std::fopen(candidate.c_str(), "rb")) {
+        std::fclose(file);
+        return candidate;
+    }
+    return {};
+}
+
 bool TlsStream::connect(std::string const& host, unsigned short port, int timeout_ms, std::string const& ca_file)
 {
     close();
@@ -111,8 +146,12 @@ bool TlsStream::connect(std::string const& host, unsigned short port, int timeou
     SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
 
     if (ca_file.empty()) {
-        // The default paths are the whole story on Linux. On Windows they are
-        // usually empty, so the OS root store is loaded as well.
+        // A bundle shipped beside the executable wins: it is the same trust set
+        // on every machine. The system store is the fallback.
+        auto bundled = bundled_ca_file();
+        if (!bundled.empty() && SSL_CTX_load_verify_locations(ctx, bundled.c_str(), nullptr) == 1) {
+            // loaded from the shipped bundle
+        } else {
         bool have_roots = SSL_CTX_set_default_verify_paths(ctx) == 1;
 #if defined(_WIN32)
         have_roots = load_windows_root_store(SSL_CTX_get_cert_store(ctx)) > 0 || have_roots;
@@ -121,6 +160,7 @@ bool TlsStream::connect(std::string const& host, unsigned short port, int timeou
             m_error = "failed to load the system trust store";
             close();
             return false;
+        }
         }
     } else if (SSL_CTX_load_verify_locations(ctx, ca_file.c_str(), nullptr) != 1) {
         m_error = "failed to load CA file: " + last_openssl_error();
