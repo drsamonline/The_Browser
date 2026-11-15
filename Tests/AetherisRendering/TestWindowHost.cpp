@@ -28,6 +28,11 @@ int main()
     ::setenv("SDL_VIDEODRIVER", "dummy", 1);
 #endif
 
+    // Progress markers: if this test ever hangs again, ctest's captured output
+    // shows exactly which stage it reached.
+    std::fprintf(stderr, "[windowhost] start\n");
+    std::fflush(stderr);
+
     rendering::SoftwareSurface surface(64, 48, rendering::Color { 10, 20, 30, 255 });
 
     // A headless host accepts exactly its frame budget and then reports closed.
@@ -73,10 +78,19 @@ int main()
     // SDL host closes only when asked. Asserting the headless behaviour here
     // failed CI as soon as SDL2 was enabled.
     {
+        std::fprintf(stderr, "[windowhost] factory: creating host\n");
+        std::fflush(stderr);
         auto host = ui::make_window_host(1);
         require(host != nullptr, "the factory returns a host");
-        if (host->open(320, 240, "factory")) {
+        std::fprintf(stderr, "[windowhost] factory: opening (backend=%d)\n", (int)ui::has_display_backend());
+        std::fflush(stderr);
+        bool opened = host->open(320, 240, "factory");
+        std::fprintf(stderr, "[windowhost] factory: open returned %d\n", (int)opened);
+        std::fflush(stderr);
+        if (opened) {
             host->present(surface);
+            std::fprintf(stderr, "[windowhost] factory: presented\n");
+            std::fflush(stderr);
             host->close();
             require(!host->is_open(), "close() closes the factory host");
         }
