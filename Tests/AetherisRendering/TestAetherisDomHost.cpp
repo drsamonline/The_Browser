@@ -7,6 +7,7 @@
 // shipped once with every console line still correct; asserting on stderr is
 // what catches that class of bug.
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -96,7 +97,12 @@ static const char* kPage =
     "});"
     "</script></body></html>";
 
-static uint16_t start_server(std::thread& server_thread)
+// `stop` is the only shutdown signal. This fixture used a 2 s idle select to decide
+// the client had gone quiet, which fails the moment a loaded runner puts more than
+// 2 s between two of the three browser passes: the thread exits, the next pass has
+// nothing to connect to, and the test reports a rendering failure that is really a
+// timing failure.
+static uint16_t start_server(std::thread& server_thread, std::atomic<bool>& stop)
 {
     int listener = ::socket(AF_INET, SOCK_STREAM, 0);
     require(listener >= 0, "listener socket");
@@ -115,20 +121,20 @@ static uint16_t start_server(std::thread& server_thread)
     require(::getsockname(listener, reinterpret_cast<struct sockaddr*>(&address), &length) == 0, "getsockname");
     uint16_t port = ntohs(address.sin_port);
 
-    server_thread = std::thread([listener]() {
-        for (;;) {
-            // Wait for a connection, but stop once the client goes quiet so the
-            // thread can be joined.
+    server_thread = std::thread([listener, &stop]() {
+        while (!stop.load()) {
+            // Short poll so the flag is noticed quickly; a timeout is not an exit
+            // condition, only a chance to re-check it.
             fd_set readable;
             FD_ZERO(&readable);
             FD_SET(listener, &readable);
             struct timeval timeout {};
-            timeout.tv_sec = 2;
+            timeout.tv_usec = 50 * 1000;
             if (::select(listener + 1, &readable, nullptr, nullptr, &timeout) <= 0)
-                break;
+                continue;
             int connection = ::accept(listener, nullptr, nullptr);
             if (connection < 0)
-                break;
+                continue;
             char buffer[4096];
             auto received = ::recv(connection, buffer, sizeof(buffer), 0);
             std::string request(buffer, received > 0 ? static_cast<std::size_t>(received) : 0);
@@ -183,7 +189,8 @@ int main(int argc, char* argv[])
     std::string binary = argv[1];
 
     std::thread server;
-    auto port = start_server(server);
+    std::atomic<bool> stop { false };
+    auto port = start_server(server, stop);
     auto url = "http://127.0.0.1:" + std::to_string(port) + "/";
     auto output = "/tmp/aetheris-dom-host-test.ppm";
 
@@ -235,6 +242,7 @@ int main(int argc, char* argv[])
     require(!contains(captured_csp, "MARK should-not-run"), "CSP blocks the inline script");
     require(contains(captured_csp, "blocked by Content-Security-Policy"), "CSP block is reported");
 
+    stop.store(true);
     server.join();
     return 0;
 }
