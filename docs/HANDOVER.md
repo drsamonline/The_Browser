@@ -56,7 +56,7 @@ All credited in `CREDITS.md`.
 | --- | --- |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
-| Scrollbar input | The bar is drawn and mapped by `ScrollBar`, but a click on the track is not wired into the window loop yet — only the wheel and the keys scroll |
+| Scrollbar drag | A click on the track scrolls to that point; dragging the thumb is not implemented |
 | `file://` in `--render-window` | No backend for the scheme on that path ("no backend supports the URL"); use `--render` or serve over loopback |
 | `::before`/`::after` | Needs layout-level synthetic boxes |
 | HTTP/2 | Deferred |
@@ -154,6 +154,15 @@ contents. Several releases went green with a broken or missing package.
    took ten seconds to pass because it waited out an idle timeout, and the same
    timeout is what made it fail under load. When a suite test takes seconds, look
    for a sleep or a timeout before looking for a network problem.
+9. **Never use an idle timeout as a shutdown condition in a fixture.** Three
+   fixtures did (`AetherisHttpClient` twice, `AetherisDomHost`), and all three
+   failed intermittently under `-j 8` because a loaded runner can pause longer
+   than the timeout between two connections. Use a stop flag polled by a short
+   select, set before `join()`.
+10. **A pooled connection can die between the probe and the write.** `HttpClient`
+    retries once on a fresh connection now; do not remove that retry, it is the
+    difference between a blank page and a working one against servers that close
+    idle connections.
 
 ---
 
@@ -181,11 +190,10 @@ Docs: `docs/ROADMAP.md` (status), `docs/PHASES.md` (order), `docs/UI_SPEC.md`
 
 ## 7. Next work, in priority order
 
-1. **Wire scrollbar clicks and drags** into the window loop. `ScrollBar::
-   scroll_for_pointer()` already computes the offset; the router needs a
-   `ScrollTrack` action and the loop needs to apply it. Half a day.
-2. **`scrollTop`/`scrollHeight` in the JS layer** — the viewport exists, so this
-   is a binding onto it, not new machinery.
+1. **`scrollTop`/`scrollHeight`/`scrollLeft`/`scrollWidth` in the JS layer** — the
+   viewport exists, so this is a binding onto it, not new machinery.
+2. **Scrollbar thumb dragging** — a track click scrolls to that point already;
+   a drag needs pointer capture between MouseDown and MouseUp.
 3. **`position: sticky`** — now unblocked by the scroll offset.
 4. **Wire tab click/close** to the session; address-bar focus styling.
 5. **Shaping** for non-Latin scripts.
