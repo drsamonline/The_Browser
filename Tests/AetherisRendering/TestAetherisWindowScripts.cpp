@@ -181,6 +181,20 @@ int main(int argc, char* argv[])
             "a key handler that changes the document triggers a layout");
     }
 
-    std::printf("window scripts: ran, clicked, keyed, ticked, laid out and exited cleanly\n");
+    // Hover reaches the element under the pointer.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Hover</title>"
+            "<style>body{margin:0}div{width:400px;height:100px}</style></head><body>"
+            "<div id='a'>A</div><div id='b'>B</div>"
+            "<script>document.getElementById('a').addEventListener('mouseover', function () {"
+            "console.log('MARK over a'); });</script></body></html>",
+            "--move 200 80");
+        require(result.status == 0, "the hover run exits cleanly");
+        require(result.output.find("MARK over a") != std::string::npos,
+            "hover reaches the element under the pointer");
+    }
+
+    std::printf("window scripts: ran, clicked, keyed, hovered, ticked, laid out and exited cleanly\n");
     return 0;
 }

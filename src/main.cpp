@@ -1680,24 +1680,54 @@ static std::size_t document_fingerprint(rendering::DomNode const& node)
     return total;
 }
 
+static rendering::DomNode* node_at(rendering::RenderDocument& rendered, DomHost& dom,
+    rendering::Viewport const& viewport, float x, float y);
+
+// Moves the pointer to a point in the content area: the element losing the
+// pointer gets `mouseout`, the one gaining it gets `mouseover`. Returns true when
+// the element under the pointer changed, which is the only time a repaint is
+// worth doing.
+static bool hover_at(rendering::RenderDocument& rendered, aetheris::js::Interpreter& js,
+    DomHost& dom, rendering::Viewport const& viewport, float x, float y, rendering::DomNode*& hovered)
+{
+    if (js.has_error())
+        return false;
+    auto* node = node_at(rendered, dom, viewport, x, y);
+    if (node == hovered)
+        return false;
+    if (hovered)
+        dispatch_bubbling(js, dom, hovered, "mouseout");
+    hovered = node;
+    if (hovered)
+        dispatch_bubbling(js, dom, hovered, "mouseover");
+    return true;
+}
+
 // Fires a click at a point in the content area on the element there, then
 // re-lays out so whatever the handler changed is visible. Shared by the window's
 // own clicks and by --click, so both take exactly the same path.
+// The element at a point, or null. Text nodes and anonymous boxes have no
+// JavaScript handle, so the hit walks up to the nearest ancestor that does.
+static rendering::DomNode* node_at(rendering::RenderDocument& rendered, DomHost& dom,
+    rendering::Viewport const& viewport, float x, float y)
+{
+    rendering::DocumentInteraction interaction;
+    auto hit = interaction.hit_test(rendered, viewport, x, y);
+    auto* node = hit.dom_node ? const_cast<rendering::DomNode*>(hit.dom_node) : nullptr;
+    while (node && dom.handle_by_node.find(node) == dom.handle_by_node.end()) {
+        auto parent = dom.parent_of.find(node);
+        node = parent != dom.parent_of.end() ? parent->second : nullptr;
+    }
+    return node;
+}
+
 static bool dispatch_click_at(rendering::RenderDocument& rendered, aetheris::js::Interpreter& js,
     DomHost& dom, rendering::Viewport const& viewport, float x, float y)
 {
     if (js.has_error())
         return false;
 
-    rendering::DocumentInteraction interaction;
-    auto hit = interaction.hit_test(rendered, viewport, x, y);
-    auto* node = hit.dom_node ? const_cast<rendering::DomNode*>(hit.dom_node) : nullptr;
-    // Walk up to the nearest node that has a JavaScript handle: text nodes and
-    // anonymous boxes do not.
-    while (node && dom.handle_by_node.find(node) == dom.handle_by_node.end()) {
-        auto parent = dom.parent_of.find(node);
-        node = parent != dom.parent_of.end() ? parent->second : nullptr;
-    }
+    auto* node = node_at(rendered, dom, viewport, x, y);
     if (!node) {
         std::cerr << "  [js] no element handle at the click point" << std::endl;
         return false;
@@ -1708,7 +1738,8 @@ static bool dispatch_click_at(rendering::RenderDocument& rendered, aetheris::js:
 }
 
 static int run_window(std::string const& url, int frames, std::string const& frame_directory,
-    int click_x = -1, int click_y = -1, std::string const& key_to_press = {})
+    int click_x = -1, int click_y = -1, std::string const& key_to_press = {},
+    int move_x = -1, int move_y = -1)
 {
     constexpr int kWidth = 1024;
     constexpr int kHeight = 768;
@@ -1813,6 +1844,8 @@ static int run_window(std::string const& url, int frames, std::string const& fra
 
     bool pending_click_done = false;
     bool pending_key_done = false;
+    bool pending_move_done = false;
+    rendering::DomNode* hovered = nullptr;
     std::size_t relayouts = 0;
     ui::WindowEvent event;
     ui::InputRouter router(kChromeHeight);
@@ -1843,6 +1876,19 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         if (cached_page && page_js.has_timers()) {
             auto const before = document_fingerprint(cached_page->document().root());
             if (page_js.run_timers(16.0)
+                && document_fingerprint(cached_page->document().root()) != before) {
+                cached_page->relayout();
+                ++relayouts;
+                need_render = true;
+            }
+        }
+
+        // A pointer move requested on the command line, once, after the page is up.
+        if (!pending_move_done && move_x >= 0 && move_y >= 0 && cached_page) {
+            pending_move_done = true;
+            auto const before = document_fingerprint(cached_page->document().root());
+            if (hover_at(*cached_page, page_js, page_dom, viewport,
+                    static_cast<float>(move_x), static_cast<float>(move_y - kChromeHeight), hovered)
                 && document_fingerprint(cached_page->document().root()) != before) {
                 cached_page->relayout();
                 ++relayouts;
@@ -1907,6 +1953,18 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             case ui::InputAction::Kind::ScrollEdge:
                 viewport.scroll_to(0.0f, action.delta < 0 ? 0.0f : document_height);
                 need_render = true;
+                break;
+            case ui::InputAction::Kind::PageHover:
+                if (cached_page) {
+                    auto const before = document_fingerprint(cached_page->document().root());
+                    if (hover_at(*cached_page, page_js, page_dom, viewport,
+                            static_cast<float>(action.x), static_cast<float>(action.y - kChromeHeight), hovered)
+                        && document_fingerprint(cached_page->document().root()) != before) {
+                        cached_page->relayout();
+                        ++relayouts;
+                        need_render = true;
+                    }
+                }
                 break;
             case ui::InputAction::Kind::Key:
                 if (cached_page) {
@@ -2399,7 +2457,14 @@ int main(int argc, char* argv[]) {
                 key_to_press = argv[i + 2];
                 i += 2;
             }
-            return run_window(url, frames, frame_directory, click_x, click_y, key_to_press);
+            int move_x = -1;
+            int move_y = -1;
+            if (i + 1 < argc && std::string(argv[i + 1]) == "--move" && i + 3 < argc) {
+                move_x = std::atoi(argv[i + 2]);
+                move_y = std::atoi(argv[i + 3]);
+                i += 3;
+            }
+            return run_window(url, frames, frame_directory, click_x, click_y, key_to_press, move_x, move_y);
         }
         // Same page, but composited under the compact browser chrome.
         if (arg == "--render-window" && i + 1 < argc) {
