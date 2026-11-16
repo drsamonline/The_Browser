@@ -55,6 +55,7 @@ All credited in `CREDITS.md`.
 | Item | Detail |
 | --- | --- |
 | JS after load | Scripts run at load, a click dispatches into the DOM and re-lays out, and repeating timers tick once per frame. Keys and hover do not reach scripts yet |
+| Page load | One path: `create_scripted_document`. `--render` passes a negative timer budget to drain the queue; `--window` passes 0 and ticks per frame |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
 | Scrollbar drag | A click on the track scrolls to that point; dragging the thumb is not implemented |
@@ -192,12 +193,7 @@ Docs: `docs/ROADMAP.md` (status), `docs/PHASES.md` (order), `docs/UI_SPEC.md`
 
 ## 7. Next work, in priority order
 
-1. **Fold `create_scripted_document` and `run_render` into one path.** The window
-   now runs scripts, but through a second copy of the script-loading block, because
-   `--dispatch` and `--click` need the live host and interpreter after layout. One
-   function with an `after_scripts` callback is the fix; it was attempted and
-   reverted once already, so budget for it properly.
-2. **A dirty flag from the JS layer.** A timer that ran forces a relayout and a
+1. **A dirty flag from the JS layer.** A timer that ran forces a relayout and a
    repaint whether or not it touched the DOM; a mutation counter would make
    repaints honest and let an idle `setInterval` stop costing frames.
 3. **Keys and hover into scripts**, through the same `dispatch_click_at` shape.

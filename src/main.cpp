@@ -1656,7 +1656,8 @@ static PageStyle collect_page_style(std::string const& body, std::string const& 
 static rendering::RenderDocument create_scripted_document(
     std::string const& html, std::string const& css, std::string const& url,
     rendering::ResourceCache* resources,
-    aetheris::js::Interpreter& js, DomHost& dom);
+    aetheris::js::Interpreter& js, DomHost& dom,
+    std::shared_ptr<std::array<double, 4>> viewport_state, double timer_budget_ms);
 
 // Fires a click at a point in the content area on the element there, then
 // re-lays out so whatever the handler changed is visible. Shared by the window's
@@ -1706,6 +1707,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     // page, gives exactly that destruction order.
     aetheris::js::Interpreter page_js;
     DomHost page_dom;
+    auto page_viewport_state = std::make_shared<std::array<double, 4>>(std::array<double, 4> { 0.0, 0.0, 0.0, 768.0 });
     std::optional<rendering::RenderDocument> cached_page;
     bool page_dirty = true;
     float document_height = static_cast<float>(content_height);
@@ -1736,7 +1738,8 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             auto style = collect_page_style(body, session.current_url(), fetcher);
             // Scripts run here, so a page that builds its content in JavaScript
             // renders in the window instead of coming up blank.
-            cached_page.emplace(create_scripted_document(body, style.css, session.current_url(), nullptr, page_js, page_dom));
+            cached_page.emplace(create_scripted_document(body, style.css, session.current_url(), nullptr,
+                page_js, page_dom, page_viewport_state, 0.0));
             session.set_page_title(document_title(cached_page->document().root()));
             session.set_loading(false);
 
@@ -1978,7 +1981,8 @@ static int run_render_window(std::string const& url, std::string const& output_p
 static rendering::RenderDocument create_scripted_document(
     std::string const& html, std::string const& css, std::string const& url,
     rendering::ResourceCache* resources,
-    aetheris::js::Interpreter& js, DomHost& dom)
+    aetheris::js::Interpreter& js, DomHost& dom,
+    std::shared_ptr<std::array<double, 4>> viewport_state, double timer_budget_ms)
 {
     // Parse the document so inline scripts can read and mutate it.
     rendering::Document document = rendering::Document::parse_html(html);
@@ -1994,7 +1998,6 @@ static rendering::RenderDocument create_scripted_document(
     // client height. A scroll request is recorded rather than performed, because
     // --render produces one image, and that is enough for a page's scroll handler
     // to run and read back what it set.
-    auto viewport_state = std::make_shared<std::array<double, 4>>(std::array<double, 4> { 0.0, 0.0, 0.0, 768.0 });
     js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
     js.write_handler = [&script_output](std::string const& text) { script_output += text; };
 
@@ -2110,10 +2113,13 @@ static rendering::RenderDocument create_scripted_document(
     if (!js.has_error()) {
         js.dispatch_event("DOMContentLoaded");
         js.dispatch_event("load");
-        // Only the timers that are already due. Draining the whole queue here
-        // fires a repeating timer a thousand times before the first frame; the
-        // window loop ticks the rest as virtual time advances.
-        js.run_timers(0.0);
+        // A one-shot render drains the timer queue (negative budget); a window
+        // advances one frame at a time, because draining there would fire a
+        // repeating timer a thousand times before the first frame.
+        if (timer_budget_ms < 0)
+            js.run_event_loop();
+        else
+            js.run_timers(timer_budget_ms);
     }
 
     // textContent writes go straight to the DOM through its accessor, so no
@@ -2188,165 +2194,30 @@ static int run_render(std::string const& url, std::string const& output_path, st
 
     network::Socket::cleanup();
 
-    // Parse the document so inline scripts can read and mutate it.
+    // Scripts run through the same path the window uses, so --render and --window
+    // cannot drift. A negative budget drains the timer queue, which is what a
+    // one-shot render wants.
     std::string html = document_body;
-    rendering::Document document = rendering::Document::parse_html(html);
-
-    rendering::CssParser computed_parser;
-    rendering::CssStyleSheet computed_sheet = computed_parser.parse(css);
-    g_stylesheet = &computed_sheet;
-
-    std::string script_output;
     aetheris::js::Interpreter js;
-
-    // Scroll state for scripts. A static render has no window, so it lives here:
-    // scroll_x, scroll_y, document height (filled in once layout exists) and the
-    // client height. A scroll request is recorded rather than performed, because
-    // --render produces one image, and that is enough for a page's scroll handler
-    // to run and read back what it set.
-    auto viewport_state = std::make_shared<std::array<double, 4>>(std::array<double, 4> { 0.0, 0.0, 0.0, 768.0 });
-    js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
-    js.write_handler = [&script_output](std::string const& text) { script_output += text; };
-
-    g_js = &js;
-
     DomHost dom;
-    dom.initialize(js.context());
-    dom.collect(document.root());
-    build_handles(document.root(), dom);
+    auto viewport_state = std::make_shared<std::array<double, 4>>(std::array<double, 4> { 0.0, 0.0, 0.0, 768.0 });
+    auto rendered = create_scripted_document(html, css, url, &resources, js, dom, viewport_state, -1.0);
 
-    // document / window surface
-    {
-        g_document_root = &document.root();
-        // `html_element`, not `html`: an outer std::string html is in scope here
-        // and C4456 (declaration hides previous local) is fatal under /WX.
-        auto* html_element = find_element(document.root(), "html");
-        auto* body = find_element(document.root(), "body");
-        auto* head = find_element(document.root(), "head");
-        JSValue document_object = js.document_object();
-        if (body)
-            JS_SetPropertyStr(js.context(), document_object, "body", dom.handle_for(body));
-        if (head)
-            JS_SetPropertyStr(js.context(), document_object, "head", dom.handle_for(head));
-        if (html_element)
-            JS_SetPropertyStr(js.context(), document_object, "documentElement", dom.handle_for(html_element));
-
-        JS_SetPropertyStr(js.context(), document_object, "getComputedStyle",
-            JS_NewCFunction(js.context(), js_get_computed_style, "getComputedStyle", 1));
-
-        JSAtom title_atom = JS_NewAtom(js.context(), "title");
-        JS_DefinePropertyGetSet(js.context(), document_object, title_atom,
-            JS_NewCFunction(js.context(), js_document_title_get, "get title", 0),
-            JS_NewCFunction(js.context(), js_document_title_set, "set title", 1),
-            JS_PROP_CONFIGURABLE);
-        JS_FreeAtom(js.context(), title_atom);
-
-        JSValue window_object = js.window_object();
-        JS_SetPropertyStr(js.context(), window_object, "innerWidth", JS_NewInt32(js.context(), 1024));
-        JS_SetPropertyStr(js.context(), window_object, "innerHeight", JS_NewInt32(js.context(), 768));
-
-        js.viewport_metrics = [viewport_state]() {
-            aetheris::js::ViewportMetrics metrics;
-            metrics.scroll_x = (*viewport_state)[0];
-            metrics.scroll_y = (*viewport_state)[1];
-            metrics.scroll_width = 1024;
-            metrics.scroll_height = (*viewport_state)[2];
-            metrics.client_width = 1024;
-            metrics.client_height = (*viewport_state)[3];
-            return metrics;
-        };
-        js.scroll_target = [viewport_state](double x, double y) {
-            (*viewport_state)[0] = x;
-            (*viewport_state)[1] = y;
-        };
-
-        // Pages reach for documentElement and body as often as for
-        // document.scrollingElement, so all three carry the scroll properties.
-        for (auto const* name : { "body", "documentElement" }) {
-            JSValue element = JS_GetPropertyStr(js.context(), document_object, name);
-            if (!JS_IsUndefined(element) && !JS_IsNull(element))
-                aetheris::js::install_viewport_properties(js.context(), element);
-            JS_FreeValue(js.context(), element);
-        }
-    }
-
-    js.element_lookup = [&dom](std::string const& id) -> JSValue {
-        auto it = dom.handle_by_id.find(id);
-        return it == dom.handle_by_id.end() ? JS_NULL : JS_DupValue(dom.context, it->second);
-    };
-    js.create_element = [&dom](std::string const& tag) -> JSValue {
-        auto node = std::make_unique<rendering::DomNode>(rendering::DomNodeType::Element, tag, "");
-        auto* raw = node.get();
-        dom.pending[raw] = std::move(node);
-        return dom.handle_for(raw);
-    };
-    js.query_selector = [&dom, &document](std::string const& selector) -> JSValue {
-        std::vector<std::vector<SimpleSelector>> chains;
-        if (!parse_selector(selector, chains))
-            return JS_NULL;
-        std::vector<rendering::DomNode*> matches;
-        collect_selector_matches(document.root(), dom, chains, matches);
-        if (matches.empty())
-            return JS_NULL;
-        auto it = dom.handle_by_node.find(matches.front());
-        return it != dom.handle_by_node.end() ? JS_DupValue(dom.context, it->second) : JS_NULL;
-    };
-    js.query_selector_all = [&dom, &document](std::string const& selector) -> JSValue {
-        JSValue array = JS_NewArray(dom.context);
-        std::vector<std::vector<SimpleSelector>> chains;
-        if (!parse_selector(selector, chains))
-            return array;
-        std::vector<rendering::DomNode*> matches;
-        collect_selector_matches(document.root(), dom, chains, matches);
-        uint32_t index = 0;
-        for (auto* node : matches) {
-            auto it = dom.handle_by_node.find(node);
-            if (it != dom.handle_by_node.end())
-                JS_SetPropertyUint32(dom.context, array, index++, JS_DupValue(dom.context, it->second));
-        }
-        return array;
-    };
-
-    // Content-Security-Policy: inline scripts only run when the policy allows.
-    auto policy = content_security_policy(document.root());
-    if (!csp_allows_inline_scripts(policy)) {
-        std::cerr << "  [js] inline scripts blocked by Content-Security-Policy" << std::endl;
-    } else for (auto const& script : extract_scripts(html)) {
-        js.run(script);
-        if (js.has_error()) {
-            std::cerr << "  [js] " << js.error() << std::endl;
-            break;
-        }
-    }
-    if (!js.has_error()) {
-        js.dispatch_event("DOMContentLoaded");
-        js.dispatch_event("load");
-        // Run timers (setTimeout/setInterval) on virtual time.
-        js.run_event_loop();
-    }
+    // --dispatch fires an element event after load, then re-lays out so the
+    // handler's changes are in the image. It lives here rather than in the shared
+    // loader because a window has no use for it.
     if (!js.has_error() && !dispatch_id.empty() && !dispatch_type.empty()) {
         auto it = dom.handle_by_id.find(dispatch_id);
         auto* node = it != dom.handle_by_id.end()
             ? static_cast<rendering::DomNode*>(JS_GetOpaque(it->second, g_dom_node_class))
             : nullptr;
-        if (node)
+        if (node) {
             dispatch_bubbling(js, dom, node, dispatch_type);
-        else
+            rendered.relayout();
+        } else {
             std::cerr << "  [js] no element with id '" << dispatch_id << "'" << std::endl;
+        }
     }
-
-    // textContent writes go straight to the DOM through its accessor, so no
-    // post-script reconciliation pass is needed (an earlier pass compared a
-    // stale snapshot and could free nodes whose handles were still live).
-
-    // document.write output is appended to the body.
-    if (!script_output.empty()) {
-        auto* body = find_element(document.root(), "body");
-        auto text_node = std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", script_output);
-        (body ? *body : document.root()).append_child(std::move(text_node));
-    }
-
-    auto rendered = rendering::RenderDocument::create_from_document(std::move(document), css, 1024.0f, &resources, url);
 
     // Layout exists now, so scripts can be told how tall the page really is.
     (*viewport_state)[2] = static_cast<double>(rendered.layout_root().rect.height);
