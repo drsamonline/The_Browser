@@ -26,7 +26,10 @@
 #include "js.hpp"
 #include "document_interaction.hpp"
 #include "viewport.hpp"
+#include "paint_executor.hpp"
+#include "scroll_bar.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <iostream>
@@ -1659,27 +1662,61 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         return 1;
     }
 
+    // The loaded page is kept between frames. Before this, every repaint
+    // refetched the document over the network, which made a scroll a download.
+    std::optional<rendering::RenderDocument> cached_page;
+    bool page_dirty = true;
+    float document_height = static_cast<float>(content_height);
+    // Scroll state for the page area. The UI session is deliberately free of
+    // rendering, so the viewport lives here, beside the document it scrolls.
+    rendering::Viewport viewport(static_cast<float>(kWidth), static_cast<float>(content_height));
+
     // Loads the active tab and composites a frame. Returns false when the page
     // could not be fetched, which the chrome then shows.
     auto render_frame = [&](rendering::SoftwareSurface& window) {
-        if (network::Socket::initialize() != network::SocketError::None) {
-            std::cerr << "Failed to initialize network subsystem" << std::endl;
-            return false;
+        if (page_dirty) {
+            if (network::Socket::initialize() != network::SocketError::None) {
+                std::cerr << "Failed to initialize network subsystem" << std::endl;
+                return false;
+            }
+            rendering::Url document_url = rendering::Url::parse(session.current_url());
+            SecureFetcher fetcher(document_url);
+            auto loaded = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
+            network::Socket::cleanup();
+            if (!loaded.succeeded()) {
+                session.set_error(loaded.message);
+                page_dirty = false;
+                cached_page.reset();
+                return false;
+            }
+            std::string body(loaded.resource->bytes.begin(), loaded.resource->bytes.end());
+            auto style = collect_page_style(body, session.current_url(), fetcher);
+            cached_page.emplace(rendering::RenderDocument::create(body, style.css, static_cast<float>(kWidth), nullptr, session.current_url()));
+            session.set_page_title(document_title(cached_page->document().root()));
+            session.set_loading(false);
+
+            // The viewport can only scroll once it knows how tall the document
+            // is; without this the clamp pins scroll to zero and a long page is
+            // unreachable no matter what the wheel does.
+            document_height = std::max(cached_page->document_rect().height, static_cast<float>(content_height));
+            viewport.set_size(static_cast<float>(kWidth), static_cast<float>(content_height));
+            viewport.set_document_size(static_cast<float>(kWidth), document_height);
+            viewport.scroll_to(0, 0);
+            page_dirty = false;
         }
-        rendering::Url document_url = rendering::Url::parse(session.current_url());
-        SecureFetcher fetcher(document_url);
-        auto loaded = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
-        network::Socket::cleanup();
-        if (!loaded.succeeded()) {
-            session.set_error(loaded.message);
+        if (!cached_page)
             return false;
-        }
-        std::string body(loaded.resource->bytes.begin(), loaded.resource->bytes.end());
-        auto style = collect_page_style(body, session.current_url(), fetcher);
-        auto page = rendering::RenderDocument::create(body, style.css, static_cast<float>(kWidth), nullptr, session.current_url());
-        session.set_page_title(document_title(page.document().root()));
-        session.set_loading(false);
-        auto page_surface = page.render_to_surface(kWidth, content_height, rendering::Color { 255, 255, 255, 255 });
+
+        rendering::PaintOffset offset { viewport.scroll_x(), viewport.scroll_y() };
+        auto page_surface = cached_page->render_to_surface(kWidth, content_height, rendering::Color { 255, 255, 255, 255 }, offset);
+
+        // The scrollbar is painted into the content area, not the window, so its
+        // geometry stays in the same coordinate space as the page it describes.
+        auto bar = rendering::ScrollBar::geometry(static_cast<float>(kWidth), static_cast<float>(content_height), document_height, offset.y);
+        rendering::ScrollBar::paint(page_surface, bar,
+            rendering::Color { 0, 0, 0, 24 },
+            rendering::Color { 80, 80, 88, 200 });
+
         window.blit(page_surface, 0, kChromeHeight);
         return true;
     };
@@ -1739,10 +1776,26 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             case ui::InputAction::Kind::Navigate:
                 if (session.navigate(action.text)) {
                     router.set_address_text(session.current_url());
+                    page_dirty = true;
                     need_render = true;
                 }
                 break;
             case ui::InputAction::Kind::Reload:
+                page_dirty = true;
+                need_render = true;
+                break;
+            case ui::InputAction::Kind::Scroll:
+                // SDL reports a positive wheel delta for "away from the user",
+                // which scrolls up. The sign is inverted exactly once, here.
+                viewport.scroll_by(0.0f, -static_cast<float>(action.delta) * static_cast<float>(ui::InputRouter::scroll_pixels_per_notch()));
+                need_render = true;
+                break;
+            case ui::InputAction::Kind::ScrollPage:
+                viewport.scroll_by(0.0f, -static_cast<float>(action.delta) * static_cast<float>(content_height) * 0.9f);
+                need_render = true;
+                break;
+            case ui::InputAction::Kind::ScrollEdge:
+                viewport.scroll_to(0.0f, action.delta < 0 ? 0.0f : document_height);
                 need_render = true;
                 break;
             case ui::InputAction::Kind::NewTab:
@@ -1766,13 +1819,15 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     host->close();
 
     std::cout << "Window " << kWidth << "x" << kHeight << " (chrome " << kChromeHeight
-              << "px, content " << content_height << "px), backend: "
+              << "px, content " << content_height << "px, document "
+              << static_cast<int>(document_height) << "px), backend: "
               << (ui::has_display_backend() ? "display" : "headless")
               << ", tabs: " << session.tab_count() << ", events handled: " << handled << std::endl;
     return 0;
 }
 
-static int run_render_window(std::string const& url, std::string const& output_path)
+
+static int run_render_window(std::string const& url, std::string const& output_path, float scroll_y = 0.0f)
 {
     if (network::Socket::initialize() != network::SocketError::None) {
         std::cerr << "Failed to initialize network subsystem" << std::endl;
@@ -1794,7 +1849,17 @@ static int run_render_window(std::string const& url, std::string const& output_p
 
     auto style = collect_page_style(body, url, fetcher);
     auto page = rendering::RenderDocument::create(body, style.css, static_cast<float>(kWidth), nullptr, url);
-    auto page_surface = page.render_to_surface(kWidth, content_height, rendering::Color { 255, 255, 255, 255 });
+
+    // `--scroll-y` renders the page as it looks scrolled, which is the only way
+    // to look at a long page from a headless machine.
+    float document_height = std::max(page.document_rect().height, static_cast<float>(content_height));
+    float clamped_scroll = std::clamp(scroll_y, 0.0f, std::max(0.0f, document_height - static_cast<float>(content_height)));
+    auto page_surface = page.render_to_surface(kWidth, content_height, rendering::Color { 255, 255, 255, 255 },
+        rendering::PaintOffset { 0.0f, clamped_scroll });
+    rendering::ScrollBar::paint(page_surface,
+        rendering::ScrollBar::geometry(static_cast<float>(kWidth), static_cast<float>(content_height), document_height, clamped_scroll),
+        rendering::Color { 0, 0, 0, 24 },
+        rendering::Color { 80, 80, 88, 200 });
 
     // The title comes from the page so the tab reads like a real browser.
     std::string title = document_title(page.document().root());
@@ -1811,7 +1876,8 @@ static int run_render_window(std::string const& url, std::string const& output_p
         return 1;
     }
     std::cout << "Rendered window " << kWidth << "x" << kHeight << " (chrome " << kChromeHeight
-              << "px, content " << content_height << "px) to " << output_path << std::endl;
+              << "px, content " << content_height << "px, document " << static_cast<int>(document_height)
+              << "px, scroll " << static_cast<int>(clamped_scroll) << "px) to " << output_path << std::endl;
     return 0;
 }
 
@@ -2071,6 +2137,7 @@ int main(int argc, char* argv[]) {
                       << "                 content type and body size.\n"
                       << "  --render <url> [out.ppm]\n"
                       << "  --render-window <url> [out.ppm]   page composited under the browser chrome\n"
+                      << "                 Add `--scroll-y <px>` after the path to render a scrolled view.\n"
                       << "  --window <url> [frames] [dir]     run the window loop (headless without SDL2)\n"
                       << "                 Fetch a URL, render it and write a PPM image.\n"
                       << "  --eval <script>  Run a JavaScript snippet and print its output.\n"
@@ -2124,7 +2191,12 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 output_path = argv[++i];
             }
-            return run_render_window(url, output_path);
+            float scroll_y = 0.0f;
+            if (i + 1 < argc && std::string(argv[i + 1]) == "--scroll-y" && i + 2 < argc) {
+                scroll_y = std::stof(argv[i + 2]);
+                i += 2;
+            }
+            return run_render_window(url, output_path, scroll_y);
         }
     }
 

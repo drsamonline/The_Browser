@@ -31,9 +31,14 @@ public:
 
     Document const& document() const { return m_document; }
     LayoutNode const& layout_root() const { return *m_layout_root; }
+    // Size of the laid-out document, which is what the viewport scrolls within.
+    LayoutRect document_rect() const { return m_layout_root->rect; }
     RenderTree const& render_tree() const { return m_render_tree; }
 
     SoftwareSurface render_to_surface(int width, int height, Color clear_color = { 0, 0, 0, 0 }) const;
+    // Paints the viewport that starts at `offset` in document coordinates. The
+    // document is not re-laid out: scrolling repaints, it does not reflow.
+    SoftwareSurface render_to_surface(int width, int height, Color clear_color, PaintOffset offset) const;
     // Rebuilds layout and the render tree from the (possibly mutated) document.
     void relayout();
     void apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width);

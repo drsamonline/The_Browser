@@ -28,6 +28,13 @@ InputAction InputRouter::handle(WindowEvent const& event)
         if (event.y >= m_chrome_height)
             return InputAction { InputAction::Kind::PageHover, {}, event.x, event.y };
         return InputAction {};
+    case WindowEvent::Kind::Scroll:
+        // A wheel event carries no pointer position on every backend, so it is
+        // never gated on the chrome height: a wheel over the chrome scrolls the
+        // page, which is what every browser does.
+        if (event.delta == 0)
+            return InputAction {};
+        return InputAction { InputAction::Kind::Scroll, {}, event.x, event.y, event.delta };
     default:
         return InputAction {};
     }
@@ -61,6 +68,19 @@ InputAction InputRouter::handle_key(WindowEvent const& event)
     if (key == "f11") {
         m_zen = !m_zen;
         return InputAction { InputAction::Kind::ToggleZen };
+    }
+
+    // Page-level scrolling keys. They belong to the page, so they only fire
+    // when the address bar does not hold focus.
+    if (!m_address_focused) {
+        if (key == "space" || key == "pagedown")
+            return InputAction { InputAction::Kind::ScrollPage, {}, 0, 0, 1 };
+        if (key == "pageup")
+            return InputAction { InputAction::Kind::ScrollPage, {}, 0, 0, -1 };
+        if (key == "home")
+            return InputAction { InputAction::Kind::ScrollEdge, {}, 0, 0, -1 };
+        if (key == "end")
+            return InputAction { InputAction::Kind::ScrollEdge, {}, 0, 0, 1 };
     }
 
     if (m_address_focused) {

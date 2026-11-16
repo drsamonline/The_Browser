@@ -114,8 +114,13 @@ void RenderDocument::apply_visual_state(VisualInteractionState const& interactio
 
 SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color clear_color) const
 {
+    return render_to_surface(width, height, clear_color, PaintOffset {});
+}
+
+SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color clear_color, PaintOffset offset) const
+{
     SoftwareSurface surface(width, height, clear_color);
-    PaintExecutor {}.execute(m_render_tree, surface);
+    PaintExecutor {}.execute(m_render_tree, surface, offset);
     return surface;
 }
 

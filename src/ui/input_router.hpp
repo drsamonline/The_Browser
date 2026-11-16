@@ -23,6 +23,9 @@ struct InputAction {
         AddressEdited, // the address text changed; `text` holds the new value
         PageClick,     // x, y in window coordinates
         PageHover,     // x, y in window coordinates
+        Scroll,        // `delta` wheel notches: positive scrolls down
+        ScrollPage,    // `delta` pages: positive scrolls down, negative up
+        ScrollEdge,    // `delta` -1 to the top of the document, +1 to the bottom
         ToggleZen,     // hide or show the chrome
         Quit,
     };
@@ -31,16 +34,18 @@ struct InputAction {
     std::string text;
     int x { 0 };
     int y { 0 };
+    int delta { 0 };
 
     InputAction() = default;
     // Explicit constructor rather than aggregate initialisation: leaving fields
     // out of a braced initialiser warns under -Wmissing-field-initializers, and
     // CI builds with -Werror.
-    explicit InputAction(Kind action_kind, std::string action_text = {}, int action_x = 0, int action_y = 0)
+    explicit InputAction(Kind action_kind, std::string action_text = {}, int action_x = 0, int action_y = 0, int action_delta = 0)
         : kind(action_kind)
         , text(std::move(action_text))
         , x(action_x)
         , y(action_y)
+        , delta(action_delta)
     {
     }
 };
@@ -67,6 +72,10 @@ public:
     static int reload_x() { return 282; }
     static int address_x() { return 310; }
     static int address_width() { return 660; }
+
+    // Pixels per wheel notch. A notch is three lines, and a line is the 20 px
+    // body leading, so one notch is 60 px — the same feel as a desktop browser.
+    static int scroll_pixels_per_notch() { return 60; }
 
 private:
     InputAction handle_key(WindowEvent const& event);

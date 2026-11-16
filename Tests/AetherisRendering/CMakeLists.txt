@@ -291,3 +291,9 @@ endforeach()
 if(TARGET TestAetherisWindowHost)
     set_tests_properties(AetherisWindowHost PROPERTIES TIMEOUT 30)
 endif()
+
+add_executable(TestAetherisScrolling
+    TestScrolling.cpp
+)
+target_link_libraries(TestAetherisScrolling PRIVATE AetherisRendering)
+add_test(NAME AetherisScrolling COMMAND TestAetherisScrolling)

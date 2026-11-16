@@ -124,6 +124,49 @@ int main()
         require(router.handle(closed).kind == InputAction::Kind::Quit, "closing the window quits");
     }
 
+    // The wheel scrolls the page, and its sign is preserved for the caller.
+    {
+        InputRouter router;
+        WindowEvent wheel;
+        wheel.kind = WindowEvent::Kind::Scroll;
+        wheel.delta = 3;
+        auto down = router.handle(wheel);
+        require(down.kind == InputAction::Kind::Scroll, "wheel produces a scroll action");
+        require(down.delta == 3, "wheel delta is passed through");
+
+        wheel.delta = -2;
+        require(router.handle(wheel).delta == -2, "negative wheel delta is preserved");
+
+        // A wheel event carries no pointer position, so it must not be dropped
+        // just because y defaults to the chrome strip.
+        wheel.delta = 1;
+        wheel.y = 0;
+        require(router.handle(wheel).kind == InputAction::Kind::Scroll, "wheel over the chrome still scrolls");
+
+        // A zero delta is not an action worth dispatching.
+        wheel.delta = 0;
+        require(router.handle(wheel).kind == InputAction::Kind::None, "zero wheel delta is ignored");
+    }
+
+    // Keyboard scrolling belongs to the page, not the address bar.
+    {
+        InputRouter router;
+        require(router.handle(key("PageDown")).kind == InputAction::Kind::ScrollPage, "PageDown pages down");
+        require(router.handle(key("PageDown")).delta == 1, "PageDown is positive");
+        require(router.handle(key("PageUp")).delta == -1, "PageUp is negative");
+        require(router.handle(key("Home")).kind == InputAction::Kind::ScrollEdge, "Home jumps to the top");
+        require(router.handle(key("Home")).delta == -1, "Home is negative");
+        require(router.handle(key("End")).delta == 1, "End is positive");
+
+        // With the address bar focused these keys must not scroll the page out
+        // from under the user.
+        InputRouter focused;
+        focused.handle(key("l", true));
+        require(focused.address_focused(), "address bar took focus");
+        require(focused.handle(key("PageDown")).kind != InputAction::Kind::ScrollPage, "no paging while typing");
+        require(focused.handle(key("Home")).kind != InputAction::Kind::ScrollEdge, "no Home jump while typing");
+    }
+
     std::printf("input router: all bindings verified\n");
     return 0;
 }

@@ -54,6 +54,12 @@ std::string key_name(SDL_Keysym const& keysym)
         return "Home";
     case SDLK_END:
         return "End";
+    case SDLK_SPACE:
+        return "Space";
+    case SDLK_PAGEUP:
+        return "PageUp";
+    case SDLK_PAGEDOWN:
+        return "PageDown";
     default:
         break;
     }
