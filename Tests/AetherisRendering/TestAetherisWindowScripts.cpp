@@ -1,13 +1,14 @@
-// A window is a browser, so a page's scripts must run in it. This drives the
-// real binary in --window mode against a local fixture and checks two things:
-// the script's console output appears, and the process exits cleanly. The exit
-// code matters as much as the output: destroying the interpreter while the DOM
-// host still held JS handles used to abort at teardown.
+// A window is a browser, so a page's scripts must run in it, and a click must
+// reach a handler. Both are checked by driving the real binary in --window mode
+// against a local fixture.
+//
+// The exit code matters as much as the output: destroying the interpreter while
+// the DOM host still held JS handles used to abort at teardown, after a perfectly
+// good render.
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <cstdio>
@@ -24,18 +25,17 @@ static void require(bool condition, char const* message)
     }
 }
 
-static const char* kPage =
-    "<html><head><title>Scripted</title></head><body>"
-    "<div id='host'>before</div>"
-    "<script>console.log('MARK window script ran');"
-    "document.getElementById('host').textContent = 'built by script';</script>"
-    "</body></html>";
+struct RunResult {
+    int status { -1 };
+    std::string output;
+};
 
-int main(int argc, char* argv[])
+// Serves `page` on loopback, runs the binary against it with `extra_arguments`,
+// and returns its combined output and exit status. The server stops when the
+// listener is shut down, never on an idle timeout: a loaded machine must not be
+// able to lose it mid-run.
+static RunResult run_window(std::string const& binary, std::string const& page, std::string const& extra_arguments)
 {
-    require(argc >= 2, "browser binary path argument");
-    std::string binary = argv[1];
-
     int listener = ::socket(AF_INET, SOCK_STREAM, 0);
     require(listener >= 0, "listener socket");
     int reuse = 1;
@@ -50,19 +50,16 @@ int main(int argc, char* argv[])
     require(::getsockname(listener, reinterpret_cast<struct sockaddr*>(&address), &length) == 0, "getsockname");
     uint16_t port = ntohs(address.sin_port);
 
-    // Serves until the child closes: no idle timeout, so a slow machine cannot
-    // lose the server between requests.
-    std::thread server([listener]() {
+    std::thread server([listener, page]() {
         for (;;) {
             int connection = ::accept(listener, nullptr, nullptr);
             if (connection < 0)
                 break;
             char buffer[4096];
             ::recv(connection, buffer, sizeof(buffer), 0);
-            std::string body = kPage;
             std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n";
-            response += "Content-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
-            response += body;
+            response += "Content-Length: " + std::to_string(page.size()) + "\r\nConnection: close\r\n\r\n";
+            response += page;
             ::send(connection, response.data(), response.size(), 0);
             ::close(connection);
         }
@@ -70,24 +67,59 @@ int main(int argc, char* argv[])
     });
 
     std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
-    std::string command = "'" + binary + "' --window " + url + " 2 2>&1";
+    std::string command = "'" + binary + "' --window " + url + " 2 " + extra_arguments + " 2>&1";
     FILE* pipe = ::popen(command.c_str(), "r");
     require(pipe != nullptr, "popen");
-    std::string captured;
+    RunResult result;
     char line[512];
     while (std::fgets(line, sizeof(line), pipe))
-        captured += line;
-    int status = ::pclose(pipe);
+        result.output += line;
+    result.status = ::pclose(pipe);
 
-    // Stop the server: a connection to a closed listener ends the accept loop.
     ::shutdown(listener, SHUT_RDWR);
     ::close(listener);
     server.join();
+    return result;
+}
 
-    require(status == 0, "the window run exits cleanly");
-    require(captured.find("MARK window script ran") != std::string::npos,
-        "scripts run in the window loop");
-    require(captured.find("Window 1024x768") != std::string::npos, "the window loop completed");
-    std::printf("window scripts: ran and exited cleanly\n");
+int main(int argc, char* argv[])
+{
+    require(argc >= 2, "browser binary path argument");
+    std::string binary = argv[1];
+
+    // Scripts run at load.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Scripted</title></head><body>"
+            "<div id='host'>before</div>"
+            "<script>console.log('MARK window script ran');"
+            "document.getElementById('host').textContent = 'built by script';</script>"
+            "</body></html>",
+            "");
+        require(result.status == 0, "the window run exits cleanly");
+        require(result.output.find("MARK window script ran") != std::string::npos,
+            "scripts run in the window loop");
+        require(result.output.find("Window 1024x768") != std::string::npos, "the window loop completed");
+    }
+
+    // A click reaches an element handler, and the resulting DOM change is laid
+    // out. The button is at the top of the content area, so window y 80 is
+    // inside it once the 34 px chrome strip is subtracted.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Click</title>"
+            "<style>body{margin:0}button{width:400px;height:100px}</style></head><body>"
+            "<button id='b'>Press me</button>"
+            "<script>document.getElementById('b').addEventListener('click', function () {"
+            "console.log('MARK button clicked');"
+            "var d = document.createElement('div'); d.textContent = 'added'; document.body.appendChild(d);"
+            "});</script></body></html>",
+            "--click 200 80");
+        require(result.status == 0, "the clicked run exits cleanly");
+        require(result.output.find("MARK button clicked") != std::string::npos,
+            "a click reaches the element's handler");
+    }
+
+    std::printf("window scripts: ran, clicked and exited cleanly\n");
     return 0;
 }

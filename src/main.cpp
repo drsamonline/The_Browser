@@ -1658,7 +1658,35 @@ static rendering::RenderDocument create_scripted_document(
     rendering::ResourceCache* resources,
     aetheris::js::Interpreter& js, DomHost& dom);
 
-static int run_window(std::string const& url, int frames, std::string const& frame_directory)
+// Fires a click at a point in the content area on the element there, then
+// re-lays out so whatever the handler changed is visible. Shared by the window's
+// own clicks and by --click, so both take exactly the same path.
+static bool dispatch_click_at(rendering::RenderDocument& rendered, aetheris::js::Interpreter& js,
+    DomHost& dom, rendering::Viewport const& viewport, float x, float y)
+{
+    if (js.has_error())
+        return false;
+
+    rendering::DocumentInteraction interaction;
+    auto hit = interaction.hit_test(rendered, viewport, x, y);
+    auto* node = hit.dom_node ? const_cast<rendering::DomNode*>(hit.dom_node) : nullptr;
+    // Walk up to the nearest node that has a JavaScript handle: text nodes and
+    // anonymous boxes do not.
+    while (node && dom.handle_by_node.find(node) == dom.handle_by_node.end()) {
+        auto parent = dom.parent_of.find(node);
+        node = parent != dom.parent_of.end() ? parent->second : nullptr;
+    }
+    if (!node) {
+        std::cerr << "  [js] no element handle at the click point" << std::endl;
+        return false;
+    }
+    dispatch_bubbling(js, dom, node, "click");
+    rendered.relayout();
+    return true;
+}
+
+static int run_window(std::string const& url, int frames, std::string const& frame_directory,
+    int click_x = -1, int click_y = -1)
 {
     constexpr int kWidth = 1024;
     constexpr int kHeight = 768;
@@ -1759,6 +1787,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     int presented = 0;
     bool done = false;
 
+    bool pending_click_done = false;
     ui::WindowEvent event;
     ui::InputRouter router(kChromeHeight);
     router.set_address_text(session.current_url());
@@ -1782,6 +1811,15 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // A frame budget must stop the loop whatever the backend. Without this
         // the SDL host runs until the user closes the window, which hangs a CI
         // runner that has no one to click it.
+        // A click requested on the command line fires once, after the page is up,
+        // which is the only way to exercise a handler without a display.
+        if (!pending_click_done && click_x >= 0 && click_y >= 0 && cached_page) {
+            pending_click_done = true;
+            if (dispatch_click_at(*cached_page, page_js, page_dom, viewport,
+                    static_cast<float>(click_x), static_cast<float>(click_y - kChromeHeight)))
+                need_render = true;
+        }
+
         if (frames > 0 && presented >= frames)
             done = true;
 
@@ -1818,6 +1856,11 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             case ui::InputAction::Kind::ScrollEdge:
                 viewport.scroll_to(0.0f, action.delta < 0 ? 0.0f : document_height);
                 need_render = true;
+                break;
+            case ui::InputAction::Kind::PageClick:
+                if (cached_page && dispatch_click_at(*cached_page, page_js, page_dom, viewport,
+                        static_cast<float>(action.x), static_cast<float>(action.y - kChromeHeight)))
+                    need_render = true;
                 break;
             case ui::InputAction::Kind::ScrollTrack: {
                 // Click on the bar: the geometry is recomputed from the current
@@ -2413,7 +2456,14 @@ int main(int argc, char* argv[]) {
                 frames = std::atoi(argv[++i]);
             if (i + 1 < argc && argv[i + 1][0] != '-')
                 frame_directory = argv[++i];
-            return run_window(url, frames, frame_directory);
+            int click_x = -1;
+            int click_y = -1;
+            if (i + 1 < argc && std::string(argv[i + 1]) == "--click" && i + 3 < argc) {
+                click_x = std::atoi(argv[i + 2]);
+                click_y = std::atoi(argv[i + 3]);
+                i += 3;
+            }
+            return run_window(url, frames, frame_directory, click_x, click_y);
         }
         // Same page, but composited under the compact browser chrome.
         if (arg == "--render-window" && i + 1 < argc) {

@@ -54,7 +54,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS after load | Scripts run once, at page load, in both `--render` and `--window`. Event handlers from input and re-render on later DOM mutation are not wired yet |
+| JS after load | Scripts run at load, and a click dispatches into the DOM and re-lays out. Timers, keys, and hover do not reach scripts yet |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
 | Scrollbar drag | A click on the track scrolls to that point; dragging the thumb is not implemented |
@@ -108,6 +108,7 @@ SDL2 backend: `-DAETHERIS_WITH_SDL2=ON` plus SDL2 installed.
   translation unit. Release is what CI does and it is the only meaningful
   strict configuration.
 - Render a page and look at it: `aetheris --render-window <url> out.ppm`.
+- Exercise a click without a display: `aetheris --window <url> 2 --click <x> <y>`.
 
 ---
 
@@ -196,9 +197,11 @@ Docs: `docs/ROADMAP.md` (status), `docs/PHASES.md` (order), `docs/UI_SPEC.md`
    `--dispatch` and `--click` need the live host and interpreter after layout. One
    function with an `after_scripts` callback is the fix; it was attempted and
    reverted once already, so budget for it properly.
-2. **Dispatch input events to scripts and re-render on DOM mutation.** Scripts run
-   at load; a click or a timer that changes the DOM does not repaint yet.
-3. **Scrollbar thumb dragging** — a track click scrolls to that point already;
+2. **Timers in the window loop.** `setInterval` runs once at load on virtual time
+   and then never again, so an animated page freezes after the first frame.
+   `run_event_loop` per frame plus a dirty flag from the JS layer is the fix.
+3. **Keys and hover into scripts**, through the same `dispatch_click_at` shape.
+4. **Scrollbar thumb dragging** — a track click scrolls to that point already;
    a drag needs pointer capture between MouseDown and MouseUp.
 3. **`position: sticky`** — now unblocked by the scroll offset.
 4. **Wire tab click/close** to the session; address-bar focus styling.
