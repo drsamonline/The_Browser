@@ -26,6 +26,7 @@ struct InputAction {
         Scroll,        // `delta` wheel notches: positive scrolls down
         ScrollPage,    // `delta` pages: positive scrolls down, negative up
         ScrollEdge,    // `delta` -1 to the top of the document, +1 to the bottom
+        ScrollTrack,   // click on the scrollbar; x, y in window coordinates
         ToggleZen,     // hide or show the chrome
         Quit,
     };
@@ -73,6 +74,18 @@ public:
     static int address_x() { return 310; }
     static int address_width() { return 660; }
 
+    // Tells the router whether a scrollbar is currently drawn along the right
+    // edge of the page area. The router does not own the scroll geometry — it
+    // only needs to know whether a click at the edge belongs to the bar or to
+    // the page, so a click can never fall through to a link underneath.
+    void set_scroll_bar(bool visible, int content_width, int bar_width = 10)
+    {
+        m_scroll_bar_visible = visible;
+        m_content_width = content_width;
+        m_scroll_bar_width = bar_width;
+    }
+    bool scroll_bar_visible() const { return m_scroll_bar_visible; }
+
     // Pixels per wheel notch. A notch is three lines, and a line is the 20 px
     // body leading, so one notch is 60 px — the same feel as a desktop browser.
     static int scroll_pixels_per_notch() { return 60; }
@@ -82,6 +95,9 @@ private:
     InputAction handle_click(WindowEvent const& event);
 
     int m_chrome_height { 34 };
+    bool m_scroll_bar_visible { false };
+    int m_content_width { 0 };
+    int m_scroll_bar_width { 10 };
     bool m_address_focused { false };
     bool m_zen { false };
     std::string m_address;

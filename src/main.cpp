@@ -1667,6 +1667,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     std::optional<rendering::RenderDocument> cached_page;
     bool page_dirty = true;
     float document_height = static_cast<float>(content_height);
+    bool scroll_bar_visible = false;
     // Scroll state for the page area. The UI session is deliberately free of
     // rendering, so the viewport lives here, beside the document it scrolls.
     rendering::Viewport viewport(static_cast<float>(kWidth), static_cast<float>(content_height));
@@ -1713,6 +1714,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // The scrollbar is painted into the content area, not the window, so its
         // geometry stays in the same coordinate space as the page it describes.
         auto bar = rendering::ScrollBar::geometry(static_cast<float>(kWidth), static_cast<float>(content_height), document_height, offset.y);
+        scroll_bar_visible = bar.visible;
         rendering::ScrollBar::paint(page_surface, bar,
             rendering::Color { 0, 0, 0, 24 },
             rendering::Color { 80, 80, 88, 200 });
@@ -1749,6 +1751,9 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         if (need_render) {
             window.clear(rendering::Color { 255, 255, 255, 255 });
             render_frame(window);
+            // The router only needs to know whether the bar is on screen, so a
+            // click at the right edge is routed to the bar instead of the page.
+            router.set_scroll_bar(scroll_bar_visible, kWidth, static_cast<int>(rendering::ScrollBar::thickness()));
             compose_chrome(window);
             host->present(window);
             need_render = false;
@@ -1798,6 +1803,14 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                 viewport.scroll_to(0.0f, action.delta < 0 ? 0.0f : document_height);
                 need_render = true;
                 break;
+            case ui::InputAction::Kind::ScrollTrack: {
+                // Click on the bar: the geometry is recomputed from the current
+                // scroll position, so the thumb lands under the pointer.
+                auto bar = rendering::ScrollBar::geometry(static_cast<float>(kWidth), static_cast<float>(content_height), document_height, viewport.scroll_y());
+                viewport.scroll_to(0.0f, rendering::ScrollBar::scroll_for_pointer(bar, static_cast<float>(action.y - kChromeHeight)));
+                need_render = true;
+                break;
+            }
             case ui::InputAction::Kind::NewTab:
                 session.new_tab();
                 need_render = true;

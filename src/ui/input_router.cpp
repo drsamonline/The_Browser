@@ -112,8 +112,15 @@ InputAction InputRouter::handle_key(WindowEvent const& event)
 InputAction InputRouter::handle_click(WindowEvent const& event)
 {
     // Above the strip is chrome; below it is page.
-    if (event.y >= m_chrome_height)
+    if (event.y >= m_chrome_height) {
+        // The scrollbar owns the right edge of the page area while it is drawn.
+        // Checking it first is what stops a click on the bar from also being a
+        // click on whatever link happens to be underneath it.
+        if (m_scroll_bar_visible && m_content_width > 0
+            && event.x >= m_content_width - m_scroll_bar_width)
+            return InputAction { InputAction::Kind::ScrollTrack, {}, event.x, event.y };
         return InputAction { InputAction::Kind::PageClick, {}, event.x, event.y };
+    }
 
     if (event.x < tab_width())
         return InputAction {}; // activating a tab needs the tab list; not yet

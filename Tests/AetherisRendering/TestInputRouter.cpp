@@ -167,6 +167,23 @@ int main()
         require(focused.handle(key("Home")).kind != InputAction::Kind::ScrollEdge, "no Home jump while typing");
     }
 
+    // A click on the scrollbar belongs to the bar, not to the page under it.
+    {
+        InputRouter router;
+        router.set_scroll_bar(true, 1024, 10);
+
+        auto on_bar = router.handle(click(1020, 200));
+        require(on_bar.kind == InputAction::Kind::ScrollTrack, "right edge is the scrollbar");
+        require(on_bar.y == 200, "bar click carries its y for the geometry");
+
+        require(router.handle(click(1013, 200)).kind == InputAction::Kind::PageClick, "left of the bar is the page");
+        require(router.handle(click(1020, 10)).kind != InputAction::Kind::ScrollTrack, "bar does not extend into the chrome");
+
+        // With no bar drawn, the same click is an ordinary page click.
+        router.set_scroll_bar(false, 1024, 10);
+        require(router.handle(click(1020, 200)).kind == InputAction::Kind::PageClick, "no bar, no bar clicks");
+    }
+
     std::printf("input router: all bindings verified\n");
     return 0;
 }
