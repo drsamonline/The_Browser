@@ -47,7 +47,10 @@ RenderDocument RenderDocument::create_from_document(Document document, std::stri
 
 void RenderDocument::relayout()
 {
-    m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet);
+    // Rebuild with the state the last apply_visual_state() used, or :hover and
+    // :focus are silently discarded whenever anything calls relayout().
+    m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet,
+        m_last_visual_state ? &*m_last_visual_state : nullptr);
     LayoutEngine {}.layout(*m_layout_root, m_viewport_width);
     resolve_images(*m_layout_root);
     m_render_tree = RenderTree::from_layout(*m_layout_root);
@@ -105,6 +108,7 @@ void RenderDocument::apply_visual_state(VisualInteractionState const& interactio
 {
     if (m_visual_generation == interaction_state.generation && !interaction_state.layout_dirty && !interaction_state.paint_dirty)
         return;
+    m_last_visual_state = interaction_state;
     m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet, &interaction_state);
     LayoutEngine {}.layout(*m_layout_root, viewport_width);
     resolve_images(*m_layout_root);

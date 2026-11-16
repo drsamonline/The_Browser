@@ -51,6 +51,11 @@ private:
     CssStyleSheet m_stylesheet;
     float m_viewport_width { 0 };
     std::size_t m_visual_generation { 0 };
+    // The state the last apply_visual_state() used. relayout() rebuilds layout
+    // from scratch, and without this it rebuilds with no interaction state at
+    // all - which silently discards :hover and :focus the moment anything calls
+    // relayout(), as dispatch_click_at does right after a click focuses.
+    std::optional<VisualInteractionState> m_last_visual_state;
 
     RenderDocument(Document document, std::unique_ptr<LayoutNode> layout_root, RenderTree render_tree, CssStyleSheet sheet);
     void resolve_images(LayoutNode&);

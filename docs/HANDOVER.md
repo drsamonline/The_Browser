@@ -54,7 +54,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover` and `:active` restyle the element; repeating timers tick once per frame. `keyup`, `mouseleave`, `:focus` and a focus model are still missing |
+| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; repeating timers tick once per frame. `keyup`, `mouseleave` and keys-to-focused-element are still missing |
 | Page load | One path: `create_scripted_document`. `--render` passes a negative timer budget to drain the queue; `--window` passes 0 and ticks per frame |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
@@ -150,7 +150,13 @@ contents. Several releases went green with a broken or missing package.
    a `where.exe` miss leaves it at 1, so a successful step reports failure.
 5. **Windows TLS.** `SSL_CTX_set_default_verify_paths` finds nothing. Ship
    `cacert.pem` beside the exe; that is the reliable fix.
-6. **CSS shorthands and units.** `margin: 5em auto` was ignored entirely (only
+6. **`relayout()` discards the interaction state.** It rebuilt layout with no
+   `VisualInteractionState`, so `:hover` and `:focus` were silently dropped
+   whenever anything called it — `dispatch_click_at` does, immediately after a
+   click focuses. `RenderDocument` now remembers the last state and passes it to
+   `relayout()`. This cost two sessions and was only found by printing the
+   hit-test result and the focused pointer, not by reading the code.
+7. **CSS shorthands and units.** `margin: 5em auto` was ignored entirely (only
    longhands were read) and `2em` was parsed as 2 pixels. Both fixed — but this
    class of gap is common: assume a property is unimplemented until proven.
 7. **Sandbox recycles.** Uncommitted work is lost. Commit early. Re-clone and

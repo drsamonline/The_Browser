@@ -1955,6 +1955,12 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // which is the only way to exercise a handler without a display.
         if (!pending_click_done && click_x >= 0 && click_y >= 0 && cached_page) {
             pending_click_done = true;
+            // Focus first: a click focuses what it hit, and :focus must be in the
+            // state before the handler runs so the repaint shows it.
+            auto* click_target = node_at(*cached_page, page_dom, viewport,
+                static_cast<float>(click_x), static_cast<float>(click_y - kChromeHeight));
+            if (visual_state.set_focused(click_target))
+                cached_page->apply_visual_state(visual_state, static_cast<float>(kWidth));
             if (dispatch_click_at(*cached_page, page_js, page_dom, viewport,
                     static_cast<float>(click_x), static_cast<float>(click_y - kChromeHeight)))
                 need_render = true;
