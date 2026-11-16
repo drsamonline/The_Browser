@@ -1651,6 +1651,13 @@ static PageStyle collect_page_style(std::string const& body, std::string const& 
     return style;
 }
 
+// Defined below, after the DOM host. Declared here so the window loop can run
+// page scripts through the same code path as --render.
+static rendering::RenderDocument create_scripted_document(
+    std::string const& html, std::string const& css, std::string const& url,
+    rendering::ResourceCache* resources,
+    aetheris::js::Interpreter& js, DomHost& dom);
+
 static int run_window(std::string const& url, int frames, std::string const& frame_directory)
 {
     constexpr int kWidth = 1024;
@@ -1665,6 +1672,12 @@ static int run_window(std::string const& url, int frames, std::string const& fra
 
     // The loaded page is kept between frames. Before this, every repaint
     // refetched the document over the network, which made a scroll a download.
+    // The page's JavaScript and DOM host live as long as the window: the host
+    // owns the nodes scripts create, so it must outlive the document, and the
+    // interpreter must outlive the host. Declaring them here, before the cached
+    // page, gives exactly that destruction order.
+    aetheris::js::Interpreter page_js;
+    DomHost page_dom;
     std::optional<rendering::RenderDocument> cached_page;
     bool page_dirty = true;
     float document_height = static_cast<float>(content_height);
@@ -1693,7 +1706,9 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             }
             std::string body(loaded.resource->bytes.begin(), loaded.resource->bytes.end());
             auto style = collect_page_style(body, session.current_url(), fetcher);
-            cached_page.emplace(rendering::RenderDocument::create(body, style.css, static_cast<float>(kWidth), nullptr, session.current_url()));
+            // Scripts run here, so a page that builds its content in JavaScript
+            // renders in the window instead of coming up blank.
+            cached_page.emplace(create_scripted_document(body, style.css, session.current_url(), nullptr, page_js, page_dom));
             session.set_page_title(document_title(cached_page->document().root()));
             session.set_loading(false);
 
@@ -1832,6 +1847,11 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     }
     host->close();
 
+    // Free the JS handles the host owns before the interpreter goes: a runtime
+    // freed with live objects trips an assertion in QuickJS, and this is what
+    // --render does at the end of its own path.
+    page_dom.release();
+
     std::cout << "Window " << kWidth << "x" << kHeight << " (chrome " << kChromeHeight
               << "px, content " << content_height << "px, document "
               << static_cast<int>(document_height) << "px), backend: "
@@ -1893,6 +1913,169 @@ static int run_render_window(std::string const& url, std::string const& output_p
               << "px, content " << content_height << "px, document " << static_cast<int>(document_height)
               << "px, scroll " << static_cast<int>(clamped_scroll) << "px) to " << output_path << std::endl;
     return 0;
+}
+
+
+// Loads a page the way a browser does: parse, run the inline scripts against
+// the DOM, then lay the result out. The window loop used to call
+// RenderDocument::create directly, so no script ever ran in a real window -
+// pages that build their content in JavaScript rendered blank.
+//
+// This is the script path from run_render, kept as one function so the window
+// gets identical behaviour. run_render still has its own copy because --dispatch
+// and --click need the live host and interpreter after layout; folding the two
+// together is the next refactor, and it is recorded in HANDOVER.md.
+static rendering::RenderDocument create_scripted_document(
+    std::string const& html, std::string const& css, std::string const& url,
+    rendering::ResourceCache* resources,
+    aetheris::js::Interpreter& js, DomHost& dom)
+{
+    // Parse the document so inline scripts can read and mutate it.
+    rendering::Document document = rendering::Document::parse_html(html);
+
+    rendering::CssParser computed_parser;
+    rendering::CssStyleSheet computed_sheet = computed_parser.parse(css);
+    g_stylesheet = &computed_sheet;
+
+    std::string script_output;
+
+    // Scroll state for scripts. A static render has no window, so it lives here:
+    // scroll_x, scroll_y, document height (filled in once layout exists) and the
+    // client height. A scroll request is recorded rather than performed, because
+    // --render produces one image, and that is enough for a page's scroll handler
+    // to run and read back what it set.
+    auto viewport_state = std::make_shared<std::array<double, 4>>(std::array<double, 4> { 0.0, 0.0, 0.0, 768.0 });
+    js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
+    js.write_handler = [&script_output](std::string const& text) { script_output += text; };
+
+    g_js = &js;
+
+    dom.initialize(js.context());
+    dom.collect(document.root());
+    build_handles(document.root(), dom);
+
+    // document / window surface
+    {
+        g_document_root = &document.root();
+        // `html_element`, not `html`: an outer std::string html is in scope here
+        // and C4456 (declaration hides previous local) is fatal under /WX.
+        auto* html_element = find_element(document.root(), "html");
+        auto* body = find_element(document.root(), "body");
+        auto* head = find_element(document.root(), "head");
+        JSValue document_object = js.document_object();
+        if (body)
+            JS_SetPropertyStr(js.context(), document_object, "body", dom.handle_for(body));
+        if (head)
+            JS_SetPropertyStr(js.context(), document_object, "head", dom.handle_for(head));
+        if (html_element)
+            JS_SetPropertyStr(js.context(), document_object, "documentElement", dom.handle_for(html_element));
+
+        JS_SetPropertyStr(js.context(), document_object, "getComputedStyle",
+            JS_NewCFunction(js.context(), js_get_computed_style, "getComputedStyle", 1));
+
+        JSAtom title_atom = JS_NewAtom(js.context(), "title");
+        JS_DefinePropertyGetSet(js.context(), document_object, title_atom,
+            JS_NewCFunction(js.context(), js_document_title_get, "get title", 0),
+            JS_NewCFunction(js.context(), js_document_title_set, "set title", 1),
+            JS_PROP_CONFIGURABLE);
+        JS_FreeAtom(js.context(), title_atom);
+
+        JSValue window_object = js.window_object();
+        JS_SetPropertyStr(js.context(), window_object, "innerWidth", JS_NewInt32(js.context(), 1024));
+        JS_SetPropertyStr(js.context(), window_object, "innerHeight", JS_NewInt32(js.context(), 768));
+
+        js.viewport_metrics = [viewport_state]() {
+            aetheris::js::ViewportMetrics metrics;
+            metrics.scroll_x = (*viewport_state)[0];
+            metrics.scroll_y = (*viewport_state)[1];
+            metrics.scroll_width = 1024;
+            metrics.scroll_height = (*viewport_state)[2];
+            metrics.client_width = 1024;
+            metrics.client_height = (*viewport_state)[3];
+            return metrics;
+        };
+        js.scroll_target = [viewport_state](double x, double y) {
+            (*viewport_state)[0] = x;
+            (*viewport_state)[1] = y;
+        };
+
+        // Pages reach for documentElement and body as often as for
+        // document.scrollingElement, so all three carry the scroll properties.
+        for (auto const* name : { "body", "documentElement" }) {
+            JSValue element = JS_GetPropertyStr(js.context(), document_object, name);
+            if (!JS_IsUndefined(element) && !JS_IsNull(element))
+                aetheris::js::install_viewport_properties(js.context(), element);
+            JS_FreeValue(js.context(), element);
+        }
+    }
+
+    js.element_lookup = [&dom](std::string const& id) -> JSValue {
+        auto it = dom.handle_by_id.find(id);
+        return it == dom.handle_by_id.end() ? JS_NULL : JS_DupValue(dom.context, it->second);
+    };
+    js.create_element = [&dom](std::string const& tag) -> JSValue {
+        auto node = std::make_unique<rendering::DomNode>(rendering::DomNodeType::Element, tag, "");
+        auto* raw = node.get();
+        dom.pending[raw] = std::move(node);
+        return dom.handle_for(raw);
+    };
+    js.query_selector = [&dom, &document](std::string const& selector) -> JSValue {
+        std::vector<std::vector<SimpleSelector>> chains;
+        if (!parse_selector(selector, chains))
+            return JS_NULL;
+        std::vector<rendering::DomNode*> matches;
+        collect_selector_matches(document.root(), dom, chains, matches);
+        if (matches.empty())
+            return JS_NULL;
+        auto it = dom.handle_by_node.find(matches.front());
+        return it != dom.handle_by_node.end() ? JS_DupValue(dom.context, it->second) : JS_NULL;
+    };
+    js.query_selector_all = [&dom, &document](std::string const& selector) -> JSValue {
+        JSValue array = JS_NewArray(dom.context);
+        std::vector<std::vector<SimpleSelector>> chains;
+        if (!parse_selector(selector, chains))
+            return array;
+        std::vector<rendering::DomNode*> matches;
+        collect_selector_matches(document.root(), dom, chains, matches);
+        uint32_t index = 0;
+        for (auto* node : matches) {
+            auto it = dom.handle_by_node.find(node);
+            if (it != dom.handle_by_node.end())
+                JS_SetPropertyUint32(dom.context, array, index++, JS_DupValue(dom.context, it->second));
+        }
+        return array;
+    };
+
+    // Content-Security-Policy: inline scripts only run when the policy allows.
+    auto policy = content_security_policy(document.root());
+    if (!csp_allows_inline_scripts(policy)) {
+        std::cerr << "  [js] inline scripts blocked by Content-Security-Policy" << std::endl;
+    } else for (auto const& script : extract_scripts(html)) {
+        js.run(script);
+        if (js.has_error()) {
+            std::cerr << "  [js] " << js.error() << std::endl;
+            break;
+        }
+    }
+    if (!js.has_error()) {
+        js.dispatch_event("DOMContentLoaded");
+        js.dispatch_event("load");
+        // Run timers (setTimeout/setInterval) on virtual time.
+        js.run_event_loop();
+    }
+
+    // textContent writes go straight to the DOM through its accessor, so no
+    // post-script reconciliation pass is needed (an earlier pass compared a
+    // stale snapshot and could free nodes whose handles were still live).
+
+    // document.write output is appended to the body.
+    if (!script_output.empty()) {
+        auto* body = find_element(document.root(), "body");
+        auto text_node = std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", script_output);
+        (body ? *body : document.root()).append_child(std::move(text_node));
+    }
+
+    return rendering::RenderDocument::create_from_document(std::move(document), css, 1024.0f, resources, url);
 }
 
 static int run_render(std::string const& url, std::string const& output_path, std::string const& dispatch_id = {}, std::string const& dispatch_type = {}, float click_x = -1, float click_y = -1) {

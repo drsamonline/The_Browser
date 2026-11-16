@@ -297,3 +297,9 @@ add_executable(TestAetherisScrolling
 )
 target_link_libraries(TestAetherisScrolling PRIVATE AetherisRendering)
 add_test(NAME AetherisScrolling COMMAND TestAetherisScrolling)
+
+add_executable(TestAetherisWindowScripts
+    TestAetherisWindowScripts.cpp
+)
+target_link_libraries(TestAetherisWindowScripts PRIVATE Threads::Threads)
+add_test(NAME AetherisWindowScripts COMMAND TestAetherisWindowScripts $<TARGET_FILE:aetheris>)

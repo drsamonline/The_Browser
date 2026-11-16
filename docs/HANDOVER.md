@@ -54,7 +54,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS in the window loop | `--render` runs scripts; `--window` does not. The scroll bindings are wired to a static render's local viewport |
+| JS after load | Scripts run once, at page load, in both `--render` and `--window`. Event handlers from input and re-render on later DOM mutation are not wired yet |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
 | Scrollbar drag | A click on the track scrolls to that point; dragging the thumb is not implemented |
@@ -191,11 +191,14 @@ Docs: `docs/ROADMAP.md` (status), `docs/PHASES.md` (order), `docs/UI_SPEC.md`
 
 ## 7. Next work, in priority order
 
-1. **JS scroll state in the window loop.** The bindings exist and work under
-   `--render`, but `run_window` never creates an `Interpreter`, so scripts do not
-   run in the interactive window at all. Wiring the interpreter into the window
-   loop is the real gap now, and the scroll hooks are already there for it.
-2. **Scrollbar thumb dragging** — a track click scrolls to that point already;
+1. **Fold `create_scripted_document` and `run_render` into one path.** The window
+   now runs scripts, but through a second copy of the script-loading block, because
+   `--dispatch` and `--click` need the live host and interpreter after layout. One
+   function with an `after_scripts` callback is the fix; it was attempted and
+   reverted once already, so budget for it properly.
+2. **Dispatch input events to scripts and re-render on DOM mutation.** Scripts run
+   at load; a click or a timer that changes the DOM does not repaint yet.
+3. **Scrollbar thumb dragging** — a track click scrolls to that point already;
    a drag needs pointer capture between MouseDown and MouseUp.
 3. **`position: sticky`** — now unblocked by the scroll offset.
 4. **Wire tab click/close** to the session; address-bar focus styling.
