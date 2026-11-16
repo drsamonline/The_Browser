@@ -11,11 +11,13 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 
 static void require(bool condition, char const* message)
 {
@@ -35,7 +37,7 @@ struct RunResult {
 // listener is shut down, never on an idle timeout: a loaded machine must not be
 // able to lose it mid-run.
 static RunResult run_window(std::string const& binary, std::string const& page,
-    std::string const& extra_arguments, int frames = 2)
+    std::string const& extra_arguments, int frames = 2, std::string const& frame_directory = {})
 {
     int listener = ::socket(AF_INET, SOCK_STREAM, 0);
     require(listener >= 0, "listener socket");
@@ -68,8 +70,10 @@ static RunResult run_window(std::string const& binary, std::string const& page,
     });
 
     std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
-    std::string command = "'" + binary + "' --window " + url + " " + std::to_string(frames)
-        + " " + extra_arguments + " 2>&1";
+    std::string command = "'" + binary + "' --window " + url + " " + std::to_string(frames);
+    if (!frame_directory.empty())
+        command += " " + frame_directory;
+    command += " " + extra_arguments + " 2>&1";
     FILE* pipe = ::popen(command.c_str(), "r");
     require(pipe != nullptr, "popen");
     RunResult result;
@@ -195,6 +199,50 @@ int main(int argc, char* argv[])
             "hover reaches the element under the pointer");
     }
 
-    std::printf("window scripts: ran, clicked, keyed, hovered, ticked, laid out and exited cleanly\n");
+    // CSS :hover reaches the pixels, not just the JavaScript handlers. The
+    // fixture paints both divs blue and turns the first red on hover, so the
+    // frame itself is the assertion.
+    {
+        std::string directory = "/tmp/aetheris-hover-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto result = run_window(binary,
+            "<html><head><title>Hover CSS</title><style>body{margin:0}"
+            "div{width:400px;height:100px;background:#0000ff}#a:hover{background:#ff0000}"
+            "</style></head><body><div id='a'>A</div><div id='b'>B</div></body></html>",
+            "--move 200 80", 2, directory);
+        require(result.status == 0, "the hover css run exits cleanly");
+
+        // The last frame written is the one after the move.
+        std::string frame = directory + "/frame-2.ppm";
+        FILE* file = std::fopen(frame.c_str(), "rb");
+        if (!file)
+            file = std::fopen((directory + "/frame-1.ppm").c_str(), "rb");
+        require(file != nullptr, "the window wrote a frame");
+
+        char magic[3] = { 0, 0, 0 };
+        int width = 0;
+        int height = 0;
+        int maximum = 0;
+        require(std::fscanf(file, "%2s %d %d %d", magic, &width, &height, &maximum) == 4,
+            "the frame has a PPM header");
+        require(std::fgetc(file) == '\n', "the PPM header ends");
+        require(width == 1024 && height == 768, "the frame is window sized");
+
+        std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * height * 3);
+        require(std::fread(pixels.data(), 1, pixels.size(), file) == pixels.size(), "the frame is complete");
+        std::fclose(file);
+
+        auto at = [&](int x, int y) {
+            auto index = (static_cast<std::size_t>(y) * width + x) * 3;
+            return std::array<int, 3> { pixels[index], pixels[index + 1], pixels[index + 2] };
+        };
+        // 34 px of chrome, then the first div occupies rows 0-99 of the content.
+        auto hovered = at(200, 34 + 50);
+        auto plain = at(200, 34 + 150);
+        require(hovered[0] > 200 && hovered[1] < 60, ":hover turned the hovered element red");
+        require(plain[2] > 200 && plain[0] < 60, "the element without :hover stayed blue");
+    }
+
+    std::printf("window scripts: ran, clicked, keyed, hovered (JS and CSS), ticked, laid out, exited cleanly\n");
     return 0;
 }

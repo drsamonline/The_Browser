@@ -1683,6 +1683,17 @@ static std::size_t document_fingerprint(rendering::DomNode const& node)
 static rendering::DomNode* node_at(rendering::RenderDocument& rendered, DomHost& dom,
     rendering::Viewport const& viewport, float x, float y);
 
+// Applies a hover change to the cascade. Returns true when the page needs a new
+// frame: a :hover rule may have matched, and the only way to know is to rebuild.
+static bool apply_hover_visual_state(rendering::RenderDocument& rendered,
+    rendering::VisualInteractionState& state, rendering::DomNode* node, float viewport_width)
+{
+    if (!state.set_hovered(node))
+        return false;
+    rendered.apply_visual_state(state, viewport_width);
+    return true;
+}
+
 // Moves the pointer to a point in the content area: the element losing the
 // pointer gets `mouseout`, the one gaining it gets `mouseover`. Returns true when
 // the element under the pointer changed, which is the only time a repaint is
@@ -1846,6 +1857,9 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     bool pending_key_done = false;
     bool pending_move_done = false;
     rendering::DomNode* hovered = nullptr;
+    // The cascade already understands :hover (style.cpp) and apply_visual_state
+    // rebuilds layout when it changes; nothing was feeding it.
+    rendering::VisualInteractionState visual_state;
     std::size_t relayouts = 0;
     ui::WindowEvent event;
     ui::InputRouter router(kChromeHeight);
@@ -1887,10 +1901,15 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         if (!pending_move_done && move_x >= 0 && move_y >= 0 && cached_page) {
             pending_move_done = true;
             auto const before = document_fingerprint(cached_page->document().root());
-            if (hover_at(*cached_page, page_js, page_dom, viewport,
-                    static_cast<float>(move_x), static_cast<float>(move_y - kChromeHeight), hovered)
-                && document_fingerprint(cached_page->document().root()) != before) {
+            bool const element_changed = hover_at(*cached_page, page_js, page_dom, viewport,
+                static_cast<float>(move_x), static_cast<float>(move_y - kChromeHeight), hovered);
+            bool const restyled = apply_hover_visual_state(*cached_page, visual_state, hovered, static_cast<float>(kWidth));
+            if (element_changed && document_fingerprint(cached_page->document().root()) != before) {
                 cached_page->relayout();
+                ++relayouts;
+                need_render = true;
+            }
+            if (restyled) {
                 ++relayouts;
                 need_render = true;
             }
@@ -1957,10 +1976,15 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             case ui::InputAction::Kind::PageHover:
                 if (cached_page) {
                     auto const before = document_fingerprint(cached_page->document().root());
-                    if (hover_at(*cached_page, page_js, page_dom, viewport,
-                            static_cast<float>(action.x), static_cast<float>(action.y - kChromeHeight), hovered)
-                        && document_fingerprint(cached_page->document().root()) != before) {
+                    bool const element_changed = hover_at(*cached_page, page_js, page_dom, viewport,
+                        static_cast<float>(action.x), static_cast<float>(action.y - kChromeHeight), hovered);
+                    bool const restyled = apply_hover_visual_state(*cached_page, visual_state, hovered, static_cast<float>(kWidth));
+                    if (element_changed && document_fingerprint(cached_page->document().root()) != before) {
                         cached_page->relayout();
+                        ++relayouts;
+                        need_render = true;
+                    }
+                    if (restyled) {
                         ++relayouts;
                         need_render = true;
                     }

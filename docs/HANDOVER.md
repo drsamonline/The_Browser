@@ -54,7 +54,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; repeating timers tick once per frame. `keyup`, `mouseout`-on-leave-window and focus are still missing |
+| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover` restyles the hovered element; repeating timers tick once per frame. `keyup`, `mouseleave` and focus are still missing |
 | Page load | One path: `create_scripted_document`. `--render` passes a negative timer budget to drain the queue; `--window` passes 0 and ticks per frame |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
