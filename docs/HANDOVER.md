@@ -22,7 +22,7 @@ a Chromium/Gecko/WebKit wrapper.
 | Licence | MIT |
 | Language | C++20 |
 | Size profile | ~2.5 MB stripped (report-only, never enforced) |
-| Tests | 57 CTest suites, all passing |
+| Tests | 58 CTest suites, all passing |
 | Platforms | Linux (verified), Windows (verified at runtime 16 Nov) |
 
 Vendored: `third_party/gumbo` (Apache-2.0, HTML5 parsing),
@@ -46,21 +46,24 @@ All credited in `CREDITS.md`.
 - Networking: keep-alive, cookies, TLS with **bundled CA file**, CSP for inline
   scripts, `SecureResourceLoader` on every fetch
 - UI: 34 px chrome strip, tab session, input router, SDL2 window
+- Scrolling: wheel, PageUp/PageDown/Space/Home/End, proportional scrollbar,
+  clamped viewport, `--render-window --scroll-y` for headless checks
 - Releases: Linux tarball + Windows zip with all runtime DLLs
 
 ### Known broken / missing
 
 | Item | Detail |
 | --- | --- |
-| Scrolling | No scrollbars; long pages unreachable |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
-| `position: sticky` | Deferred — needs scroll state |
+| `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
+| Scrollbar input | The bar is drawn and mapped by `ScrollBar`, but a click on the track is not wired into the window loop yet — only the wheel and the keys scroll |
+| `file://` in `--render-window` | No backend for the scheme on that path ("no backend supports the URL"); use `--render` or serve over loopback |
 | `::before`/`::after` | Needs layout-level synthetic boxes |
 | HTTP/2 | Deferred |
 | Debug overlay newlines | `draw_debug_overlay` ignores `\n` |
 | Tab click/close | Router emits actions; not wired to the session |
 | `AetherisWindowHost` on Windows | Excluded from the release job — hangs in `SDL_Init` on a headless runner, unexplained |
-| `AetherisHttpClient` | Flaky in the LTO size profile; excluded from the release gate only |
+| ~~`AetherisHttpClient` flaky~~ | **Fixed 16 Nov**: the fixture's accept thread exited on a 10 s idle `select`, so it could disappear between connections under load. It now stops on a flag. 10.04 s → 0.09 s. Still excluded from the release gate; consider re-enabling |
 
 ---
 
@@ -98,6 +101,11 @@ SDL2 backend: `-DAETHERIS_WITH_SDL2=ON` plus SDL2 installed.
   and a broken build both produce no matching lines.
 - Compile with `-Werror` (the `tc_strict` wrapper). CI uses it; a plain build
   does not.
+- **Configure the strict build as Release.** A Debug strict build fails before
+  it reaches any of our code: the project defines `_FORTIFY_SOURCE`, glibc warns
+  that it needs `-O`, and `-Werror` turns that warning into an error in every
+  translation unit. Release is what CI does and it is the only meaningful
+  strict configuration.
 - Render a page and look at it: `aetheris --render-window <url> out.ppm`.
 
 ---
@@ -142,6 +150,10 @@ contents. Several releases went green with a broken or missing package.
    class of gap is common: assume a property is unimplemented until proven.
 7. **Sandbox recycles.** Uncommitted work is lost. Commit early. Re-clone and
    reinstall the toolchain after a recycle.
+8. **A test that is slow is usually a test that is wrong.** `AetherisHttpClient`
+   took ten seconds to pass because it waited out an idle timeout, and the same
+   timeout is what made it fail under load. When a suite test takes seconds, look
+   for a sleep or a timeout before looking for a network problem.
 
 ---
 
@@ -169,13 +181,17 @@ Docs: `docs/ROADMAP.md` (status), `docs/PHASES.md` (order), `docs/UI_SPEC.md`
 
 ## 7. Next work, in priority order
 
-1. **Scrolling** — wheel + scrollbar + `scrollTop`. Unblocks long pages and
-   `position: sticky`.
-2. **Wire tab click/close** to the session; address-bar focus styling.
-3. **Shaping** for non-Latin scripts.
-4. **Debug overlay newlines** — small, visible.
-5. **Understand the Windows `SDL_Init` hang** and re-enable that test.
-6. **Fix `AetherisHttpClient`** properly rather than excluding it.
+1. **Wire scrollbar clicks and drags** into the window loop. `ScrollBar::
+   scroll_for_pointer()` already computes the offset; the router needs a
+   `ScrollTrack` action and the loop needs to apply it. Half a day.
+2. **`scrollTop`/`scrollHeight` in the JS layer** — the viewport exists, so this
+   is a binding onto it, not new machinery.
+3. **`position: sticky`** — now unblocked by the scroll offset.
+4. **Wire tab click/close** to the session; address-bar focus styling.
+5. **Shaping** for non-Latin scripts.
+6. **Debug overlay newlines** — small, visible.
+7. **Understand the Windows `SDL_Init` hang** and re-enable that test.
+8. **Re-enable `AetherisHttpClient`** in the release gate; the flake is fixed.
 
 ---
 

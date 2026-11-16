@@ -18,7 +18,6 @@ namespace {
 
 constexpr int kMaxBits = 15;
 constexpr int kMaxLens = 288;
-constexpr int kMaxCodes = 286;
 constexpr int kMaxDists = 30;
 
 struct Huffman {

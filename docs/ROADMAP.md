@@ -98,14 +98,19 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
    real clock, so a page expecting wall-clock pacing runs as fast as the loop
    allows.
 3. ~~`getComputedStyle`~~ — **done** (read-only resolved values).
+
+3a. ~~Scrolling~~ — **done**: paint-time offset, wheel and key routing,
+   scrollbar geometry, `--render-window --scroll-y` for headless verification.
 4. **CSS coverage**: complete `flex`/`grid`, pseudo-elements
    (`::before`/`::after` need layout-level synthetic boxes), `@font-face`,
    `position: sticky`, transitions/animations. **Media queries and the
    structural pseudo-classes (`:first-child`, `:last-child`, `:only-child`,
    `:nth-child(n)`) are done. **`transform` (translate/scale) is done.**
-   `position: sticky` is deliberately deferred: it only differs from static
-   once a scroll offset exists, and a static render has none, so implementing it
-   now would be a no-op dressed as a feature.
+   `position: sticky` was deliberately deferred while there was no scroll
+   offset to stick to. **The scroll offset now exists** (`PaintOffset` in the
+   paint pass, `Viewport` in the window loop, wheel/PageUp/PageDown/Home/End
+   routed by `InputRouter`), so `position: sticky` is no longer blocked by
+   missing infrastructure — it is now ordinary layout work.
 5. ~~Form elements~~ — **done**: `value` on `input`/`textarea`/`select`/`option`,
    `checked`, and `form.submit()` firing a cancelable `submit` event.
 

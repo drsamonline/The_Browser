@@ -6,6 +6,11 @@ All notable Aetheris-specific changes should be documented here. Upstream-derive
 
 ## Unreleased
 
+- **Scrolling.** Wheel, PageUp/PageDown, Space, Home and End move the page; a proportional scrollbar is drawn in the content area; `Viewport` clamps the offset to the document. The offset is applied in the paint pass (`PaintExecutor::execute` takes a `PaintOffset`), so scrolling repaints without relaying out, and commands outside the surface are culled. `--render-window <url> out.ppm --scroll-y <px>` renders a scrolled view for headless inspection. Covered by `AetherisScrolling` and by new cases in `AetherisInputRouter`.
+- **Repaints no longer refetch.** `--window` kept no document between frames, so every repaint re-downloaded the page. The loaded `RenderDocument` is now cached until a navigation or reload sets the page dirty.
+- **`AetherisHttpClient` flake fixed.** The fixture's accept thread exited on a 10 s idle `select`, so it could vanish between connections on a loaded runner and it made every pass wait out the timeout. It now runs until an explicit stop flag is set: 10.04 s to 0.09 s, and the full suite went from 25.7 s to 5.2 s under `-j 8`.
+- **Strict build unblocked.** `src/rendering/png.cpp` declared an unused `kMaxCodes`, which `-Werror` rejects. Removed.
+- **Version string corrected.** `--version` and the startup banner reported v0.5.3 while the released tag was v0.6.2.
 - **SDL2 window backend.** `src/ui/sdl_window.cpp` implements `WindowHost` on SDL2: a resizable window, a streaming ARGB texture blitted from the software surface, and key, text, mouse, wheel, resize and close events translated into the router's vocabulary. Enable with `-DAETHERIS_WITH_SDL2=ON`; without SDL2 the build is unchanged and headless. Compiles clean against SDL 2.30 under `-Wall -Wextra -Werror`; not yet run against a real display.
 - **Release pipeline fixed.** Test targets compile with `-UNDEBUG` so assertions stay live in Release, and a Windows packaging job was added.
 
