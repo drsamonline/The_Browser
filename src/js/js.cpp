@@ -321,6 +321,15 @@ JSValue js_request_animation_frame(JSContext* context, JSValueConst, int argc, J
     return JS_NewInt32(context, interpreter->add_timer(JS_DupValue(context, argv[0]), 16.0, false));
 }
 
+JSValue js_document_active_element(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    auto* engine = interpreter_for(context);
+    if (!engine->active_element)
+        return JS_NULL;
+    JSValue element = engine->active_element();
+    return JS_IsUndefined(element) ? JS_NULL : element;
+}
+
 void define_function(JSContext* context, JSValueConst target, char const* name, JSCFunction* function)
 {
     JS_SetPropertyStr(context, target, name, JS_NewCFunction(context, function, name, 1));
@@ -540,6 +549,13 @@ void Interpreter::setup_globals()
     // Scroll properties live on document and on document.scrollingElement,
     // because scripts reach for either. window gets scrollX/scrollY and the two
     // scrolling functions.
+    {
+        JSAtom atom = JS_NewAtom(m_context, "activeElement");
+        JS_DefinePropertyGetSet(m_context, document, atom,
+            JS_NewCFunction(m_context, js_document_active_element, "get activeElement", 0),
+            JS_UNDEFINED, JS_PROP_CONFIGURABLE);
+        JS_FreeAtom(m_context, atom);
+    }
     install_viewport_properties(m_context, document);
     JSValue scrolling_element = JS_NewObject(m_context);
     install_viewport_properties(m_context, scrolling_element);

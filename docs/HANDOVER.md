@@ -54,7 +54,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; a click focuses and keys reach the focused element then bubble to document; repeating timers tick once per frame. `keyup`, `mouseleave`, `:focus-visible`, tab order and `document.activeElement` are still missing |
+| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; a click focuses and keys reach the focused element then bubble to document; repeating timers tick once per frame. `keyup`, `mouseleave`, `:focus-visible`, `keyup` and tab order are still missing |
 | Page load | One path: `create_scripted_document`. `--render` passes a negative timer budget to drain the queue; `--window` passes 0 and ticks per frame |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
@@ -164,7 +164,13 @@ contents. Several releases went green with a broken or missing package.
    Aetheris compared state pointers in the style engine and threw the state away in
    `relayout()`, where upstream keeps it on the document and invalidates only what
    depends on it.
-8. **CSS shorthands and units.** `margin: 5em auto` was ignored entirely (only
+8. **The DOM ancestor chain stops at the document element.** `dispatch_bubbling`
+   walks `parent` up to the root; the JS `document` and `window` objects are not in
+   that chain, so a handler registered on `document` never saw a click or a key
+   until each dispatch was followed by `js.dispatch_event(...)`. Upstream bubbles
+   through the document and window as part of the same path. Anything that
+   dispatches an event needs that second call.
+9. **CSS shorthands and units.** `margin: 5em auto` was ignored entirely (only
    longhands were read) and `2em` was parsed as 2 pixels. Both fixed — but this
    class of gap is common: assume a property is unimplemented until proven.
 7. **Sandbox recycles.** Uncommitted work is lost. Commit early. Re-clone and

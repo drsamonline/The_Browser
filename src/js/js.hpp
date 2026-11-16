@@ -102,6 +102,10 @@ public:
     // scroll properties read zero and writes are ignored, so `--eval` and a
     // static render still behave. Read live rather than cached, because a
     // script that scrolls and then reads scrollTop must see its own scroll.
+    // document.activeElement. The host answers it, because the focused element
+    // lives in the interaction state, not in the JS layer. Returning an undefined
+    // value makes the property null, which is what a page with no focus expects.
+    std::function<JSValue()> active_element;
     std::function<ViewportMetrics()> viewport_metrics;
     std::function<void(double, double)> scroll_target;
 

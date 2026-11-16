@@ -291,8 +291,21 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
         if (!interaction_state) return false;
         if (pseudo == "hover" && interaction_state->hovered != &node) return false;
         if (pseudo == "focus" && interaction_state->focused != &node) return false;
+        if (pseudo == "focus-within") {
+            // Upstream builds a FocusWithinChain from the focused element and asks
+            // whether the element is on it (SelectorMatching.cpp). Same test here:
+            // walk up from the focused node and look for this one.
+            bool within = false;
+            for (auto const* ancestor = interaction_state->focused; ancestor; ancestor = ancestor->parent) {
+                if (ancestor == &node) {
+                    within = true;
+                    break;
+                }
+            }
+            if (!within) return false;
+        }
         if (pseudo == "active" && interaction_state->active != &node) return false;
-        if (pseudo != "hover" && pseudo != "focus" && pseudo != "active") return false;
+        if (pseudo != "hover" && pseudo != "focus" && pseudo != "active" && pseudo != "focus-within") return false;
     }
     return true;
 }

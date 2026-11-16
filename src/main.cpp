@@ -1797,6 +1797,10 @@ static bool dispatch_click_at(rendering::RenderDocument& rendered, aetheris::js:
         return false;
     }
     dispatch_bubbling(js, dom, node, "click");
+    // ...and then the document and window, which are not in the DOM ancestor
+    // chain. Upstream bubbles a click from the target all the way up, so a page
+    // listening on document must hear it too.
+    js.dispatch_event("click");
     rendered.relayout();
     return true;
 }
@@ -1915,6 +1919,13 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     // The cascade already understands :hover (style.cpp) and apply_visual_state
     // rebuilds layout when it changes; nothing was feeding it.
     rendering::VisualInteractionState visual_state;
+    // document.activeElement, answered from the interaction state the way
+    // Document::active_element() is upstream. Null when nothing is focused.
+    page_js.active_element = [&page_dom, &focused]() -> JSValue {
+        if (focused && page_dom.handle_by_node.find(focused) != page_dom.handle_by_node.end())
+            return JS_DupValue(page_dom.context, page_dom.handle_by_node[focused]);
+        return JS_UNDEFINED;
+    };
     std::size_t relayouts = 0;
     ui::WindowEvent event;
     ui::InputRouter router(kChromeHeight);
