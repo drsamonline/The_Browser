@@ -1,5 +1,6 @@
 #include "aetheris/network/http_client.hpp"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -146,7 +147,12 @@ static uint16_t start_redirect_server(std::thread& server_thread, std::string& c
 }
 
 // A server that answers any request with a cacheable 200 and counts connections.
-static uint16_t start_counting_server(std::thread& server_thread, int& request_count)
+// `stop` is the only shutdown signal. An idle timeout was tried first and it was
+// the source of two problems: the thread could exit between connections on a
+// loaded runner (the intermittent failure), and `join()` then had to wait the
+// whole timeout out, so the test took ten seconds to prove a cache hit. A flag
+// polled by a short select fixes both and is deterministic.
+static uint16_t start_counting_server(std::thread& server_thread, int& request_count, std::atomic<bool>& stop)
 {
     int listener = ::socket(AF_INET, SOCK_STREAM, 0);
     require(listener >= 0, "listener socket");
@@ -165,21 +171,20 @@ static uint16_t start_counting_server(std::thread& server_thread, int& request_c
     require(::getsockname(listener, reinterpret_cast<struct sockaddr*>(&address), &length) == 0, "getsockname");
     uint16_t port = ntohs(address.sin_port);
 
-    server_thread = std::thread([listener, &request_count]() {
-        while (true) {
+    server_thread = std::thread([listener, &request_count, &stop]() {
+        while (!stop.load()) {
             fd_set readable;
             FD_ZERO(&readable);
             FD_SET(listener, &readable);
             struct timeval timeout {};
-            // Generous idle timeout: at 1s the accept thread could exit between
-            // two connections on a loaded runner, and the next request then
-            // failed to connect. That was the intermittent failure.
-            timeout.tv_sec = 10;
+            // Short poll so the flag is noticed quickly; a timeout is not an
+            // exit condition, only a chance to re-check.
+            timeout.tv_usec = 50 * 1000;
             if (::select(listener + 1, &readable, nullptr, nullptr, &timeout) <= 0)
-                break;
+                continue;
             int connection = ::accept(listener, nullptr, nullptr);
             if (connection < 0)
-                break;
+                continue;
             char buffer[2048];
             ::recv(connection, buffer, sizeof(buffer), 0);
             ++request_count;
@@ -408,10 +413,12 @@ int main()
         HttpClient::clear_cache();
         std::thread server;
         int requests = 0;
-        auto port = start_counting_server(server, requests);
+        std::atomic<bool> stop { false };
+        auto port = start_counting_server(server, requests, stop);
         auto url = "http://127.0.0.1:" + std::to_string(port) + "/cached";
         auto first = HttpClient::get(url);
         auto second = HttpClient::get(url);
+        stop.store(true);
         server.join();
         require(first.body == "cached", "cache: first body");
         require(second.body == "cached", "cache: second body");
