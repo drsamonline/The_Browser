@@ -1708,7 +1708,7 @@ static bool dispatch_click_at(rendering::RenderDocument& rendered, aetheris::js:
 }
 
 static int run_window(std::string const& url, int frames, std::string const& frame_directory,
-    int click_x = -1, int click_y = -1)
+    int click_x = -1, int click_y = -1, std::string const& key_to_press = {})
 {
     constexpr int kWidth = 1024;
     constexpr int kHeight = 768;
@@ -1812,6 +1812,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     bool done = false;
 
     bool pending_click_done = false;
+    bool pending_key_done = false;
     std::size_t relayouts = 0;
     ui::WindowEvent event;
     ui::InputRouter router(kChromeHeight);
@@ -1843,6 +1844,18 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             auto const before = document_fingerprint(cached_page->document().root());
             if (page_js.run_timers(16.0)
                 && document_fingerprint(cached_page->document().root()) != before) {
+                cached_page->relayout();
+                ++relayouts;
+                need_render = true;
+            }
+        }
+
+        // A key requested on the command line fires once, after the page is up.
+        if (!pending_key_done && !key_to_press.empty() && cached_page) {
+            pending_key_done = true;
+            auto const before = document_fingerprint(cached_page->document().root());
+            page_js.dispatch_key(key_to_press);
+            if (document_fingerprint(cached_page->document().root()) != before) {
                 cached_page->relayout();
                 ++relayouts;
                 need_render = true;
@@ -1894,6 +1907,17 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             case ui::InputAction::Kind::ScrollEdge:
                 viewport.scroll_to(0.0f, action.delta < 0 ? 0.0f : document_height);
                 need_render = true;
+                break;
+            case ui::InputAction::Kind::Key:
+                if (cached_page) {
+                    auto const before = document_fingerprint(cached_page->document().root());
+                    page_js.dispatch_key(action.text);
+                    if (document_fingerprint(cached_page->document().root()) != before) {
+                        cached_page->relayout();
+                        ++relayouts;
+                        need_render = true;
+                    }
+                }
                 break;
             case ui::InputAction::Kind::PageClick:
                 if (cached_page && dispatch_click_at(*cached_page, page_js, page_dom, viewport,
@@ -2370,7 +2394,12 @@ int main(int argc, char* argv[]) {
                     i += 3;
                 }
             }
-            return run_window(url, frames, frame_directory, click_x, click_y);
+            std::string key_to_press;
+            if (i + 1 < argc && std::string(argv[i + 1]) == "--key" && i + 2 < argc) {
+                key_to_press = argv[i + 2];
+                i += 2;
+            }
+            return run_window(url, frames, frame_directory, click_x, click_y, key_to_press);
         }
         // Same page, but composited under the compact browser chrome.
         if (arg == "--render-window" && i + 1 < argc) {

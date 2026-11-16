@@ -27,6 +27,7 @@ struct InputAction {
         ScrollPage,    // `delta` pages: positive scrolls down, negative up
         ScrollEdge,    // `delta` -1 to the top of the document, +1 to the bottom
         ScrollTrack,   // click on the scrollbar; x, y in window coordinates
+        Key,           // a key the page should see; `text` holds its name
         ToggleZen,     // hide or show the chrome
         Quit,
     };

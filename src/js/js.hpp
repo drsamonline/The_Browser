@@ -44,6 +44,11 @@ public:
     // Fires an event at window and document (on<type> and addEventListener).
     void dispatch_event(std::string const& type);
 
+    // Fires `keydown` with `key` set on the event, which is what a page's
+    // keyboard handler reads. The value is consumed by the next dispatch only.
+    void dispatch_key(std::string const& key);
+    std::string const& event_key() const { return m_event_key; }
+
     // Fires an event at one object and then up its ancestor chain, which the
     // host supplies via next_in_chain (returns JS_UNDEFINED at the root).
     void dispatch_event_to(JSValue target, std::string const& type,
@@ -121,6 +126,7 @@ private:
     std::vector<Timer> m_timers;
     int m_next_timer_id { 1 };
     double m_virtual_time { 0.0 };
+    std::string m_event_key;
 };
 
 // Installs the six viewport properties on an object, backed by the host hooks

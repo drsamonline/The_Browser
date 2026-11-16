@@ -141,6 +141,13 @@ static uint16_t start_server(std::thread& server_thread, std::atomic<bool>& stop
             std::string request(buffer, received > 0 ? static_cast<std::size_t>(received) : 0);
             std::string body = kPage;
             // /csp serves a page whose policy forbids inline scripts.
+            // /button puts a 400x100 button at the origin, so --click 200,50
+            // lands on it whatever the font metrics do.
+            if (request.find("GET /button") != std::string::npos)
+                body = "<html><head><style>body{margin:0}button{width:400px;height:100px}</style></head>"
+                       "<body><button id='b'>Press</button>"
+                       "<script>document.getElementById('b').addEventListener('click', function () {"
+                       "console.log('MARK render click fired'); });</script></body></html>";
             if (request.find("GET /csp") != std::string::npos)
                 body = "<html><head><meta http-equiv='Content-Security-Policy' content=\"script-src 'none'\">"
                        "</head><body><script>console.log('MARK should-not-run');</script></body></html>";
@@ -244,6 +251,16 @@ int main(int argc, char* argv[])
     require_clean_run(captured_csp);
     require(!contains(captured_csp, "MARK should-not-run"), "CSP blocks the inline script");
     require(contains(captured_csp, "blocked by Content-Security-Policy"), "CSP block is reported");
+
+    // Pass 4: --click on --render dispatches into the page. This path used to
+    // have no test at all, which is how the two modes drifted onto different
+    // --click spellings.
+    std::string captured_click;
+    status = run_browser(binary, { "--render", url + "button", output, "--click", "200,50" }, captured_click);
+    require(status == 0, "click render exits 0");
+    require_clean_run(captured_click);
+    require(contains(captured_click, "MARK render click fired"),
+        "--click on --render fires the element's handler");
 
     stop.store(true);
     server.join();

@@ -165,6 +165,22 @@ int main(int argc, char* argv[])
             "a timer that changes the document triggers a layout");
     }
 
-    std::printf("window scripts: ran, clicked, ticked, laid out and exited cleanly\n");
+    // A key reaches the page's keyboard handler, with its value intact, and the
+    // handler's DOM change is laid out.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Keys</title></head><body><div id='out'>none</div>"
+            "<script>document.addEventListener('keydown', function (e) {"
+            "console.log('MARK key', e.key);"
+            "document.getElementById('out').textContent = 'saw ' + e.key; });</script></body></html>",
+            "--key j");
+        require(result.status == 0, "the key run exits cleanly");
+        require(result.output.find("MARK key j") != std::string::npos,
+            "a key reaches the page with its value");
+        require(result.output.find("relayouts: 0") == std::string::npos,
+            "a key handler that changes the document triggers a layout");
+    }
+
+    std::printf("window scripts: ran, clicked, keyed, ticked, laid out and exited cleanly\n");
     return 0;
 }

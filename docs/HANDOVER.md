@@ -54,7 +54,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS after load | Scripts run at load, a click dispatches into the DOM and re-lays out, and repeating timers tick once per frame. Keys and hover do not reach scripts yet |
+| JS after load | Scripts run at load; clicks and keydown dispatch into the DOM and re-lay out; repeating timers tick once per frame. Hover and keyup do not reach scripts yet |
 | Page load | One path: `create_scripted_document`. `--render` passes a negative timer budget to drain the queue; `--window` passes 0 and ticks per frame |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
@@ -109,7 +109,8 @@ SDL2 backend: `-DAETHERIS_WITH_SDL2=ON` plus SDL2 installed.
   translation unit. Release is what CI does and it is the only meaningful
   strict configuration.
 - Render a page and look at it: `aetheris --render-window <url> out.ppm`.
-- Exercise a click without a display: `aetheris --window <url> 2 --click <x> <y>`
+- Exercise a click or a key without a display:
+  `aetheris --window <url> 2 --click <x> <y> --key j`
   (`--render` also takes `--click <x>,<y>`; `--window` accepts both spellings).
 
 ---
@@ -199,7 +200,8 @@ Docs: `docs/ROADMAP.md` (status), `docs/PHASES.md` (order), `docs/UI_SPEC.md`
    misses a change that leaves every string identical (a canvas, a pseudo-element
    style) and it walks the tree once per frame on pages with timers. A revision
    counter incremented by the JS setters would be exact and cheaper.
-3. **Keys and hover into scripts**, through the same `dispatch_click_at` shape.
+3. **Hover and keyup into scripts.** `keydown` dispatches; `keyup` and `mousemove`
+   do not, and there is no focused element, so every key goes to the document.
 4. **Scrollbar thumb dragging** — a track click scrolls to that point already;
    a drag needs pointer capture between MouseDown and MouseUp.
 3. **`position: sticky`** — now unblocked by the scroll offset.

@@ -500,6 +500,10 @@ static JSValue make_event(JSContext* context, std::string const& type, JSValueCo
     JSValue event = JS_NewObjectClass(context, event_class_for(JS_GetRuntime(context)));
     JS_SetOpaque(event, state);
     JS_SetPropertyStr(context, event, "type", JS_NewString(context, type.c_str()));
+    // Keyboard events carry the key a handler reads. Empty for every other type.
+    auto const& event_key = interpreter_for(context)->event_key();
+    if (!event_key.empty())
+        JS_SetPropertyStr(context, event, "key", JS_NewString(context, event_key.c_str()));
     JS_SetPropertyStr(context, event, "target", JS_DupValue(context, target));
     JS_SetPropertyStr(context, event, "currentTarget", JS_DupValue(context, target));
     JS_SetPropertyStr(context, event, "preventDefault", JS_NewCFunction(context, js_event_prevent_default, "preventDefault", 0));
@@ -824,6 +828,13 @@ void Interpreter::run_event_loop(int max_tasks)
         fire_timer(next);
     }
     drain_microtasks();
+}
+
+void Interpreter::dispatch_key(std::string const& key)
+{
+    m_event_key = key;
+    dispatch_event("keydown");
+    m_event_key.clear();
 }
 
 void Interpreter::dispatch_event(std::string const& type)
