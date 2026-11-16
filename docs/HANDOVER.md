@@ -54,6 +54,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
+| JS in the window loop | `--render` runs scripts; `--window` does not. The scroll bindings are wired to a static render's local viewport |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
 | Scrollbar drag | A click on the track scrolls to that point; dragging the thumb is not implemented |
@@ -190,8 +191,10 @@ Docs: `docs/ROADMAP.md` (status), `docs/PHASES.md` (order), `docs/UI_SPEC.md`
 
 ## 7. Next work, in priority order
 
-1. **`scrollTop`/`scrollHeight`/`scrollLeft`/`scrollWidth` in the JS layer** — the
-   viewport exists, so this is a binding onto it, not new machinery.
+1. **JS scroll state in the window loop.** The bindings exist and work under
+   `--render`, but `run_window` never creates an `Interpreter`, so scripts do not
+   run in the interactive window at all. Wiring the interpreter into the window
+   loop is the real gap now, and the scroll hooks are already there for it.
 2. **Scrollbar thumb dragging** — a track click scrolls to that point already;
    a drag needs pointer capture between MouseDown and MouseUp.
 3. **`position: sticky`** — now unblocked by the scroll offset.

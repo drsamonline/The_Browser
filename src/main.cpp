@@ -30,6 +30,7 @@
 #include "scroll_bar.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <iostream>
@@ -1962,6 +1963,13 @@ static int run_render(std::string const& url, std::string const& output_path, st
 
     std::string script_output;
     aetheris::js::Interpreter js;
+
+    // Scroll state for scripts. A static render has no window, so it lives here:
+    // scroll_x, scroll_y, document height (filled in once layout exists) and the
+    // client height. A scroll request is recorded rather than performed, because
+    // --render produces one image, and that is enough for a page's scroll handler
+    // to run and read back what it set.
+    auto viewport_state = std::make_shared<std::array<double, 4>>(std::array<double, 4> { 0.0, 0.0, 0.0, 768.0 });
     js.print_handler = [](std::string const& line) { std::cout << "  [js] " << line << std::endl; };
     js.write_handler = [&script_output](std::string const& text) { script_output += text; };
 
@@ -2001,6 +2009,30 @@ static int run_render(std::string const& url, std::string const& output_path, st
         JSValue window_object = js.window_object();
         JS_SetPropertyStr(js.context(), window_object, "innerWidth", JS_NewInt32(js.context(), 1024));
         JS_SetPropertyStr(js.context(), window_object, "innerHeight", JS_NewInt32(js.context(), 768));
+
+        js.viewport_metrics = [viewport_state]() {
+            aetheris::js::ViewportMetrics metrics;
+            metrics.scroll_x = (*viewport_state)[0];
+            metrics.scroll_y = (*viewport_state)[1];
+            metrics.scroll_width = 1024;
+            metrics.scroll_height = (*viewport_state)[2];
+            metrics.client_width = 1024;
+            metrics.client_height = (*viewport_state)[3];
+            return metrics;
+        };
+        js.scroll_target = [viewport_state](double x, double y) {
+            (*viewport_state)[0] = x;
+            (*viewport_state)[1] = y;
+        };
+
+        // Pages reach for documentElement and body as often as for
+        // document.scrollingElement, so all three carry the scroll properties.
+        for (auto const* name : { "body", "documentElement" }) {
+            JSValue element = JS_GetPropertyStr(js.context(), document_object, name);
+            if (!JS_IsUndefined(element) && !JS_IsNull(element))
+                aetheris::js::install_viewport_properties(js.context(), element);
+            JS_FreeValue(js.context(), element);
+        }
     }
 
     js.element_lookup = [&dom](std::string const& id) -> JSValue {
@@ -2080,6 +2112,9 @@ static int run_render(std::string const& url, std::string const& output_path, st
     }
 
     auto rendered = rendering::RenderDocument::create_from_document(std::move(document), css, 1024.0f, &resources, url);
+
+    // Layout exists now, so scripts can be told how tall the page really is.
+    (*viewport_state)[2] = static_cast<double>(rendered.layout_root().rect.height);
 
     // Geometry-based dispatch: hit-test the point and fire a click on the
     // element there, then re-layout so the change is reflected.

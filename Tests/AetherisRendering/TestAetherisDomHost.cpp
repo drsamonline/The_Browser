@@ -72,6 +72,7 @@ static const char* kPage =
     "console.log('MARK title', document.title);"
     "console.log('MARK body', document.body.tagName);"
     "console.log('MARK win', window.innerWidth, window.innerHeight);"
+    "console.log('MARK scroll', typeof document.scrollingElement.scrollTop, typeof document.documentElement.scrollHeight, typeof window.scrollY);"
     "console.log('MARK data', box.dataset.role);"
     "box.dataset.role = 'changed';"
     "console.log('MARK data-set', box.dataset.role, box.getAttribute('data-role'));"
@@ -211,6 +212,8 @@ int main(int argc, char* argv[])
     require(contains(captured, "MARK title harness"), "document.title reads the title element");
     require(contains(captured, "MARK body BODY"), "document.body and tagName");
     require(contains(captured, "MARK win 1024 768"), "window inner size");
+    require(contains(captured, "MARK scroll number number number"),
+        "scroll properties are installed on scrollingElement, documentElement and window");
     require(contains(captured, "MARK data card"), "element.dataset reads data-* attributes");
     require(contains(captured, "MARK data-set changed changed"), "element.dataset writes data-* attributes");
     require(contains(captured, "MARK value v0"), "input value reads the attribute");

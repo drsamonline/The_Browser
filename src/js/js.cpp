@@ -326,7 +326,129 @@ void define_function(JSContext* context, JSValueConst target, char const* name, 
     JS_SetPropertyStr(context, target, name, JS_NewCFunction(context, function, name, 1));
 }
 
+// --- Viewport -------------------------------------------------------------
+// scrollTop, scrollLeft, scrollHeight, scrollWidth, clientHeight, clientWidth.
+// One getter and one setter serve all six; the field travels in the QuickJS
+// magic value, so there is no per-property function to keep in sync with the
+// struct.
+enum ViewportField {
+    FieldScrollX = 0,
+    FieldScrollY,
+    FieldScrollWidth,
+    FieldScrollHeight,
+    FieldClientWidth,
+    FieldClientHeight,
+};
+
+double viewport_value(ViewportMetrics const& metrics, int field)
+{
+    switch (field) {
+    case FieldScrollX:
+        return metrics.scroll_x;
+    case FieldScrollY:
+        return metrics.scroll_y;
+    case FieldScrollWidth:
+        return metrics.scroll_width;
+    case FieldScrollHeight:
+        return metrics.scroll_height;
+    case FieldClientWidth:
+        return metrics.client_width;
+    case FieldClientHeight:
+        return metrics.client_height;
+    }
+    return 0;
+}
+
+ViewportMetrics current_metrics(Interpreter* engine)
+{
+    return engine->viewport_metrics ? engine->viewport_metrics() : ViewportMetrics {};
+}
+
+JSValue js_viewport_get(JSContext* context, JSValueConst, int, JSValueConst*, int field)
+{
+    return JS_NewFloat64(context, viewport_value(current_metrics(interpreter_for(context)), field));
+}
+
+JSValue js_viewport_set(JSContext* context, JSValueConst, int argc, JSValueConst* argv, int field)
+{
+    if (argc < 1)
+        return JS_UNDEFINED;
+    auto* engine = interpreter_for(context);
+    if (!engine->scroll_target)
+        return JS_UNDEFINED;
+    double value = 0;
+    if (JS_ToFloat64(context, &value, argv[0]) < 0)
+        return JS_UNDEFINED;
+    auto metrics = current_metrics(engine);
+    if (field == FieldScrollX)
+        engine->scroll_target(value, metrics.scroll_y);
+    else
+        engine->scroll_target(metrics.scroll_x, value);
+    return JS_UNDEFINED;
+}
+
+JSValue js_window_scroll_to(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* engine = interpreter_for(context);
+    if (!engine->scroll_target || argc < 1)
+        return JS_UNDEFINED;
+    double x = 0;
+    double y = 0;
+    if (JS_ToFloat64(context, &x, argv[0]) < 0)
+        return JS_UNDEFINED;
+    if (argc >= 2)
+        JS_ToFloat64(context, &y, argv[1]);
+    engine->scroll_target(x, y);
+    return JS_UNDEFINED;
+}
+
+JSValue js_window_scroll_by(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* engine = interpreter_for(context);
+    if (!engine->scroll_target || argc < 1)
+        return JS_UNDEFINED;
+    auto metrics = current_metrics(engine);
+    double x = 0;
+    double y = 0;
+    if (JS_ToFloat64(context, &x, argv[0]) < 0)
+        return JS_UNDEFINED;
+    if (argc >= 2)
+        JS_ToFloat64(context, &y, argv[1]);
+    engine->scroll_target(metrics.scroll_x + x, metrics.scroll_y + y);
+    return JS_UNDEFINED;
+}
+
 } // namespace
+
+void install_viewport_properties(JSContext* context, JSValueConst target)
+{
+    struct Entry {
+        char const* name;
+        int field;
+        bool writable;
+    };
+    // scrollHeight and friends are read-only in the DOM, and stay read-only
+    // here: a script that assigns to them is making a mistake, not scrolling.
+    static constexpr Entry entries[] = {
+        { "scrollTop", FieldScrollY, true },
+        { "scrollLeft", FieldScrollX, true },
+        { "scrollHeight", FieldScrollHeight, false },
+        { "scrollWidth", FieldScrollWidth, false },
+        { "clientHeight", FieldClientHeight, false },
+        { "clientWidth", FieldClientWidth, false },
+    };
+
+    for (auto const& entry : entries) {
+        JSAtom atom = JS_NewAtom(context, entry.name);
+        JSValue setter = entry.writable
+            ? JS_NewCFunctionMagic(context, js_viewport_set, entry.name, 1, JS_CFUNC_generic_magic, entry.field)
+            : JS_UNDEFINED;
+        JS_DefinePropertyGetSet(context, target, atom,
+            JS_NewCFunctionMagic(context, js_viewport_get, entry.name, 0, JS_CFUNC_generic_magic, entry.field),
+            setter, JS_PROP_CONFIGURABLE);
+        JS_FreeAtom(context, atom);
+    }
+}
 
 Interpreter::Interpreter()
 {
@@ -411,6 +533,13 @@ void Interpreter::setup_globals()
     define_function(m_context, document, "querySelectorAll", js_query_selector_all);
     define_function(m_context, document, "addEventListener", js_add_event_listener);
     define_function(m_context, document, "removeEventListener", js_remove_event_listener);
+    // Scroll properties live on document and on document.scrollingElement,
+    // because scripts reach for either. window gets scrollX/scrollY and the two
+    // scrolling functions.
+    install_viewport_properties(m_context, document);
+    JSValue scrolling_element = JS_NewObject(m_context);
+    install_viewport_properties(m_context, scrolling_element);
+    JS_SetPropertyStr(m_context, document, "scrollingElement", scrolling_element);
     JS_SetPropertyStr(m_context, global, "document", JS_DupValue(m_context, document));
 
     // window
@@ -424,7 +553,21 @@ void Interpreter::setup_globals()
     define_function(m_context, window, "queueMicrotask", js_queue_microtask);
     define_function(m_context, window, "requestAnimationFrame", js_request_animation_frame);
     define_function(m_context, window, "cancelAnimationFrame", js_clear_timer);
+    for (auto const& alias : { std::pair<char const*, int> { "scrollX", FieldScrollX },
+             std::pair<char const*, int> { "scrollY", FieldScrollY } }) {
+        JSAtom atom = JS_NewAtom(m_context, alias.first);
+        JS_DefinePropertyGetSet(m_context, window, atom,
+            JS_NewCFunctionMagic(m_context, js_viewport_get, alias.first, 0, JS_CFUNC_generic_magic, alias.second),
+            JS_UNDEFINED, JS_PROP_CONFIGURABLE);
+        JS_FreeAtom(m_context, atom);
+    }
+    JS_SetPropertyStr(m_context, window, "scrollTo", JS_NewCFunction(m_context, js_window_scroll_to, "scrollTo", 2));
+    JS_SetPropertyStr(m_context, window, "scrollBy", JS_NewCFunction(m_context, js_window_scroll_by, "scrollBy", 2));
     JS_SetPropertyStr(m_context, global, "window", JS_DupValue(m_context, window));
+    // Unqualified scrollTo/scrollBy, as setTimeout is duplicated below: window is
+    // a property of the global object here, not the global object itself.
+    JS_SetPropertyStr(m_context, global, "scrollTo", JS_NewCFunction(m_context, js_window_scroll_to, "scrollTo", 2));
+    JS_SetPropertyStr(m_context, global, "scrollBy", JS_NewCFunction(m_context, js_window_scroll_by, "scrollBy", 2));
 
     // Bare globals too: scripts call setTimeout(...) without a window prefix.
     JS_SetPropertyStr(m_context, global, "setTimeout", JS_NewCFunction(m_context, js_set_timeout, "setTimeout", 2));

@@ -8,6 +8,17 @@
 
 namespace aetheris::js {
 
+// What a script can see of the viewport. The host supplies it, so the JS layer
+// never has to know whether it is driving a window, a headless render or a test.
+struct ViewportMetrics {
+    double scroll_x { 0 };
+    double scroll_y { 0 };
+    double scroll_width { 0 };
+    double scroll_height { 0 };
+    double client_width { 0 };
+    double client_height { 0 };
+};
+
 // The JavaScript engine for the standalone profile, backed by the vendored
 // QuickJS (third_party/quickjs). This replaces the earlier hand-written
 // interpreter: the public surface is the same idea — run a script, capture
@@ -66,6 +77,14 @@ public:
     std::function<JSValue(std::string const&)> query_selector;   // querySelector
     std::function<JSValue(std::string const&)> query_selector_all; // querySelectorAll
 
+    // Viewport, for scrollTop/scrollLeft/scrollHeight/scrollWidth and
+    // window.scrollTo/scrollBy. Both are optional: with no host wired up the
+    // scroll properties read zero and writes are ignored, so `--eval` and a
+    // static render still behave. Read live rather than cached, because a
+    // script that scrolls and then reads scrollTop must see its own scroll.
+    std::function<ViewportMetrics()> viewport_metrics;
+    std::function<void(double, double)> scroll_target;
+
 private:
     struct Timer {
         int id { 0 };
@@ -89,5 +108,10 @@ private:
     int m_next_timer_id { 1 };
     double m_virtual_time { 0.0 };
 };
+
+// Installs the six viewport properties on an object, backed by the host hooks
+// on Interpreter. Declared here so a host can put them on documentElement and
+// body as well as on document.
+void install_viewport_properties(JSContext* context, JSValueConst target);
 
 } // namespace aetheris::js

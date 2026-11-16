@@ -422,6 +422,68 @@ int main()
             "performance.now advances and requestAnimationFrame runs");
     }
 
+    // Viewport: scrollTop/scrollHeight read from the host, and scrollTo/scrollBy
+    // and scrollTop writes come back through the host. With no host wired up the
+    // properties must still read as zero rather than throwing, because a page
+    // that touches them should not break a static render.
+    {
+        Harness h;
+        h.run("console.log('nohost', document.scrollTop, document.scrollHeight);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "nohost 0 0\n", "without a host the scroll properties read zero");
+    }
+    {
+        Harness h;
+        ViewportMetrics metrics;
+        metrics.scroll_x = 0;
+        metrics.scroll_y = 120;
+        metrics.scroll_width = 1024;
+        metrics.scroll_height = 2600;
+        metrics.client_width = 1024;
+        metrics.client_height = 734;
+        double requested_x = -1;
+        double requested_y = -1;
+        h.interpreter.viewport_metrics = [&metrics]() { return metrics; };
+        h.interpreter.scroll_target = [&](double x, double y) {
+            requested_x = x;
+            requested_y = y;
+            metrics.scroll_x = x;
+            metrics.scroll_y = y;
+        };
+
+        h.run("console.log('read', document.scrollTop, document.scrollLeft,"
+              " document.scrollHeight, document.clientHeight);");
+        require(!h.has_error(), h.error().c_str());
+        require(h.output == "read 120 0 2600 734\n", "scroll properties read from the host");
+
+        // The same values through document.scrollingElement, which is what most
+        // pages actually touch.
+        h.output.clear();
+        h.run("console.log('element', document.scrollingElement.scrollTop);");
+        require(h.output == "element 120\n", "scrollingElement mirrors document");
+
+        // window.scrollTo reaches the host, and a read afterwards sees it.
+        h.output.clear();
+        h.run("window.scrollTo(0, 800); console.log('after', document.scrollTop, window.scrollY);");
+        require(!h.has_error(), h.error().c_str());
+        require(requested_y == 800, "scrollTo reaches the host");
+        require(h.output == "after 800 800\n", "scrollTo is visible to the next read");
+
+        // scrollBy is relative.
+        h.output.clear();
+        h.run("scrollBy(0, 100); console.log('by', document.scrollTop);");
+        require(requested_y == 900, "scrollBy is relative to the current offset");
+        require(h.output == "by 900\n", "scrollBy lands where it says");
+
+        // Writing scrollTop scrolls, writing scrollHeight does not.
+        h.output.clear();
+        h.run("document.scrollTop = 40;");
+        require(requested_y == 40, "writing scrollTop scrolls");
+        h.run("document.scrollHeight = 999; console.log('h', document.scrollHeight);");
+        require(h.output == "h 2600\n", "scrollHeight is read-only");
+
+    }
+
     // Parse errors surface as an error rather than crashing.
     {
         Harness h;
