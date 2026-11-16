@@ -193,9 +193,11 @@ Docs: `docs/ROADMAP.md` (status), `docs/PHASES.md` (order), `docs/UI_SPEC.md`
 
 ## 7. Next work, in priority order
 
-1. **A dirty flag from the JS layer.** A timer that ran forces a relayout and a
-   repaint whether or not it touched the DOM; a mutation counter would make
-   repaints honest and let an idle `setInterval` stop costing frames.
+1. **An exact dirty flag instead of a fingerprint.** `document_fingerprint` decides
+   whether a timer changed anything by hashing names, text and attributes. It
+   misses a change that leaves every string identical (a canvas, a pseudo-element
+   style) and it walks the tree once per frame on pages with timers. A revision
+   counter incremented by the JS setters would be exact and cheaper.
 3. **Keys and hover into scripts**, through the same `dispatch_click_at` shape.
 4. **Scrollbar thumb dragging** — a track click scrolls to that point already;
    a drag needs pointer capture between MouseDown and MouseUp.

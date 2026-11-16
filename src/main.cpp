@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <functional>
 #include <cstdio>
 #include <iostream>
 #include <map>
@@ -1659,6 +1660,26 @@ static rendering::RenderDocument create_scripted_document(
     aetheris::js::Interpreter& js, DomHost& dom,
     std::shared_ptr<std::array<double, 4>> viewport_state, double timer_budget_ms);
 
+// A cheap fingerprint of the document: node count, text, and attribute content.
+//
+// The window needs to know whether a timer that just ran actually changed
+// anything before it spends a layout and a repaint. This is a heuristic rather
+// than a revision counter - a change that leaves every string identical is
+// invisible to it - but it is exact for the cases that matter (a node added, text
+// replaced, an attribute written) and it costs one traversal per frame, and only
+// on pages that have timers at all.
+static std::size_t document_fingerprint(rendering::DomNode const& node)
+{
+    // Hash the strings, not their lengths: replacing "1" with "2" leaves the
+    // size identical, and that is exactly the change a counter is most often.
+    std::size_t total = std::hash<std::string> {}(node.name) ^ std::hash<std::string> {}(node.data);
+    for (auto const& entry : node.attributes)
+        total += std::hash<std::string> {}(entry.first) ^ std::hash<std::string> {}(entry.second);
+    for (auto const& child : node.children)
+        total += document_fingerprint(*child);
+    return total;
+}
+
 // Fires a click at a point in the content area on the element there, then
 // re-lays out so whatever the handler changed is visible. Shared by the window's
 // own clicks and by --click, so both take exactly the same path.
@@ -1791,6 +1812,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     bool done = false;
 
     bool pending_click_done = false;
+    std::size_t relayouts = 0;
     ui::WindowEvent event;
     ui::InputRouter router(kChromeHeight);
     router.set_address_text(session.current_url());
@@ -1815,10 +1837,16 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // the SDL host runs until the user closes the window, which hangs a CI
         // runner that has no one to click it.
         // Timers advance by one frame's worth of virtual time. A timer that ran
-        // may have mutated the DOM, so the page is laid out again and repainted.
-        if (cached_page && page_js.run_timers(16.0)) {
-            cached_page->relayout();
-            need_render = true;
+        // may have mutated the DOM, and only then is the page laid out again: an
+        // idle setInterval should not cost a layout and a repaint per frame.
+        if (cached_page && page_js.has_timers()) {
+            auto const before = document_fingerprint(cached_page->document().root());
+            if (page_js.run_timers(16.0)
+                && document_fingerprint(cached_page->document().root()) != before) {
+                cached_page->relayout();
+                ++relayouts;
+                need_render = true;
+            }
         }
 
         // A click requested on the command line fires once, after the page is up,
@@ -1909,7 +1937,8 @@ static int run_window(std::string const& url, int frames, std::string const& fra
               << "px, content " << content_height << "px, document "
               << static_cast<int>(document_height) << "px), backend: "
               << (ui::has_display_backend() ? "display" : "headless")
-              << ", tabs: " << session.tab_count() << ", events handled: " << handled << std::endl;
+              << ", tabs: " << session.tab_count() << ", events handled: " << handled
+              << ", relayouts: " << relayouts << std::endl;
     return 0;
 }
 

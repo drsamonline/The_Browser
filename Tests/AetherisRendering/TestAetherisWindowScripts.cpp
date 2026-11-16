@@ -143,6 +143,28 @@ int main(int argc, char* argv[])
         require(ticks < 100, "a repeating timer does not drain the whole queue at load");
     }
 
-    std::printf("window scripts: ran, clicked, ticked and exited cleanly\n");
+    // An idle timer must not cost a layout per frame; a timer that changes the
+    // document must. The window reports its relayout count so this is observable
+    // from outside rather than taken on trust.
+    {
+        auto idle = run_window(binary,
+            "<html><head><title>Idle</title></head><body><div id='n'>0</div>"
+            "<script>var n = 0; setInterval(function () { n++; }, 50);</script></body></html>",
+            "", 20);
+        require(idle.status == 0, "the idle timer run exits cleanly");
+        require(idle.output.find("relayouts: 0") != std::string::npos,
+            "a timer that changes nothing costs no layout");
+
+        auto busy = run_window(binary,
+            "<html><head><title>Busy</title></head><body><div id='n'>0</div>"
+            "<script>var n = 0; setInterval(function () { n++;"
+            "document.getElementById('n').textContent = String(n); }, 50);</script></body></html>",
+            "", 20);
+        require(busy.status == 0, "the mutating timer run exits cleanly");
+        require(busy.output.find("relayouts: 0") == std::string::npos,
+            "a timer that changes the document triggers a layout");
+    }
+
+    std::printf("window scripts: ran, clicked, ticked, laid out and exited cleanly\n");
     return 0;
 }

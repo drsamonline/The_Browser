@@ -65,6 +65,10 @@ public:
     // fires a thousand times in one go.
     bool run_timers(double budget_ms, int max_tasks = 16);
 
+    // True when any timer is registered. The window loop uses this to skip the
+    // document fingerprint entirely on a page with no timers.
+    bool has_timers() const { return !m_timers.empty(); }
+
     // Milliseconds of virtual time since the interpreter started.
     double now_ms() const { return m_virtual_time * 1000.0; }
 
