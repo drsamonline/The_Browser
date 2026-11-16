@@ -34,7 +34,8 @@ struct RunResult {
 // and returns its combined output and exit status. The server stops when the
 // listener is shut down, never on an idle timeout: a loaded machine must not be
 // able to lose it mid-run.
-static RunResult run_window(std::string const& binary, std::string const& page, std::string const& extra_arguments)
+static RunResult run_window(std::string const& binary, std::string const& page,
+    std::string const& extra_arguments, int frames = 2)
 {
     int listener = ::socket(AF_INET, SOCK_STREAM, 0);
     require(listener >= 0, "listener socket");
@@ -67,7 +68,8 @@ static RunResult run_window(std::string const& binary, std::string const& page, 
     });
 
     std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
-    std::string command = "'" + binary + "' --window " + url + " 2 " + extra_arguments + " 2>&1";
+    std::string command = "'" + binary + "' --window " + url + " " + std::to_string(frames)
+        + " " + extra_arguments + " 2>&1";
     FILE* pipe = ::popen(command.c_str(), "r");
     require(pipe != nullptr, "popen");
     RunResult result;
@@ -120,6 +122,27 @@ int main(int argc, char* argv[])
             "a click reaches the element's handler");
     }
 
-    std::printf("window scripts: ran, clicked and exited cleanly\n");
+    // A repeating timer fires once per frame's worth of virtual time, not a
+    // thousand times at load and not never again. 20 frames at 16 ms each is
+    // 320 ms of virtual time, so a 50 ms interval should tick a handful of times.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Tick</title></head><body><div id='n'>0</div>"
+            "<script>var n = 0;"
+            "setInterval(function () { n++; document.getElementById('n').textContent = String(n);"
+            "console.log('TICK', n); }, 50);</script></body></html>",
+            "", 20);
+        require(result.status == 0, "the timer run exits cleanly");
+        int ticks = 0;
+        std::size_t at = 0;
+        while ((at = result.output.find("TICK ", at)) != std::string::npos) {
+            ++ticks;
+            at += 5;
+        }
+        require(ticks >= 2, "a repeating timer fires more than once");
+        require(ticks < 100, "a repeating timer does not drain the whole queue at load");
+    }
+
+    std::printf("window scripts: ran, clicked, ticked and exited cleanly\n");
     return 0;
 }

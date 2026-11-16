@@ -54,8 +54,16 @@ public:
 
     // Runs the timer queue using virtual time: timers fire in due order without
     // real waiting, up to max_tasks callbacks. This is what makes setTimeout
-    // and setInterval work in a headless renderer.
+    // and setInterval work in a headless renderer, and it deliberately ignores
+    // the clock: one call can drain a thousand firings.
     void run_event_loop(int max_tasks = 1000);
+
+    // The same queue, bounded by a slice of virtual time: advances the clock by
+    // at most `budget_ms` and fires only the timers that fall due inside it.
+    // Returns true when at least one timer ran, which is the window loop's cue
+    // to repaint. Without this a repeating timer either never fires again or
+    // fires a thousand times in one go.
+    bool run_timers(double budget_ms, int max_tasks = 16);
 
     // Milliseconds of virtual time since the interpreter started.
     double now_ms() const { return m_virtual_time * 1000.0; }
@@ -95,6 +103,8 @@ private:
     };
 
     void setup_globals();
+    // Fires one timer and reschedules or frees it. Shared by both queue runners.
+    void fire_timer(std::vector<Timer>::iterator timer);
     void record_exception();
 
     JSRuntime* m_runtime { nullptr };

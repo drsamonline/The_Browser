@@ -54,7 +54,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS after load | Scripts run at load, and a click dispatches into the DOM and re-lays out. Timers, keys, and hover do not reach scripts yet |
+| JS after load | Scripts run at load, a click dispatches into the DOM and re-lays out, and repeating timers tick once per frame. Keys and hover do not reach scripts yet |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
 | Scrollbar drag | A click on the track scrolls to that point; dragging the thumb is not implemented |
@@ -197,9 +197,9 @@ Docs: `docs/ROADMAP.md` (status), `docs/PHASES.md` (order), `docs/UI_SPEC.md`
    `--dispatch` and `--click` need the live host and interpreter after layout. One
    function with an `after_scripts` callback is the fix; it was attempted and
    reverted once already, so budget for it properly.
-2. **Timers in the window loop.** `setInterval` runs once at load on virtual time
-   and then never again, so an animated page freezes after the first frame.
-   `run_event_loop` per frame plus a dirty flag from the JS layer is the fix.
+2. **A dirty flag from the JS layer.** A timer that ran forces a relayout and a
+   repaint whether or not it touched the DOM; a mutation counter would make
+   repaints honest and let an idle `setInterval` stop costing frames.
 3. **Keys and hover into scripts**, through the same `dispatch_click_at` shape.
 4. **Scrollbar thumb dragging** — a track click scrolls to that point already;
    a drag needs pointer capture between MouseDown and MouseUp.

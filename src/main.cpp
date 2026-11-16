@@ -1811,6 +1811,13 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // A frame budget must stop the loop whatever the backend. Without this
         // the SDL host runs until the user closes the window, which hangs a CI
         // runner that has no one to click it.
+        // Timers advance by one frame's worth of virtual time. A timer that ran
+        // may have mutated the DOM, so the page is laid out again and repainted.
+        if (cached_page && page_js.run_timers(16.0)) {
+            cached_page->relayout();
+            need_render = true;
+        }
+
         // A click requested on the command line fires once, after the page is up,
         // which is the only way to exercise a handler without a display.
         if (!pending_click_done && click_x >= 0 && click_y >= 0 && cached_page) {
@@ -2103,8 +2110,10 @@ static rendering::RenderDocument create_scripted_document(
     if (!js.has_error()) {
         js.dispatch_event("DOMContentLoaded");
         js.dispatch_event("load");
-        // Run timers (setTimeout/setInterval) on virtual time.
-        js.run_event_loop();
+        // Only the timers that are already due. Draining the whole queue here
+        // fires a repeating timer a thousand times before the first frame; the
+        // window loop ticks the rest as virtual time advances.
+        js.run_timers(0.0);
     }
 
     // textContent writes go straight to the DOM through its accessor, so no

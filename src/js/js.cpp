@@ -763,6 +763,50 @@ void Interpreter::clear_timer(int id)
     }
 }
 
+void Interpreter::fire_timer(std::vector<Timer>::iterator timer)
+{
+    // Virtual time: jump to the timer instead of sleeping.
+    m_virtual_time = std::max(m_virtual_time, timer->due);
+    Timer due = *timer;
+    if (due.repeating)
+        timer->due = m_virtual_time + (due.interval > 0 ? due.interval : 0.001);
+    else
+        m_timers.erase(timer);
+
+    JSValue result = JS_Call(m_context, due.callback, JS_UNDEFINED, 0, nullptr);
+    if (JS_IsException(result))
+        record_exception();
+    JS_FreeValue(m_context, result);
+    if (!due.repeating)
+        JS_FreeValue(m_context, due.callback);
+    drain_microtasks();
+}
+
+bool Interpreter::run_timers(double budget_ms, int max_tasks)
+{
+    if (!m_context)
+        return false;
+
+    double const deadline = m_virtual_time + budget_ms / 1000.0;
+    bool ran = false;
+    for (int task = 0; task < max_tasks; ++task) {
+        drain_microtasks();
+        if (m_timers.empty() || m_has_error)
+            break;
+        auto next = std::min_element(m_timers.begin(), m_timers.end(),
+            [](Timer const& left, Timer const& right) { return left.due < right.due; });
+        if (next == m_timers.end() || next->due > deadline)
+            break;
+        fire_timer(next);
+        ran = true;
+    }
+    // The clock advances with the frame even when nothing was due, or a timer
+    // scheduled for 50 ms would never come due in a loop ticking 16 ms at a time.
+    if (m_virtual_time < deadline)
+        m_virtual_time = deadline;
+    return ran;
+}
+
 void Interpreter::run_event_loop(int max_tasks)
 {
     if (!m_context)
@@ -777,21 +821,7 @@ void Interpreter::run_event_loop(int max_tasks)
         if (next == m_timers.end())
             break;
 
-        // Virtual time: jump to the timer instead of sleeping.
-        m_virtual_time = std::max(m_virtual_time, next->due);
-        Timer timer = *next;
-        if (timer.repeating)
-            next->due = m_virtual_time + (timer.interval > 0 ? timer.interval : 0.001);
-        else
-            m_timers.erase(next);
-
-        JSValue result = JS_Call(m_context, timer.callback, JS_UNDEFINED, 0, nullptr);
-        if (JS_IsException(result))
-            record_exception();
-        JS_FreeValue(m_context, result);
-        if (!timer.repeating)
-            JS_FreeValue(m_context, timer.callback);
-        drain_microtasks();
+        fire_timer(next);
     }
     drain_microtasks();
 }
