@@ -104,3 +104,14 @@ have a lawyer read the specific file headers before merging.
   size in megabytes, measured the same way in all four repos.
 - **Provenance.** `SOURCES.md` names the exact upstream commit. A tree that cannot
   say where it came from is not part of this family.
+
+## What is not in this family
+
+`drsamonline/audit` is **not** a member. It is the fleet changelog — the record of what was measured,
+what was fixed and the evidence for it, across every repository in the account. It carries no tier, no
+Vinculum contract and no `aetheris-family` topic, and it should not be added to the group: a record
+that is also a participant stops being a record.
+
+The family is four browsers and a contract. Anything else that wants in has to justify itself against
+that sentence.
+
