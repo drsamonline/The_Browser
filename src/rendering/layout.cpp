@@ -1,5 +1,7 @@
 #include "layout.hpp"
 
+#include <vector>
+
 #include "text_layout.hpp"
 
 #include <algorithm>
@@ -104,6 +106,50 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
     if (max_width >= 0)
         content_width = std::min(content_width, max_width);
     content_width = std::max(content_width, min_width);
+
+    // "margin: 0 auto" centres a fixed-width block. The shorthand parser reports
+    // auto as 0, so the auto-ness is re-read here from the raw values.
+    if (specified_width >= 0) {
+        auto is_auto = [&](char const* longhand, std::size_t index) -> bool {
+            if (auto value = node.style.get(longhand))
+                return *value == "auto";
+            if (auto value = node.style.get("margin")) {
+                std::vector<std::string> parts;
+                std::string current;
+                for (char c : *value) {
+                    if (c == ' ' || c == '\t') {
+                        if (!current.empty()) { parts.push_back(current); current.clear(); }
+                    } else {
+                        current.push_back(c);
+                    }
+                }
+                if (!current.empty())
+                    parts.push_back(current);
+                if (!parts.empty() && parts.size() <= 4)
+                    return parts[parts.size() == 1 ? 0 : index] == "auto";
+            }
+            return false;
+        };
+        bool left_auto = is_auto("margin-left", 3);
+        bool right_auto = is_auto("margin-right", 1);
+        if (left_auto || right_auto) {
+            float used = node.box.padding.left + node.box.padding.right
+                + node.box.border.left + node.box.border.right
+                + (left_auto ? 0.0f : node.box.margin.left)
+                + (right_auto ? 0.0f : node.box.margin.right);
+            float free = available_width - content_width - used;
+            if (free > 0.0f) {
+                if (left_auto && right_auto) {
+                    node.box.margin.left = free / 2.0f;
+                    node.box.margin.right = free / 2.0f;
+                } else if (left_auto) {
+                    node.box.margin.left = free;
+                } else {
+                    node.box.margin.right = free;
+                }
+            }
+        }
+    }
 
     node.box.content.x = x + node.box.margin.left + node.box.border.left + node.box.padding.left;
     node.box.content.y = y + node.box.margin.top + node.box.border.top + node.box.padding.top;
@@ -366,8 +412,23 @@ float LayoutEngine::parse_length(std::string const* value, float fallback, float
     auto parsed = std::strtof(value->c_str(), &end);
     if (end == value->c_str())
         return fallback;
-    if (end && *end == '%')
+    std::string unit(end);
+    if (unit == "%")
         return percentage_base * parsed / 100.0f;
+    // The engine only understood px and %; em and friends were read as bare
+    // numbers, so "5em" became 5px. em/rem resolve against the root size.
+    if (unit == "em" || unit == "rem")
+        return parsed * 16.0f;
+    if (unit == "pt")
+        return parsed * 4.0f / 3.0f;
+    if (unit == "pc")
+        return parsed * 16.0f;
+    if (unit == "in")
+        return parsed * 96.0f;
+    if (unit == "cm")
+        return parsed * 96.0f / 2.54f;
+    if (unit == "mm")
+        return parsed * 96.0f / 25.4f;
     return parsed;
 }
 
@@ -379,10 +440,47 @@ float LayoutEngine::resolve_dimension(StyleProperties const& style, char const* 
 BoxEdges LayoutEngine::resolve_edges(StyleProperties const& style, char const* prefix, float percentage_base)
 {
     std::string base(prefix);
+
+    // Shorthand first: "margin: 5em auto" and "padding: 2em" are used by nearly
+    // every real page, and only the longhands were read, so they were ignored
+    // entirely. One to four values map to top/right/bottom/left.
+    float shorthand[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    bool have_shorthand[4] = { false, false, false, false };
+    if (auto value = style.get(base)) {
+        std::vector<std::string> parts;
+        std::string current;
+        for (char c : *value) {
+            if (c == ' ' || c == '\t') {
+                if (!current.empty()) { parts.push_back(current); current.clear(); }
+            } else {
+                current.push_back(c);
+            }
+        }
+        if (!current.empty())
+            parts.push_back(current);
+        if (!parts.empty() && parts.size() <= 4) {
+            auto pick = [&](std::size_t index) { return parts[parts.size() == 1 ? 0 : index]; };
+            for (std::size_t index = 0; index < 4; ++index) {
+                auto text = pick(index);
+                if (text == "auto") {
+                    have_shorthand[index] = true;
+                    shorthand[index] = 0.0f; // resolved later by the block layout
+                    continue;
+                }
+                have_shorthand[index] = true;
+                shorthand[index] = parse_length(&text, 0, percentage_base);
+            }
+        }
+    }
+
     auto side = [&](char const* name) {
         auto direct = base + "-" + name;
         if (auto value = style.get(direct))
             return parse_length(value, 0, percentage_base);
+        std::size_t index = std::string(name) == "top" ? 0 : std::string(name) == "right" ? 1
+            : std::string(name) == "bottom" ? 2 : 3;
+        if (have_shorthand[index])
+            return shorthand[index];
         if (base == "border") {
             auto width = std::string("border-") + name + "-width";
             if (auto value = style.get(width))
