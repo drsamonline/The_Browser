@@ -11,6 +11,12 @@ the mistakes that cost the most time.
 
 ---
 
+**Read `docs/UPSTREAM-FIRST.md` first.** This engine is derived from Ladybird, so
+`Libraries/LibWeb` already solves focus, hover, `:active`, event bubbling and style
+invalidation. Port the shape; do not re-derive it.
+
+---
+
 ## 1. What this is
 
 A minimal, from-scratch browser engine in C++20 — HTML5 parsing, CSS cascade and
