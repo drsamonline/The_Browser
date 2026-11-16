@@ -22,6 +22,7 @@ struct InputAction {
         BlurAddress,   // the page takes keyboard focus again
         AddressEdited, // the address text changed; `text` holds the new value
         PageClick,     // x, y in window coordinates
+        Release,       // the button came up; x, y in window coordinates
         PageHover,     // x, y in window coordinates
         Scroll,        // `delta` wheel notches: positive scrolls down
         ScrollPage,    // `delta` pages: positive scrolls down, negative up

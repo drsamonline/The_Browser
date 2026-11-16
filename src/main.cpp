@@ -1683,6 +1683,17 @@ static std::size_t document_fingerprint(rendering::DomNode const& node)
 static rendering::DomNode* node_at(rendering::RenderDocument& rendered, DomHost& dom,
     rendering::Viewport const& viewport, float x, float y);
 
+// Applies a pressed element to the cascade, so `:active` styling shows while the
+// button is down. Returns true when the state changed and a frame is needed.
+static bool apply_active_visual_state(rendering::RenderDocument& rendered,
+    rendering::VisualInteractionState& state, rendering::DomNode* node, float viewport_width)
+{
+    if (!state.set_active(node))
+        return false;
+    rendered.apply_visual_state(state, viewport_width);
+    return true;
+}
+
 // Applies a hover change to the cascade. Returns true when the page needs a new
 // frame: a :hover rule may have matched, and the only way to know is to rebuild.
 static bool apply_hover_visual_state(rendering::RenderDocument& rendered,
@@ -1750,7 +1761,7 @@ static bool dispatch_click_at(rendering::RenderDocument& rendered, aetheris::js:
 
 static int run_window(std::string const& url, int frames, std::string const& frame_directory,
     int click_x = -1, int click_y = -1, std::string const& key_to_press = {},
-    int move_x = -1, int move_y = -1)
+    int move_x = -1, int move_y = -1, int press_x = -1, int press_y = -1)
 {
     constexpr int kWidth = 1024;
     constexpr int kHeight = 768;
@@ -1856,6 +1867,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     bool pending_click_done = false;
     bool pending_key_done = false;
     bool pending_move_done = false;
+    bool pending_press_done = false;
     rendering::DomNode* hovered = nullptr;
     // The cascade already understands :hover (style.cpp) and apply_visual_state
     // rebuilds layout when it changes; nothing was feeding it.
@@ -1892,6 +1904,18 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             if (page_js.run_timers(16.0)
                 && document_fingerprint(cached_page->document().root()) != before) {
                 cached_page->relayout();
+                ++relayouts;
+                need_render = true;
+            }
+        }
+
+        // A press requested on the command line. It stays pressed on purpose: the
+        // frame it produces is the only way to see :active without a display.
+        if (!pending_press_done && press_x >= 0 && press_y >= 0 && cached_page) {
+            pending_press_done = true;
+            auto* node = node_at(*cached_page, page_dom, viewport,
+                static_cast<float>(press_x), static_cast<float>(press_y - kChromeHeight));
+            if (apply_active_visual_state(*cached_page, visual_state, node, static_cast<float>(kWidth))) {
                 ++relayouts;
                 need_render = true;
             }
@@ -2001,7 +2025,22 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                     }
                 }
                 break;
+            case ui::InputAction::Kind::Release:
+                if (cached_page
+                    && apply_active_visual_state(*cached_page, visual_state, nullptr, static_cast<float>(kWidth))) {
+                    ++relayouts;
+                    need_render = true;
+                }
+                break;
             case ui::InputAction::Kind::PageClick:
+                if (cached_page) {
+                    auto* pressed = node_at(*cached_page, page_dom, viewport,
+                        static_cast<float>(action.x), static_cast<float>(action.y - kChromeHeight));
+                    if (apply_active_visual_state(*cached_page, visual_state, pressed, static_cast<float>(kWidth))) {
+                        ++relayouts;
+                        need_render = true;
+                    }
+                }
                 if (cached_page && dispatch_click_at(*cached_page, page_js, page_dom, viewport,
                         static_cast<float>(action.x), static_cast<float>(action.y - kChromeHeight)))
                     need_render = true;
@@ -2488,7 +2527,15 @@ int main(int argc, char* argv[]) {
                 move_y = std::atoi(argv[i + 3]);
                 i += 3;
             }
-            return run_window(url, frames, frame_directory, click_x, click_y, key_to_press, move_x, move_y);
+            int press_x = -1;
+            int press_y = -1;
+            if (i + 1 < argc && std::string(argv[i + 1]) == "--press" && i + 3 < argc) {
+                press_x = std::atoi(argv[i + 2]);
+                press_y = std::atoi(argv[i + 3]);
+                i += 3;
+            }
+            return run_window(url, frames, frame_directory, click_x, click_y, key_to_press,
+                move_x, move_y, press_x, press_y);
         }
         // Same page, but composited under the compact browser chrome.
         if (arg == "--render-window" && i + 1 < argc) {

@@ -88,6 +88,36 @@ static RunResult run_window(std::string const& binary, std::string const& page,
     return result;
 }
 
+// Reads one pixel out of the last frame the window wrote. Returns false when the
+// frame is missing or malformed, so a broken writer fails loudly.
+static bool frame_pixel(std::string const& directory, int x, int y, int (&rgb)[3])
+{
+    for (int index = 8; index >= 1; --index) {
+        std::string path = directory + "/frame-" + std::to_string(index) + ".ppm";
+        FILE* file = std::fopen(path.c_str(), "rb");
+        if (!file)
+            continue;
+        char magic[3] = { 0, 0, 0 };
+        int width = 0;
+        int height = 0;
+        int maximum = 0;
+        bool ok = std::fscanf(file, "%2s %d %d %d", magic, &width, &height, &maximum) == 4
+            && std::fgetc(file) == '\n' && x < width && y < height;
+        if (ok) {
+            long offset = static_cast<long>(y) * width * 3 + static_cast<long>(x) * 3;
+            ok = std::fseek(file, offset, SEEK_CUR) == 0;
+            unsigned char bytes[3] = { 0, 0, 0 };
+            ok = ok && std::fread(bytes, 1, 3, file) == 3;
+            rgb[0] = bytes[0];
+            rgb[1] = bytes[1];
+            rgb[2] = bytes[2];
+        }
+        std::fclose(file);
+        return ok;
+    }
+    return false;
+}
+
 int main(int argc, char* argv[])
 {
     require(argc >= 2, "browser binary path argument");
@@ -243,6 +273,26 @@ int main(int argc, char* argv[])
         require(plain[2] > 200 && plain[0] < 60, "the element without :hover stayed blue");
     }
 
-    std::printf("window scripts: ran, clicked, keyed, hovered (JS and CSS), ticked, laid out, exited cleanly\n");
+    // CSS :active shows while the button is down. --press leaves it pressed, so
+    // the frame it produces is the only way to see this without a display.
+    {
+        std::string directory = "/tmp/aetheris-active-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto result = run_window(binary,
+            "<html><head><title>Active</title><style>body{margin:0}"
+            "div{width:400px;height:100px;background:#0000ff}#a:active{background:#00ff00}"
+            "</style></head><body><div id='a'>A</div><div id='b'>B</div></body></html>",
+            "--press 200 80", 2, directory);
+        require(result.status == 0, "the active run exits cleanly");
+
+        int pressed[3] = { 0, 0, 0 };
+        int other[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 50, pressed), "the pressed frame is readable");
+        require(frame_pixel(directory, 200, 34 + 150, other), "the other pixel is readable");
+        require(pressed[1] > 200 && pressed[0] < 60, ":active turned the pressed element green");
+        require(other[2] > 200 && other[0] < 60, "the element without :active stayed blue");
+    }
+
+    std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");
     return 0;
 }

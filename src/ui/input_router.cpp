@@ -28,6 +28,11 @@ InputAction InputRouter::handle(WindowEvent const& event)
         if (event.y >= m_chrome_height)
             return InputAction { InputAction::Kind::PageHover, {}, event.x, event.y };
         return InputAction {};
+    case WindowEvent::Kind::MouseUp:
+        // The press ended: whatever was :active stops being :active.
+        if (event.y >= m_chrome_height)
+            return InputAction { InputAction::Kind::Release, {}, event.x, event.y };
+        return InputAction {};
     case WindowEvent::Kind::Scroll:
         // A wheel event carries no pointer position on every backend, so it is
         // never gated on the chrome height: a wheel over the chrome scrolls the
