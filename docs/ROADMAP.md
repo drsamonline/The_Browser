@@ -9,6 +9,13 @@ Last verified: 57/57 CTest passing, size profile **2,630,800 bytes (~2.51 MB)** 
 The current state has been audited — findings and the plan forward are in
 [AUDIT.md](AUDIT.md).
 
+## Before any item on this list
+
+**Read `docs/UPSTREAM-FIRST.md`.** This engine is derived from Ladybird, so
+`Libraries/LibWeb` usually already solves what is being built — focus, hover,
+`:active`, event bubbling and style invalidation all live there. When upstream has
+no answer, say why in `DESIGN.md` rather than inventing quietly.
+
 ## Done
 
 ### Engine foundations
