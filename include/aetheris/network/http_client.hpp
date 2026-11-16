@@ -496,6 +496,13 @@ private:
         auto const key = http_origin_key(parsed);
         HttpConnection connection = http_take_connection(key);
 
+        // Whether this connection came from the pool, recorded before the probe
+        // below can discard it. A server may close an idle keep-alive
+        // connection at any moment, and the FIN can arrive between the probe and
+        // the write, so a failure on a reused connection is retried once on a
+        // fresh one rather than surfaced as an empty page.
+        bool const reused = connection.socket != nullptr || connection.tls != nullptr;
+
         // A pooled keep-alive connection can be closed by the server while
         // idle. Probe it before deciding whether to reconnect, otherwise the
         // request is written into a dead (or already-reset) socket.
@@ -549,16 +556,29 @@ private:
         request_text += body;
 
         if (transport.send(request_text) != SocketError::None) {
+            if (reused) {
+                http_connection_pool().clear();
+                return request_once(url, method, headers, body, timeout_ms);
+            }
             response.error = "Failed to send request";
             return response;
         }
 
         std::string raw;
-        if (!read_headers(transport, raw, response.error))
+        if (!read_headers(transport, raw, response.error)) {
+            if (reused) {
+                http_connection_pool().clear();
+                return request_once(url, method, headers, body, timeout_ms);
+            }
             return response;
+        }
 
         auto header_end = raw.find("\r\n\r\n");
         if (header_end == std::string::npos) {
+            if (reused) {
+                http_connection_pool().clear();
+                return request_once(url, method, headers, body, timeout_ms);
+            }
             response.error = "Malformed response";
             return response;
         }
