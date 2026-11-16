@@ -291,6 +291,15 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
         if (!interaction_state) return false;
         if (pseudo == "hover" && interaction_state->hovered != &node) return false;
         if (pseudo == "focus" && interaction_state->focused != &node) return false;
+        if (pseudo == "focus-visible") {
+            // Upstream's Element::should_indicate_focus(): a text-entry control
+            // always indicates focus; anything else only when the focus arrived
+            // from the keyboard rather than a pointer.
+            if (interaction_state->focused != &node) return false;
+            bool text_entry = node.name == "input" || node.name == "textarea" || node.name == "select";
+            if (!text_entry && interaction_state->focus_trigger != FocusTrigger::Key) return false;
+            continue;
+        }
         if (pseudo == "focus-within") {
             // Upstream builds a FocusWithinChain from the focused element and asks
             // whether the element is on it (SelectorMatching.cpp). Same test here:

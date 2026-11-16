@@ -60,7 +60,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; a click focuses and keys reach the focused element then bubble to document; repeating timers tick once per frame. `keyup`, `mouseleave`, `:focus-visible`, `keyup` and tab order are still missing |
+| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; a click focuses and keys reach the focused element then bubble to document; repeating timers tick once per frame. `keyup`, `mouseleave`, `keyup` and tab order are still missing |
 | Page load | One path: `create_scripted_document`. `--render` passes a negative timer budget to drain the queue; `--window` passes 0 and ticks per frame |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
@@ -116,6 +116,9 @@ SDL2 backend: `-DAETHERIS_WITH_SDL2=ON` plus SDL2 installed.
   strict configuration.
 - Render a page and look at it: `aetheris --render-window <url> out.ppm`.
 - Exercise input without a display:
+  `--focus-key <x> <y>` focuses with a keyboard trigger, for testing
+  `:focus-visible` before Tab exists.
+  And otherwise:
   `aetheris --window <url> 2 --click <x> <y> --key j --move <x> <y> --press <x> <y>`
   (`--render` also takes `--click <x>,<y>`; `--window` accepts both spellings).
 

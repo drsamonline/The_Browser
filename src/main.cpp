@@ -1807,7 +1807,8 @@ static bool dispatch_click_at(rendering::RenderDocument& rendered, aetheris::js:
 
 static int run_window(std::string const& url, int frames, std::string const& frame_directory,
     int click_x = -1, int click_y = -1, std::string const& key_to_press = {},
-    int move_x = -1, int move_y = -1, int press_x = -1, int press_y = -1)
+    int move_x = -1, int move_y = -1, int press_x = -1, int press_y = -1,
+    int focus_key_x = -1, int focus_key_y = -1)
 {
     constexpr int kWidth = 1024;
     constexpr int kHeight = 768;
@@ -1914,6 +1915,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     bool pending_key_done = false;
     bool pending_move_done = false;
     bool pending_press_done = false;
+    bool pending_focus_key_done = false;
     rendering::DomNode* hovered = nullptr;
     rendering::DomNode* focused = nullptr;
     // The cascade already understands :hover (style.cpp) and apply_visual_state
@@ -1961,6 +1963,19 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                 ++relayouts;
                 need_render = true;
             }
+        }
+
+        // A keyboard-driven focus, for testing :focus-visible's trigger before Tab
+        // exists. Real keyboard focus will set the same field.
+        if (!pending_focus_key_done && focus_key_x >= 0 && focus_key_y >= 0 && cached_page) {
+            pending_focus_key_done = true;
+            auto* target = node_at(*cached_page, page_dom, viewport,
+                static_cast<float>(focus_key_x), static_cast<float>(focus_key_y - kChromeHeight));
+            visual_state.focus_trigger = rendering::FocusTrigger::Key;
+            focused = target;
+            if (set_focus(*cached_page, page_js, page_dom, visual_state, target, static_cast<float>(kWidth)))
+                ++relayouts;
+            need_render = true;
         }
 
         // A press requested on the command line. It stays pressed on purpose: the
@@ -2596,8 +2611,15 @@ int main(int argc, char* argv[]) {
                 press_y = std::atoi(argv[i + 3]);
                 i += 3;
             }
+            int focus_key_x = -1;
+            int focus_key_y = -1;
+            if (i + 1 < argc && std::string(argv[i + 1]) == "--focus-key" && i + 3 < argc) {
+                focus_key_x = std::atoi(argv[i + 2]);
+                focus_key_y = std::atoi(argv[i + 3]);
+                i += 3;
+            }
             return run_window(url, frames, frame_directory, click_x, click_y, key_to_press,
-                move_x, move_y, press_x, press_y);
+                move_x, move_y, press_x, press_y, focus_key_x, focus_key_y);
         }
         // Same page, but composited under the compact browser chrome.
         if (arg == "--render-window" && i + 1 < argc) {
