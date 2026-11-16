@@ -47,6 +47,9 @@ public:
     // Fires `keydown` with `key` set on the event, which is what a page's
     // keyboard handler reads. The value is consumed by the next dispatch only.
     void dispatch_key(std::string const& key);
+    // Sets the key the next dispatched event carries, for callers that dispatch
+    // through their own chain - a focused element bubbling to its ancestors.
+    void set_event_key(std::string key) { m_event_key = std::move(key); }
     std::string const& event_key() const { return m_event_key; }
 
     // Fires an event at one object and then up its ancestor chain, which the

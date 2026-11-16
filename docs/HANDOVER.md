@@ -54,7 +54,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; repeating timers tick once per frame. `keyup`, `mouseleave` and keys-to-focused-element are still missing |
+| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; a click focuses and keys reach the focused element then bubble to document; repeating timers tick once per frame. `keyup`, `mouseleave`, `:focus-visible`, tab order and `document.activeElement` are still missing |
 | Page load | One path: `create_scripted_document`. `--render` passes a negative timer budget to drain the queue; `--window` passes 0 and ticks per frame |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
@@ -156,7 +156,15 @@ contents. Several releases went green with a broken or missing package.
    click focuses. `RenderDocument` now remembers the last state and passes it to
    `relayout()`. This cost two sessions and was only found by printing the
    hit-test result and the focused pointer, not by reading the code.
-7. **CSS shorthands and units.** `margin: 5em auto` was ignored entirely (only
+7. **Upstream is the reference for anything interaction-shaped.** `LibWeb`'s
+   `Document::set_focused_area` (blur -> scoped style invalidation -> set -> focus),
+   `Element::is_focused()` asking `document().focused_area()`, and
+   `CSS::Invalidation::invalidate_style_after_pseudo_class_state_change` are the
+   design this engine should converge on. Reading them ended a three-session loop:
+   Aetheris compared state pointers in the style engine and threw the state away in
+   `relayout()`, where upstream keeps it on the document and invalidates only what
+   depends on it.
+8. **CSS shorthands and units.** `margin: 5em auto` was ignored entirely (only
    longhands were read) and `2em` was parsed as 2 pixels. Both fixed — but this
    class of gap is common: assume a property is unimplemented until proven.
 7. **Sandbox recycles.** Uncommitted work is lost. Commit early. Re-clone and

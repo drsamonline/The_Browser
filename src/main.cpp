@@ -1683,6 +1683,48 @@ static std::size_t document_fingerprint(rendering::DomNode const& node)
 static rendering::DomNode* node_at(rendering::RenderDocument& rendered, DomHost& dom,
     rendering::Viewport const& viewport, float x, float y);
 
+// Moves focus, in the order Ladybird's Document::set_focused_area uses: the old
+// element loses focus, style is re-resolved for the change, then the new element
+// receives focus. Firing `blur` before the state changes and `focus` after is
+// what lets a handler see the right document.activeElement.
+static bool set_focus(rendering::RenderDocument& rendered, aetheris::js::Interpreter& js,
+    DomHost& dom, rendering::VisualInteractionState& state, rendering::DomNode* node,
+    float viewport_width)
+{
+    if (state.focused == node)
+        return false;
+
+    auto* previous = const_cast<rendering::DomNode*>(state.focused);
+    if (previous && dom.handle_by_node.find(previous) != dom.handle_by_node.end())
+        dispatch_bubbling(js, dom, previous, "blur");
+
+    if (!state.set_focused(node))
+        return false;
+    rendered.apply_visual_state(state, viewport_width);
+
+    if (node && dom.handle_by_node.find(node) != dom.handle_by_node.end())
+        dispatch_bubbling(js, dom, node, "focus");
+    return true;
+}
+
+// A key goes to the focused element when there is one, and bubbles from there;
+// with nothing focused it goes to the document, which is what a page expects.
+static void dispatch_key_to_focus(aetheris::js::Interpreter& js, DomHost& dom,
+    rendering::DomNode* focused, std::string const& key)
+{
+    if (focused && dom.handle_by_node.find(focused) != dom.handle_by_node.end()) {
+        js.set_event_key(key);
+        // The element first, then the document and window: a key event bubbles
+        // from the focused element all the way up, which is what Ladybird's
+        // EventHandler does and what a page listening on document expects.
+        dispatch_bubbling(js, dom, focused, "keydown");
+        js.dispatch_event("keydown");
+        js.set_event_key({});
+        return;
+    }
+    js.dispatch_key(key);
+}
+
 // Applies a pressed element to the cascade, so `:active` styling shows while the
 // button is down. Returns true when the state changed and a frame is needed.
 static bool apply_active_visual_state(rendering::RenderDocument& rendered,
@@ -1869,6 +1911,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     bool pending_move_done = false;
     bool pending_press_done = false;
     rendering::DomNode* hovered = nullptr;
+    rendering::DomNode* focused = nullptr;
     // The cascade already understands :hover (style.cpp) and apply_visual_state
     // rebuilds layout when it changes; nothing was feeding it.
     rendering::VisualInteractionState visual_state;
@@ -1939,18 +1982,6 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             }
         }
 
-        // A key requested on the command line fires once, after the page is up.
-        if (!pending_key_done && !key_to_press.empty() && cached_page) {
-            pending_key_done = true;
-            auto const before = document_fingerprint(cached_page->document().root());
-            page_js.dispatch_key(key_to_press);
-            if (document_fingerprint(cached_page->document().root()) != before) {
-                cached_page->relayout();
-                ++relayouts;
-                need_render = true;
-            }
-        }
-
         // A click requested on the command line fires once, after the page is up,
         // which is the only way to exercise a handler without a display.
         if (!pending_click_done && click_x >= 0 && click_y >= 0 && cached_page) {
@@ -1959,11 +1990,25 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             // state before the handler runs so the repaint shows it.
             auto* click_target = node_at(*cached_page, page_dom, viewport,
                 static_cast<float>(click_x), static_cast<float>(click_y - kChromeHeight));
-            if (visual_state.set_focused(click_target))
-                cached_page->apply_visual_state(visual_state, static_cast<float>(kWidth));
+            focused = click_target;
+            if (set_focus(*cached_page, page_js, page_dom, visual_state, click_target,
+                    static_cast<float>(kWidth)))
+                ++relayouts;
             if (dispatch_click_at(*cached_page, page_js, page_dom, viewport,
                     static_cast<float>(click_x), static_cast<float>(click_y - kChromeHeight)))
                 need_render = true;
+        }
+
+        // A key requested on the command line fires once, after the page is up.
+        if (!pending_key_done && !key_to_press.empty() && cached_page) {
+            pending_key_done = true;
+            auto const before = document_fingerprint(cached_page->document().root());
+            dispatch_key_to_focus(page_js, page_dom, focused, key_to_press);
+            if (document_fingerprint(cached_page->document().root()) != before) {
+                cached_page->relayout();
+                ++relayouts;
+                need_render = true;
+            }
         }
 
         if (frames > 0 && presented >= frames)
@@ -2023,7 +2068,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             case ui::InputAction::Kind::Key:
                 if (cached_page) {
                     auto const before = document_fingerprint(cached_page->document().root());
-                    page_js.dispatch_key(action.text);
+                    dispatch_key_to_focus(page_js, page_dom, focused, action.text);
                     if (document_fingerprint(cached_page->document().root()) != before) {
                         cached_page->relayout();
                         ++relayouts;
