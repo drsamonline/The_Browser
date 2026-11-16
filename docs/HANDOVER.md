@@ -109,7 +109,8 @@ SDL2 backend: `-DAETHERIS_WITH_SDL2=ON` plus SDL2 installed.
   translation unit. Release is what CI does and it is the only meaningful
   strict configuration.
 - Render a page and look at it: `aetheris --render-window <url> out.ppm`.
-- Exercise a click without a display: `aetheris --window <url> 2 --click <x> <y>`.
+- Exercise a click without a display: `aetheris --window <url> 2 --click <x> <y>`
+  (`--render` also takes `--click <x>,<y>`; `--window` accepts both spellings).
 
 ---
 

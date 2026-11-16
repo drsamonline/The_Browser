@@ -2251,24 +2251,12 @@ static int run_render(std::string const& url, std::string const& output_path, st
     // Layout exists now, so scripts can be told how tall the page really is.
     (*viewport_state)[2] = static_cast<double>(rendered.layout_root().rect.height);
 
-    // Geometry-based dispatch: hit-test the point and fire a click on the
-    // element there, then re-layout so the change is reflected.
-    if (click_x >= 0 && click_y >= 0 && !js.has_error()) {
-        rendering::DocumentInteraction interaction;
-        rendering::Viewport viewport(1024.0f, 768.0f);
-        viewport.set_document_size(1024.0f, 768.0f);
-        auto hit = interaction.hit_test(rendered, viewport, click_x, click_y);
-        auto* node = hit.dom_node ? const_cast<rendering::DomNode*>(hit.dom_node) : nullptr;
-        while (node && dom.handle_by_node.find(node) == dom.handle_by_node.end()) {
-            auto parent = dom.parent_of.find(node);
-            node = parent != dom.parent_of.end() ? parent->second : nullptr;
-        }
-        if (node) {
-            dispatch_bubbling(js, dom, node, "click");
-            rendered.relayout();
-        } else {
-            std::cerr << "  [js] no element handle at the click point" << std::endl;
-        }
+    // Geometry-based dispatch, through the same function the window uses, so a
+    // click behaves identically in a render and in a window.
+    if (click_x >= 0 && click_y >= 0) {
+        rendering::Viewport click_viewport(1024.0f, 768.0f);
+        click_viewport.set_document_size(1024.0f, 768.0f);
+        dispatch_click_at(rendered, js, dom, click_viewport, click_x, click_y);
     }
     // A PPM has no alpha channel, so render onto an opaque white background to
     // keep the output viewable.
@@ -2367,10 +2355,20 @@ int main(int argc, char* argv[]) {
                 frame_directory = argv[++i];
             int click_x = -1;
             int click_y = -1;
-            if (i + 1 < argc && std::string(argv[i + 1]) == "--click" && i + 3 < argc) {
-                click_x = std::atoi(argv[i + 2]);
-                click_y = std::atoi(argv[i + 3]);
-                i += 3;
+            if (i + 1 < argc && std::string(argv[i + 1]) == "--click") {
+                // Both spellings: `--click 200,50` matches --render, and
+                // `--click 200 50` reads better with a window's other options.
+                std::string value(argv[i + 2 < argc ? i + 2 : i + 1]);
+                auto comma = value.find(',');
+                if (comma != std::string::npos) {
+                    click_x = std::atoi(value.substr(0, comma).c_str());
+                    click_y = std::atoi(value.substr(comma + 1).c_str());
+                    i += 2;
+                } else if (i + 3 < argc) {
+                    click_x = std::atoi(argv[i + 2]);
+                    click_y = std::atoi(argv[i + 3]);
+                    i += 3;
+                }
             }
             return run_window(url, frames, frame_directory, click_x, click_y);
         }
