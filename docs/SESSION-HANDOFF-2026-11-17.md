@@ -504,11 +504,42 @@ comparison caught and an expectation would not have: I had no reason to suspect 
 as the `body:focus-within .title` fixture earlier. The lesson has been written down twice and I walked into it
 again; the tell is always a relayout count that is right and a pixel that is not.
 
+### Fourteenth item: the audit, and one choke point instead of six
+
+Upstream gets this from the type system: `Element::m_attributes` is private, and every write runs
+`Element::set_attribute` → `run_attribute_change_steps` → `invalidate_style_after_attribute_change`. A caller
+*cannot* write an attribute and forget to invalidate.
+
+Here the map is public, so the audit was a grep for `attributes[...] =`. Six runtime writers noted nothing:
+
+| writer | what a page does with it |
+| --- | --- |
+| `js_style_set_property` | `el.style.setProperty(p, v)` |
+| `js_style_set` | `el.style = '...'` |
+| `js_dataset_set` | `el.dataset.x = v` |
+| `js_checked_set` | `el.checked = true` |
+| `set_control_value` | `el.value = '...'` |
+| `set_class_attribute` | `classList`, `className` (previous item) |
+
+| write | before | after |
+| --- | --- | --- |
+| `el.style = 'background:#ff00ff'` | relayouts 0, blue | relayouts 1, magenta |
+| `el.style.setProperty('background', …)` | relayouts 0, blue | relayouts 1, magenta |
+| `el.dataset.x = '1'` | relayouts 0, blue | relayouts 1, magenta |
+
+`set_attribute()` / `remove_attribute()` in `dom_mutation.hpp` are the choke point now. `js_set_attribute` and
+`set_class_attribute` use them too, so the note order lives in one place instead of four.
+
+**A fourth specificity trap.** The `dataset` fixture first used `#a{background}` against
+`[data-x]{background}` — 10000 against 100 — and read blue. The relayout count said the note worked; the pixel
+said the rule lost. That tell is now reliable enough to name: relayout right, pixel wrong, look at specificity.
+
 ### Next, from here
 
-1. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
-2. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
-3. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
+1. `el.style.background = v` sets a property on the throwaway object `js_style_get()` returns. Upstream has a
+   real `CSSStyleDeclaration` (`[PutForwards=cssText] readonly attribute CSSStyleDeclaration style`). That is
+   a CSSOM feature, not an invalidation fix.
+2. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
+3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
    callers note the child-list change. A new caller that forgets to will leave the page stale.
-4. Every DOM API that writes an attribute must note it, as `set_class_attribute()` does. `set_control_value()`
-   and the `value`/`checked` setters are worth an audit with this in mind.
