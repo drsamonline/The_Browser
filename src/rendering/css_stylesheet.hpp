@@ -39,24 +39,38 @@ struct CssStyleSheet {
         return false;
     }
 
-    // Whether any selector's subject can change when a *sibling sequence* changes. A positional
-    // pseudo-class is the only way one child's presence restyles another, so this is the question
-    // the structural invalidation asks before narrowing to the parent alone
+    // Whether any selector's subject can change when a *sibling sequence* changes: a positional
+    // pseudo-class, or a sibling combinator. Both are ways one child's presence restyles another,
+    // so this is the question the structural invalidation asks before narrowing to the parent alone
     // (render_document.cpp). `:not(` counts: its argument may be positional.
     //
-    // It lives here, next to the sheet, so that adding a pseudo-class to style.cpp and forgetting
-    // this list is one edit apart rather than two files apart.
-    bool uses_positional_pseudo_class() const
+    // It lives here, next to the sheet, so that adding a pseudo-class or combinator to style.cpp
+    // and forgetting this list is one edit apart rather than two files apart.
+    bool uses_sibling_sequence() const
     {
         static char const* const positional[] = {
             ":first-child", ":last-child", ":only-child", ":nth-child", ":nth-last-child",
             "-of-type", ":not(",
         };
         for (auto const& rule : rules)
-            for (auto const& selector : rule.selectors)
+            for (auto const& selector : rule.selectors) {
                 for (auto const* pseudo : positional)
                     if (selector.find(pseudo) != std::string::npos)
                         return true;
+                // A sibling combinator at the top level. Inside parentheses it belongs to a nested
+                // selector (`:has(+ .x)`), which this engine answers false anyway.
+                int depth = 0;
+                for (char const c : selector) {
+                    if (c == '(' || c == '[') {
+                        ++depth;
+                    } else if (c == ')' || c == ']') {
+                        if (depth > 0)
+                            --depth;
+                    } else if (depth == 0 && (c == '+' || c == '~')) {
+                        return true;
+                    }
+                }
+            }
         return false;
     }
 

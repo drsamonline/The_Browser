@@ -461,12 +461,16 @@ bool StyleResolver::matches(DomNode const& node, std::string const& selector, Vi
     // Parentheses hold their own selectors (`:is(.a, .b)`), and a space inside one is part of the
     // argument, not a descendant combinator. Depth is tracked here and in the splitter below;
     // without it `:is(#a, #b)` was read as a descendant chain and matched nothing.
+    // A nested construct is parentheses OR brackets: `[a=v i]` holds a space that is part of the
+    // selector, and reading it as a descendant combinator split the attribute selector in two. This
+    // is the fourth scanner in this file to need the same rule.
     auto depth_at = [&selector](std::size_t index) {
         int depth = 0;
         for (std::size_t i = 0; i < index && i < selector.size(); ++i) {
-            if (selector[i] == '(')
+            char const c = selector[i];
+            if (c == '(' || c == '[')
                 ++depth;
-            else if (selector[i] == ')' && depth > 0)
+            else if ((c == ')' || c == ']') && depth > 0)
                 --depth;
         }
         return depth;
@@ -474,7 +478,8 @@ bool StyleResolver::matches(DomNode const& node, std::string const& selector, Vi
     bool has_combinator = false;
     for (std::size_t index = 0; index < selector.size(); ++index) {
         char const c = selector[index];
-        if ((c == '>' || std::isspace(static_cast<unsigned char>(c))) && depth_at(index) == 0) {
+        if ((c == '>' || c == '+' || c == '~' || std::isspace(static_cast<unsigned char>(c)))
+            && depth_at(index) == 0) {
             has_combinator = true;
             break;
         }
@@ -504,13 +509,13 @@ bool StyleResolver::matches(DomNode const& node, std::string const& selector, Vi
 
     int depth = 0;
     for (char c : selector) {
-        if (c == '(') {
+        if (c == '(' || c == '[') {
             ++depth;
             current += c;
             have_part = true;
             continue;
         }
-        if (c == ')') {
+        if (c == ')' || c == ']') {
             if (depth > 0)
                 --depth;
             current += c;
@@ -522,12 +527,13 @@ bool StyleResolver::matches(DomNode const& node, std::string const& selector, Vi
             have_part = true;
             continue;
         }
-        if (c == '>') {
+        if (c == '>' || c == '+' || c == '~') {
             flush();
-            pending = '>';
+            pending = c;
         } else if (std::isspace(static_cast<unsigned char>(c))) {
             flush();
-            if (pending != '>')
+            // A space after a combinator does not replace it: `a > b`, `a + b`.
+            if (pending != '>' && pending != '+' && pending != '~')
                 pending = ' ';
         } else {
             current += c;
@@ -544,13 +550,42 @@ bool StyleResolver::matches(DomNode const& node, std::string const& selector, Vi
     if (!matches_simple(node, parts.back().text, interaction_state))
         return false;
 
+    // The previous element sibling, which is what `+` and `~` step through. Upstream walks
+    // right-to-left and asks tree.previous_sibling() for `+` and all earlier siblings for `~`.
+    auto previous_element_sibling = [](DomNode const& from) -> DomNode const* {
+        auto const* parent = from.parent;
+        if (!parent)
+            return nullptr;
+        DomNode const* previous = nullptr;
+        for (auto const& child : parent->children) {
+            if (child.get() == &from)
+                return previous;
+            if (child->type == DomNodeType::Element)
+                previous = child.get();
+        }
+        return nullptr;
+    };
+
     DomNode const* current_node = &node;
     for (size_t k = parts.size() - 1; k-- > 0;) {
-        if (parts[k + 1].combinator == '>') {
+        char const combinator = parts[k + 1].combinator;
+        if (combinator == '>') {
             DomNode const* parent = current_node->parent;
             if (!parent || !matches_simple(*parent, parts[k].text, interaction_state))
                 return false;
             current_node = parent;
+        } else if (combinator == '+') {
+            DomNode const* sibling = previous_element_sibling(*current_node);
+            if (!sibling || !matches_simple(*sibling, parts[k].text, interaction_state))
+                return false;
+            current_node = sibling;
+        } else if (combinator == '~') {
+            DomNode const* sibling = previous_element_sibling(*current_node);
+            while (sibling && !matches_simple(*sibling, parts[k].text, interaction_state))
+                sibling = previous_element_sibling(*sibling);
+            if (!sibling)
+                return false;
+            current_node = sibling;
         } else {
             DomNode const* ancestor = current_node->parent;
             while (ancestor && !matches_simple(*ancestor, parts[k].text, interaction_state))
@@ -621,6 +656,9 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
         enum class Operator { Present, Equals, Includes, DashMatch, Prefix, Suffix, Substring } op;
         std::string name;
         std::string value;
+        // `[a=v i]`: the value compares ASCII case-insensitively. Upstream threads the same flag
+        // through every match type (`equals(value, literal, insensitive)`).
+        bool insensitive { false };
     };
     std::vector<AttributeRequirement> attributes;
     size_t i = 0;
@@ -643,7 +681,7 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
                 if (!inner.empty()) {
                     auto name = trim_copy(inner);
                     if (!name.empty())
-                        attributes.push_back({ AttributeRequirement::Operator::Present, name, {} });
+                        attributes.push_back({ AttributeRequirement::Operator::Present, name, {}, false });
                 }
             } else {
                 // The operator is whatever sits before '=': nothing, '~', '|', '^', '$' or '*'.
@@ -660,10 +698,22 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
                                          : AttributeRequirement::Operator::Substring;
                 }
                 std::string value = trim_copy(inner.substr(equals + 1));
+                // A trailing flag, outside any quotes: ` i` case-insensitive, ` s` sensitive.
+                bool insensitive = false;
+                auto const flag_space = value.find_last_of(" \t");
+                if (flag_space != std::string::npos) {
+                    std::string flag = trim_copy(value.substr(flag_space + 1));
+                    for (auto& c : flag)
+                        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    if (flag == "i" || flag == "s") {
+                        insensitive = flag == "i";
+                        value = trim_copy(value.substr(0, flag_space));
+                    }
+                }
                 if (value.size() >= 2 && (value.front() == '"' || value.front() == '\'')
                     && value.back() == value.front())
                     value = value.substr(1, value.size() - 2);
-                attributes.push_back({ op, name, value });
+                attributes.push_back({ op, name, value, insensitive });
             }
             continue;
         }
@@ -700,8 +750,26 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
         auto present = node.attribute(requirement.name);
         if (!present)
             return false;
-        auto const& actual = *present;
-        auto const& expected = requirement.value;
+        auto const& actual_raw = *present;
+        auto const& expected_raw = requirement.value;
+        std::string actual_lowered;
+        std::string expected_lowered;
+        std::string const* actual_ptr = &actual_raw;
+        std::string const* expected_ptr = &expected_raw;
+        if (requirement.insensitive) {
+            auto lower = [](std::string const& text) {
+                std::string out = text;
+                for (auto& c : out)
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                return out;
+            };
+            actual_lowered = lower(actual_raw);
+            expected_lowered = lower(expected_raw);
+            actual_ptr = &actual_lowered;
+            expected_ptr = &expected_lowered;
+        }
+        auto const& actual = *actual_ptr;
+        auto const& expected = *expected_ptr;
         switch (requirement.op) {
         case AttributeRequirement::Operator::Present:
             break;
@@ -854,6 +922,37 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
                     return false;
                 continue;
             }
+        }
+
+        // Form states, from the attributes this engine keeps: `el.checked = true` writes the
+        // `checked` attribute, so these are attribute facts and need no interaction state.
+        // Upstream publishes them as element facts (matches_checked_pseudo_class() and friends).
+        if (pseudo == "checked" || pseudo == "unchecked") {
+            bool const checked = node.has_attribute("checked") || node.has_attribute("selected");
+            if (pseudo == "checked" && !checked)
+                return false;
+            if (pseudo == "unchecked" && checked)
+                return false;
+            continue;
+        }
+        if (pseudo == "disabled" || pseudo == "enabled") {
+            bool const disabled = node.has_attribute("disabled");
+            if (pseudo == "disabled" && !disabled)
+                return false;
+            if (pseudo == "enabled" && disabled)
+                return false;
+            continue;
+        }
+        if (pseudo == "placeholder-shown") {
+            // A control with a placeholder and no value of its own. The value lives in the `value`
+            // attribute here (`el.value = x` writes it), so an empty or absent attribute is "no
+            // value".
+            bool const has_placeholder = node.has_attribute("placeholder");
+            auto const* value = node.attribute("value");
+            bool const empty = !value || value->empty();
+            if (!has_placeholder || !empty)
+                return false;
+            continue;
         }
 
         if (!interaction_state) return false;

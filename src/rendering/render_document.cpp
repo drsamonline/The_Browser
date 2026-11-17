@@ -205,7 +205,7 @@ void RenderDocument::relayout()
         // parent can change (`:empty`), and the new children resolve themselves because they have
         // no cache entry. That is the difference between appending a row to a 200-row page
         // re-resolving 406 nodes and re-resolving 4.
-        bool const positional = m_stylesheet.uses_positional_pseudo_class();
+        bool const positional = m_stylesheet.uses_sibling_sequence();
         for (auto const* parent : child_lists) {
             if (positional) {
                 collect_dirty(*parent, dirty);
@@ -330,6 +330,10 @@ bool RenderDocument::collect_state_change_dirty(VisualInteractionState const& in
     if (before == after)
         return false;
 
+    // A sibling combinator means the element whose state moved can restyle its own siblings:
+    // `.a:hover + .b`. They are dirtied alongside it, and only when the sheet actually uses one.
+    bool const sibling_sequence = m_stylesheet.uses_sibling_sequence();
+
     // Upstream's ancestor_traversal_for_pseudo_class(): `:focus-within` is the one
     // pseudo-class that propagates to ancestors. `:hover`, `:focus`, `:focus-visible` and
     // `:active` match the element itself, which is what style.cpp tests - read that, not
@@ -344,6 +348,11 @@ bool RenderDocument::collect_state_change_dirty(VisualInteractionState const& in
         if (!node)
             continue;
         collect_dirty(*node, dirty, true);
+        if (sibling_sequence && node->parent) {
+            for (auto const& sibling : node->parent->children)
+                if (sibling->type == DomNodeType::Element && sibling.get() != node)
+                    dirty.insert(sibling.get());
+        }
         if (!propagates)
             continue;
         // `:focus-within` on an ancestor styles its *other* descendants - `.card:focus-within

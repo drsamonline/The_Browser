@@ -140,9 +140,11 @@ void CssParser::parse_block(std::vector<CssToken> const& tokens, size_t& positio
                 found_open_brace = true;
                 break;
             }
-            if (token.type == CssTokenType::OpenParen)
+            // A comma inside parentheses or brackets is part of one selector:
+            // `:is(.a, .b)` and `[data-x="a,b"]` both used to be split.
+            if (token.type == CssTokenType::OpenParen || token.value == "[")
                 ++depth;
-            else if (token.type == CssTokenType::CloseParen && depth > 0)
+            else if ((token.type == CssTokenType::CloseParen || token.value == "]") && depth > 0)
                 --depth;
             if (token.type == CssTokenType::Comma && depth == 0) {
                 auto trimmed = trim(selector);
