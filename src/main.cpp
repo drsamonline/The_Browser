@@ -1058,8 +1058,12 @@ JSValue js_inner_html_set(JSContext* context, JSValueConst this_value, int argc,
     node->children.clear();
     if (!html.empty()) {
         auto fragment = rendering::Document::parse_html(html);
+        // append_child(), not push_back(): the parsed nodes carry a parent pointer to the fragment
+        // root, which dies with this block. Pushed raw, they kept a dangling parent - harmless
+        // until something walked it, which the layout dirty-set walk now does: SIGSEGV, found by
+        // the reftest for an innerHTML replace.
         for (auto& child : fragment.root().children)
-            node->children.push_back(std::move(child));
+            node->append_child(std::move(child));
     }
     rendering::note_child_list_mutation_at(node);
     if (g_dom_host)
