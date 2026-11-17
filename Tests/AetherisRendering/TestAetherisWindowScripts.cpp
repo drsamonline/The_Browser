@@ -818,6 +818,38 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // localStorage, the Storage interface upstream declares in HTML/Storage.idl: length, key(index),
+    // getItem, setItem, removeItem, clear. A missing key is null, not undefined.
+    //
+    // The store lives on the interpreter, which lives as long as the window, so it survives a
+    // navigation by construction. That part is NOT proved end to end here: the harness cannot
+    // navigate (no location object, and a click does not follow a link), so this asserts the six
+    // members and leaves cross-load persistence as a row in docs/CHECKLIST.md.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Storage</title><style>body{margin:0}</style></head><body><script>"
+            "localStorage.setItem('k', 'v1');"
+            "localStorage.setItem('n', '2');"
+            "console.log('MARK len ' + localStorage.length);"
+            "console.log('MARK get ' + localStorage.getItem('k'));"
+            "console.log('MARK missing ' + localStorage.getItem('nope'));"
+            "console.log('MARK key0 ' + localStorage.key(0));"
+            "console.log('MARK key9 ' + localStorage.key(9));"
+            "localStorage.removeItem('k');"
+            "console.log('MARK removed ' + localStorage.length);"
+            "localStorage.clear();"
+            "console.log('MARK cleared ' + localStorage.length);"
+            "</script></body></html>", "", 2);
+        require(result.status == 0, "the storage run exits cleanly");
+        require(result.output.find("MARK len 2") != std::string::npos, "length counts the stored keys");
+        require(result.output.find("MARK get v1") != std::string::npos, "getItem returns what setItem stored");
+        require(result.output.find("MARK missing null") != std::string::npos, "a missing key is null");
+        require(result.output.find("MARK key0 k") != std::string::npos, "key(0) returns a stored key");
+        require(result.output.find("MARK key9 null") != std::string::npos, "key() past the end is null");
+        require(result.output.find("MARK removed 1") != std::string::npos, "removeItem removes one key");
+        require(result.output.find("MARK cleared 0") != std::string::npos, "clear empties the store");
+    }
+
     // The focus and blur events, and the ordering bug that hid them. run_timers() runs every timer due
     // in one frame's budget, so focus() then blur() inside that window used to have the first request
     // overwritten before the loop performed it: the state moved for neither and no event fired. The
