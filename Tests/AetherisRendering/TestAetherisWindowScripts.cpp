@@ -888,52 +888,81 @@ int main(int argc, char* argv[])
             "and lays out the chain, not the page");
     }
 
-    // Differential check on the reuse path: a page mutated into a state must render exactly like
-    // the same page loaded in that state. Everything else in this suite asserts what I expect;
-    // this one compares against a fresh layout, which is the only reference that cannot inherit
-    // my assumptions about what the incremental path should produce.
+    // Reftests, in upstream's shape: Tests/LibWeb/Ref pairs an input with a reference document
+    // (`<link rel="match">`) and requires them to render identically. Here the input is a page
+    // mutated at runtime into a state and the reference is that same state loaded fresh - the only
+    // reference that cannot inherit my assumptions about what the incremental path produces.
+    //
+    // Every case runs over a 200-row page so that reuse is doing real work, and every case must
+    // agree byte for byte below the chrome.
     {
-        std::string rows_plain;
-        std::string rows_baked;
-        for (int index = 0; index < 200; ++index) {
-            if (index == 100) {
-                rows_plain += "<div class='r' id='mid'>row 100</div>";
-                rows_baked += "<div class='r hit' id='mid'>row 100</div>";
-            } else {
-                std::string const row = "<div class='r'>row " + std::to_string(index) + "</div>";
-                rows_plain += row;
-                rows_baked += row;
+        std::string const style = "<html><head><title>Reftest</title><style>body{margin:0}"
+                                  "div.r{width:400px;height:3px;background:#00ff00}"
+                                  "#mid{background:#0000ff}"
+                                  "#mid.hit{width:200px}"
+                                  "#mid.hot{background:#ff00ff}"
+                                  "span.s{background:#ffff00}"
+                                  "</style></head><body>";
+        std::string const rows = [] {
+            std::string out;
+            for (int index = 0; index < 200; ++index) {
+                if (index == 100)
+                    out += "<div class='r' id='mid'>row 100</div>";
+                else
+                    out += "<div class='r'>row " + std::to_string(index) + "</div>";
             }
+            return out;
+        }();
+        std::string const tail = "</body></html>";
+
+        std::string const script_open = "<script>";
+        std::string const script_close = "</script>";
+        auto script_of = [&](std::string const& body) { return script_open + body + script_close; };
+
+        struct Run {
+            char const* what;
+            std::string mutated;
+            std::string baked;
+        };
+        std::vector<Run> const runs {
+            { "a text write",
+                style + rows + script_of("setTimeout(function () { document.getElementById('mid').textContent = 'ROW 100'; }, 5);") + tail,
+                style + rows + tail },
+            { "a width change by class",
+                style + rows + script_of("setTimeout(function () { document.getElementById('mid').setAttribute('class', 'r hit'); }, 5);") + tail,
+                style + [&] { std::string out; for (int index = 0; index < 200; ++index) out += index == 100 ? "<div class='r hit' id='mid'>row 100</div>" : "<div class='r'>row " + std::to_string(index) + "</div>"; return out; }() + tail },
+            { "a paint-only class change",
+                style + rows + script_of("setTimeout(function () { document.getElementById('mid').setAttribute('class', 'r hot'); }, 5);") + tail,
+                style + [&] { std::string out; for (int index = 0; index < 200; ++index) out += index == 100 ? "<div class='r hot' id='mid'>row 100</div>" : "<div class='r'>row " + std::to_string(index) + "</div>"; return out; }() + tail },
+            // setAttribute, not className: this engine has classList but no className setter, so
+            // `s.className = 's'` would set a JS property and never reach the DOM - which is how
+            // this case first failed, on the fixture rather than the engine.
+            { "an appended child",
+                style + rows + script_of("setTimeout(function () { var s = document.createElement('span'); s.setAttribute('class', 's'); s.textContent = 's'; document.getElementById('mid').appendChild(s); }, 5);") + tail,
+                style + [&] { std::string out; for (int index = 0; index < 200; ++index) out += index == 100 ? "<div class='r' id='mid'>row 100<span class='s'>s</span></div>" : "<div class='r'>row " + std::to_string(index) + "</div>"; return out; }() + tail },
+            { "an innerHTML replace",
+                style + rows + script_of("setTimeout(function () { document.getElementById('mid').innerHTML = \"<span class='s'>s</span>\"; }, 5);") + tail,
+                style + [&] { std::string out; for (int index = 0; index < 200; ++index) out += index == 100 ? "<div class='r' id='mid'><span class='s'>s</span></div>" : "<div class='r'>row " + std::to_string(index) + "</div>"; return out; }() + tail },
+        };
+
+        std::string const mutated_directory = "aetheris-reftest-mutated";
+        std::string const reference_directory = "aetheris-reftest-reference";
+        for (auto const& run : runs) {
+            std::system(("rm -rf " + mutated_directory + " && mkdir -p " + mutated_directory).c_str());
+            std::system(("rm -rf " + reference_directory + " && mkdir -p " + reference_directory).c_str());
+            auto mutated = run_window(binary, run.mutated, "", 3, mutated_directory);
+            std::string const input_message = std::string("the reftest input for ") + run.what + " exits cleanly";
+            if (mutated.status != 0) {
+                std::fprintf(stderr, "FAILED: %s (status %d)\n%s\n", input_message.c_str(), mutated.status,
+                    mutated.output.substr(0, 400).c_str());
+                std::exit(1);
+            }
+            auto reference = run_window(binary, run.baked, "", 2, reference_directory);
+            std::string const reference_message = std::string("the reftest reference for ") + run.what + " exits cleanly";
+            require(reference.status == 0, reference_message.c_str());
+            require(frames_match_below_chrome(mutated_directory, reference_directory, 34), run.what);
         }
-        // `.r` stays on the changed row: dropping it would change the row's height, move every row
-        // below it, and turn this into a test of nothing.
-        std::string const page = "<html><head><title>Differential</title><style>body{margin:0}"
-                                 "div.r{width:400px;height:3px;background:#00ff00}"
-                                 "#mid{background:#0000ff}#mid.hit{width:200px}"
-                                 "</style></head><body>";
-        std::string const mutated = "aetheris-differential-mutated";
-        std::string const baked = "aetheris-differential-baked";
-        std::system(("rm -rf " + mutated + " && mkdir -p " + mutated).c_str());
-        std::system(("rm -rf " + baked + " && mkdir -p " + baked).c_str());
-
-        auto changed = run_window(binary,
-            page + rows_plain + "<script>"
-                                "setTimeout(function () { document.getElementById('mid').setAttribute('class', 'r hit'); }, 5);"
-                                "</script></body></html>",
-            "", 2, mutated);
-        require(changed.status == 0, "the mutated run exits cleanly");
-        auto reference = run_window(binary, page + rows_baked + "</body></html>", "", 2, baked);
-        require(reference.status == 0, "the baked run exits cleanly");
-
-        require(frames_match_below_chrome(mutated, baked, 34),
-            "a page mutated into a state renders exactly like that state loaded fresh");
-        int reused = summary_count(changed.output, ", layout nodes: ");
-        int fresh = summary_count(reference.output, ", layout nodes: ");
-        require(reused > 0 && reused < 40,
-            "the mutated run laid out the chain and reused the rest of the page");
-        require(fresh > 200,
-            "the reference laid the whole page out at load, so the two runs did different work");
-        std::system(("rm -rf " + mutated + " && rm -rf " + baked).c_str());
+        std::system(("rm -rf " + mutated_directory + " && rm -rf " + reference_directory).c_str());
     }
 
     // The style cache survives an interaction-state change: only the elements whose
