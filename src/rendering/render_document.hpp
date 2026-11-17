@@ -1,6 +1,7 @@
 #pragma once
 
 #include "document.hpp"
+#include "layout.hpp"
 #include "paint_executor.hpp"
 #include "render_tree.hpp"
 #include "resource.hpp"
@@ -16,6 +17,15 @@
 #include <vector>
 
 namespace aetheris::rendering {
+
+// The geometry one layout pass produced for one DOM node. Kept so a relayout that
+// cannot change geometry can copy it instead of laying out again. Upstream keeps the
+// same state on the layout box and marks boxes dirty; this is the per-node snapshot.
+struct CachedGeometry {
+    LayoutRect rect;
+    BoxModel box;
+    std::vector<TextFragment> fragments;
+};
 
 class RenderDocument {
 public:
@@ -51,6 +61,12 @@ public:
     // and how many reused their cached style.
     StyleCacheStats const& last_style_stats() const { return m_last_style_stats; }
 
+    // How many times the layout engine has actually run for this document, counting
+    // the first layout. Reported beside the relayout count: a relayout that only
+    // repainted shows up in one and not the other, which is how the skip is checked
+    // from outside rather than taken on trust.
+    std::size_t layout_passes() const { return m_layout_passes; }
+
     bool apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width);
     std::size_t visual_generation() const { return m_visual_generation; }
 
@@ -61,6 +77,12 @@ private:
     CssStyleSheet m_stylesheet;
     std::unordered_map<DomNode const*, StyleCacheEntry> m_style_cache;
     StyleCacheStats m_last_style_stats;
+    std::unordered_map<DomNode const*, std::string> m_layout_keys;
+    std::unordered_map<DomNode const*, CachedGeometry> m_geometry;
+    std::size_t m_layout_passes { 0 };
+    // The viewport width the recorded geometry was laid out at. Geometry is only
+    // reusable at the width that produced it.
+    float m_layout_width { 0 };
     float m_viewport_width { 0 };
     std::size_t m_visual_generation { 0 };
     // The state the last apply_visual_state() used. relayout() rebuilds layout
@@ -71,6 +93,17 @@ private:
 
     RenderDocument(Document document, std::unique_ptr<LayoutNode> layout_root, RenderTree render_tree, CssStyleSheet sheet);
     void resolve_images(LayoutNode&);
+
+    // The ~40 properties that can change geometry, joined into one comparable string.
+    // Two equal keys mean this node's box cannot move because of style.
+    static std::string layout_key(StyleProperties const&);
+    // True when any node's layout key differs from the one the last layout used.
+    bool layout_keys_changed(LayoutNode const& root) const;
+    // Records the geometry a layout pass just produced, and the keys it was produced
+    // from, so the next relayout can tell whether anything layout-affecting moved.
+    void snapshot_layout(LayoutNode const& root);
+    // Copies the recorded geometry back onto a freshly built tree, node for node.
+    void restore_geometry(LayoutNode& root) const;
     std::string resolve_resource_key(std::string const& reference) const;
     ResourceCache m_resources;
     ImageCache m_images;

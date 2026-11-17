@@ -2301,6 +2301,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
               << (ui::has_display_backend() ? "display" : "headless")
               << ", tabs: " << session.tab_count() << ", events handled: " << handled
               << ", relayouts: " << relayouts
+              << ", layouts: " << (cached_page ? cached_page->layout_passes() : 0)
               << ", resolves: " << (cached_page ? cached_page->last_style_stats().resolves : 0)
               << ", style hits: " << (cached_page ? cached_page->last_style_stats().hits : 0)
               << std::endl;

@@ -36,7 +36,96 @@ void collect_dirty(rendering::DomNode const& mutated, std::unordered_set<renderi
         dirty.insert(ancestor);
 }
 
+// The properties that can move a box. Deliberately a hand-written list, not "every
+// property except the paint ones": a property nobody thought of would be assumed
+// paint-only and silently stop relaying out, which is a stale-frame bug. Anything
+// missing here is a bug of that kind, so the list is the thing to extend.
+char const* const kLayoutProperties[] = {
+    "display", "width", "height", "min-width", "max-width", "min-height", "max-height",
+    "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+    "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+    "border", "border-width", "border-top-width", "border-right-width",
+    "border-bottom-width", "border-left-width",
+    "font-size", "font-family", "font-weight", "line-height", "white-space",
+    "position", "top", "right", "bottom", "left", "float", "overflow", "overflow-wrap",
+    "text-align", "letter-spacing", "word-spacing",
+};
+
 } // namespace
+
+std::string RenderDocument::layout_key(StyleProperties const& style)
+{
+    std::string key;
+    for (auto const* property : kLayoutProperties) {
+        auto const* value = style.get(property);
+        if (!value)
+            continue;
+        key += property;
+        key += '=';
+        key += *value;
+        key += ';';
+    }
+    return key;
+}
+
+bool RenderDocument::layout_keys_changed(LayoutNode const& root) const
+{
+    std::size_t seen = 0;
+    std::function<bool(LayoutNode const&)> visit = [&](LayoutNode const& node) -> bool {
+        if (node.dom_node) {
+            ++seen;
+            auto const found = m_layout_keys.find(node.dom_node);
+            if (found == m_layout_keys.end() || found->second != layout_key(node.style))
+                return true;
+        }
+        for (auto const& child : node.children)
+            if (visit(*child))
+                return true;
+        return false;
+    };
+    if (visit(root))
+        return true;
+    // A node the last pass laid out and this tree does not have is a structural
+    // change. relayout() already refuses to skip one; this is the belt to that brace.
+    return seen != m_layout_keys.size();
+}
+
+void RenderDocument::snapshot_layout(LayoutNode const& root)
+{
+    m_layout_keys.clear();
+    m_geometry.clear();
+    std::function<void(LayoutNode const&)> visit = [&](LayoutNode const& node) {
+        if (node.dom_node) {
+            m_layout_keys[node.dom_node] = layout_key(node.style);
+            CachedGeometry geometry;
+            geometry.rect = node.rect;
+            geometry.box = node.box;
+            geometry.fragments = node.text_fragments;
+            m_geometry[node.dom_node] = std::move(geometry);
+        }
+        for (auto const& child : node.children)
+            visit(*child);
+    };
+    visit(root);
+    m_layout_width = m_viewport_width;
+}
+
+void RenderDocument::restore_geometry(LayoutNode& root) const
+{
+    std::function<void(LayoutNode&)> visit = [&](LayoutNode& node) {
+        if (node.dom_node) {
+            auto const found = m_geometry.find(node.dom_node);
+            if (found != m_geometry.end()) {
+                node.rect = found->second.rect;
+                node.box = found->second.box;
+                node.text_fragments = found->second.fragments;
+            }
+        }
+        for (auto& child : node.children)
+            visit(*child);
+    };
+    visit(root);
+}
 
 RenderDocument RenderDocument::create(std::string_view html, std::string_view css, float viewport_width, ResourceCache* resources, std::string_view source_url)
 {
@@ -65,6 +154,10 @@ RenderDocument RenderDocument::create_from_document(Document document, std::stri
     result.m_source_url = std::string(source_url);
     result.resolve_images(*result.m_layout_root);
     result.m_render_tree = RenderTree::from_layout(*result.m_layout_root);
+    // The first layout is a layout pass like any other, and it is the one the geometry
+    // cache starts from.
+    ++result.m_layout_passes;
+    result.snapshot_layout(*result.m_layout_root);
     return result;
 }
 
@@ -74,6 +167,10 @@ void RenderDocument::relayout()
     // :focus are silently discarded whenever anything calls relayout().
     std::unordered_set<DomNode const*> dirty;
     auto const* mutated = last_mutated_node();
+    // A text write or a structural change can reflow, so the pass is never skipped for
+    // one. An attribute write may only repaint; whether it did is decided below, by the
+    // layout keys, not by the attribute's name.
+    bool const text_or_structure = mutated == nullptr || last_attribute_mutation().empty();
     if (mutated) {
         collect_dirty(*mutated, dirty);
     } else {
@@ -85,9 +182,24 @@ void RenderDocument::relayout()
     m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet,
         m_last_visual_state ? &*m_last_visual_state : nullptr,
         &m_style_cache, &dirty, &m_last_style_stats);
+
+    // The skip: no box can have moved, so reuse the geometry the last pass produced
+    // and rebuild only the render tree. resolve_images still runs, because an image
+    // swap is a paint change and a skipped layout that also skipped the paint is the
+    // stale-frame bug this project has shipped twice.
+    if (!text_or_structure && !m_geometry.empty() && m_layout_width == m_viewport_width
+        && !layout_keys_changed(*m_layout_root)) {
+        restore_geometry(*m_layout_root);
+        resolve_images(*m_layout_root);
+        m_render_tree = RenderTree::from_layout(*m_layout_root);
+        return;
+    }
+
+    ++m_layout_passes;
     LayoutEngine {}.layout(*m_layout_root, m_viewport_width);
     resolve_images(*m_layout_root);
     m_render_tree = RenderTree::from_layout(*m_layout_root);
+    snapshot_layout(*m_layout_root);
 }
 
 std::optional<RenderDocument> RenderDocument::create_from_resources(std::string_view document_url, std::string_view stylesheet_url, float viewport_width, ResourceCache& resources)
@@ -161,9 +273,13 @@ bool RenderDocument::apply_visual_state(VisualInteractionState const& interactio
     m_last_visual_state = interaction_state;
     m_last_style_stats = {};
     m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet, &interaction_state, nullptr, nullptr, nullptr);
+    // A state change rebuilds from scratch and does run the engine, so it counts as a
+    // pass, and its geometry is the one a later skip has to reuse.
+    ++m_layout_passes;
     LayoutEngine {}.layout(*m_layout_root, viewport_width);
     resolve_images(*m_layout_root);
     m_render_tree = RenderTree::from_layout(*m_layout_root);
+    snapshot_layout(*m_layout_root);
     m_visual_generation = interaction_state.generation;
     return true;
 }
