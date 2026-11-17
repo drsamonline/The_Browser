@@ -160,13 +160,17 @@ RenderDocument RenderDocument::create_from_document(Document document, std::stri
     std::unordered_set<DomNode const*> const nothing_clean;
     StyleCacheStats stats;
     auto layout_root = LayoutTreeBuilder {}.build(document.root(), sheet, nullptr, &cache, &nothing_clean, &stats);
-    LayoutEngine {}.layout(*layout_root, viewport_width);
+    // Counted like any other pass: the first one lays out every node, and the summary should say so.
+    std::size_t laid_out = 0;
+    LayoutReuse const counting { nullptr, nullptr, &laid_out };
+    LayoutEngine { &counting }.layout(*layout_root, viewport_width);
 
     auto render_tree = RenderTree::from_layout(*layout_root);
     RenderDocument result(std::move(document), std::move(layout_root), std::move(render_tree), std::move(sheet));
     result.m_style_cache = std::move(cache);
     result.m_last_style_stats = stats;
     result.m_viewport_width = viewport_width;
+    result.m_laid_out = laid_out;
     if (resources) result.m_resources = *resources;
     result.m_source_url = std::string(source_url);
     result.resolve_images(*result.m_layout_root);

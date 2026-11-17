@@ -317,6 +317,12 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
             continue;
 
         if (child->display == LayoutDisplay::Inline && child->dom_node && child->dom_node->type == DomNodeType::Text) {
+            // A text run is laid out here rather than through layout_node, so it has to be counted
+            // here too or `layout nodes:` under-reports what the pass did. It is not reusable:
+            // every path that changes text replaces the text node with a new one, which has no
+            // recorded geometry.
+            if (m_reuse && m_reuse->laid_out)
+                ++*m_reuse->laid_out;
             child->box.content.x = cursor_x;
             child->box.content.y = cursor_y;
             child->box.content.width = std::max(0.0f, x + available_width - cursor_x);
