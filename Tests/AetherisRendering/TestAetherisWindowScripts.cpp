@@ -638,6 +638,44 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // The layout key is a deny-list of paint-only properties, so a property the engine reads and
+    // nobody classified still reflows. It used to be an allow-list, and it was missing `gap`,
+    // `row-gap`, `column-gap`, `flex-direction`, `flex-grow`, `align-items`, `justify-content`,
+    // `grid-template-columns` and `aspect-ratio` - all read by `layout.cpp`. Found by auditing
+    // the list against what the engine reads, not by a test, which is why this one exists.
+    {
+        std::string directory = "aetheris-layout-key-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto gap = run_window(binary,
+            "<html><head><title>Layout key gap</title><style>body{margin:0}"
+            "#box{display:flex;width:400px;height:100px;background:#0000ff}"
+            ".a{width:50px;height:100px;background:#ff00ff}"
+            ".b{width:50px;height:100px;background:#00ff00}"
+            "#box.on{gap:200px}</style></head>"
+            "<body><div id='box'><div class='a'>a</div><div class='b'>b</div></div><script>"
+            "setTimeout(function () { document.getElementById('box').setAttribute('class', 'on'); }, 5);"
+            "</script></body></html>", "", 2, directory);
+        require(gap.status == 0, "the gap run exits cleanly");
+        require(summary_count(gap.output, ", relayouts: ") == 1, "a gap change relayouts once");
+        require(summary_count(gap.output, ", layouts: ") == 2,
+            "a class change that only moves \"gap\" runs the layout engine");
+        int moved[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 250, 34 + 50, moved), "the second box pixel is readable");
+        require(is_green(moved), "the box moved, so the frame is not stale");
+
+        // The other direction: a colour change is paint-only and must still skip the pass.
+        auto colour = run_window(binary,
+            "<html><head><title>Layout key colour</title><style>body{margin:0}"
+            "div{width:400px;height:100px;background:#0000ff;color:#ffffff}.on{color:#000000}"
+            "</style></head><body><div id='a'>a</div><script>"
+            "setTimeout(function () { document.getElementById('a').setAttribute('class', 'on'); }, 5);"
+            "</script></body></html>", "", 2);
+        require(colour.status == 0, "the colour run exits cleanly");
+        require(summary_count(colour.output, ", layouts: ") == 1,
+            "a class change that only changes colour does not run the layout engine");
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // The style cache survives an interaction-state change: only the elements whose
     // pseudo-class state moved are re-resolved, and a state that changes nothing but paint
     // does not run the layout engine. Upstream's ancestor_traversal_for_pseudo_class() is
