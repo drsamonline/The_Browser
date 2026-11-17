@@ -1,0 +1,100 @@
+# Coverage — what this engine does and does not do
+
+**Snapshot, 2026-11-17.** Every row was checked against the code on that date; the evidence column says
+where. This is a *snapshot*, not an instrument: it does not move on its own, and it says nothing about how
+many real pages are affected by each gap.
+
+## Why this file exists
+
+A review of `ROADMAP.md` found that its ordering rested on guesses about which gap costs the most pages.
+The fix is an instrument — render a fixed corpus, count what breaks — and this file is the honest stand-in
+until that exists. **The corpus step is blocked in the sandbox this was written in**: it has no open
+internet, only allowlisted hosts, so twenty real sites cannot be fetched. The commands to run it elsewhere
+are at the bottom.
+
+## Markup and CSS
+
+| Feature | State | Evidence |
+| --- | --- | --- |
+| HTML5 parsing (gumbo) | done | `third_party/gumbo` |
+| CSS cascade, specificity | done, incl. `:is`/`:not` greatest-argument and `:where` zero | `src/rendering/style.cpp` |
+| Compound, descendant and child selectors | done | `matches()` in `style.cpp` |
+| Sibling combinators `+` `~` | **absent** — match nothing, silently | `style.cpp` splits on whitespace and `>` only |
+| Attribute selectors (6 forms) | done | `style.cpp` |
+| `[a=v i]` case flag | **absent** | no `i` handling |
+| `:hover` `:focus` `:active` `:focus-visible` `:focus-within` | done | `visual_state.hpp`, `style.cpp` |
+| `:first-child` `:last-child` `:only-child` `:nth-child(n)` + An+B | done | `matches_structural_pseudo()` |
+| `:nth-last-child`, `-of-type` family | done | same |
+| `:empty`, `:root` | done | same |
+| `:is()` `:where()` `:not(list)` `:has()` | done | `matches_simple()` |
+| `:checked` `:disabled` `:placeholder-shown` `:lang` `:dir` `:scope` | **absent** | no handling |
+| `::before` `::after` and other pseudo-elements | **absent** — no synthetic boxes | nothing in `layout.cpp` |
+| CSS custom properties `var()` | **absent** | no `var(` in parser or resolver |
+| Media queries | done | `css_parser.cpp` |
+| `transform` (translate/scale) | done | paint pass |
+
+## Layout
+
+| Feature | State | Evidence |
+| --- | --- | --- |
+| Block flow | done | `layout.cpp` |
+| Inline flow, line breaking, `white-space` | done, per-byte advances | `text_layout.cpp` |
+| Flex | partial — no `flex-grow` at load, no `flex-shrink`/`basis` | `layout_flex_children()` |
+| Grid | partial — `grid-template-columns` read | `layout_grid_children()` |
+| Absolute positioning | done | `layout_absolute_children()` |
+| `position: sticky` | **absent** | no `sticky` in `src/rendering` |
+| `float` | **absent** | not read by layout |
+| Incremental layout | done — document skip, per-node reuse on origin | `render_document.cpp` |
+
+## Text and fonts
+
+| Feature | State | Evidence |
+| --- | --- | --- |
+| TTF parsing | done | `ttf_font.cpp` |
+| Glyph rasteriser | done | `glyph_rasterizer.cpp` |
+| Rasteriser wired into layout and paint | **absent** — layout measures `advance(char)` | `font.hpp`, `text_layout.cpp:12` |
+| Kerning | **absent** | — |
+| Shaping (ligatures, Arabic, Indic) | **absent** | — |
+
+## Scripting, storage, network, safety
+
+| Feature | State | Evidence |
+| --- | --- | --- |
+| JavaScript (QuickJS), events, timers on virtual time | done | `src/main.cpp` |
+| `requestAnimationFrame`, `performance.now()`, `getComputedStyle` | done | same |
+| `localStorage` / `sessionStorage` | **absent** | no bindings |
+| Cookies | done | `cookie_jar.cpp` |
+| TLS certificate verification | done and proven | `Tools/check_tls_verification.sh` |
+| HTTP version coverage | **unverified** — no version strings in the resource backend | `http_resource_backend.cpp` |
+| CSP: `<meta>` policy, inline-script gating | done | `main.cpp` (`content_security_policy`, `csp_allows_inline_scripts`) |
+| CSP: fetch directives (`img-src`, `connect-src`, …) | **absent** | — |
+| Same-origin enforcement in the bindings | **absent** | — |
+| Process/site isolation | **out of scope** | `ROADMAP.md` |
+
+## Shell
+
+| Feature | State | Evidence |
+| --- | --- | --- |
+| Window layer (SDL2 + headless), chrome bar, tabs counter | done | `src/ui/` |
+| Tab strip, bookmarks, history UI | **absent** | — |
+| Accessibility tree, devtools | **absent** | — |
+
+## Filling this in with real pages
+
+Where there is network access, the instrument is:
+
+    for url in $(cat corpus.txt); do
+      ./build/bin/aetheris --render "$url" "/tmp/$(echo "$url" | tr / _).ppm" 2>"$url.err"
+      ./build/bin/aetheris --window "$url" 3 | tail -1     # relayouts, layouts, resolves, …
+    done
+
+| Column to record | Where it comes from |
+| --- | --- |
+| renders / blank / error | the PPM and the stderr |
+| JS errors | `[js]` lines on stderr |
+| selector and layout gaps | the `.err` file plus this table |
+| cost of the first pass | `layout nodes:` in the window summary |
+
+Twenty sites is enough to order the gaps. Do that before starting anything in the fonts row — it is the
+largest single piece of work on the roadmap and the easiest to spend a month on for pages that would not
+have used it.

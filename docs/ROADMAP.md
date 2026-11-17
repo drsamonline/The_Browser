@@ -90,16 +90,33 @@ no answer, say why in `DESIGN.md` rather than inventing quietly.
 Ordered by value. **The execution order — cheap wins first, batched by shared
 code path, large tasks last — is in [PHASES.md](PHASES.md).**
 
+Two rules earned on 2026-11-17, after a review of this list found one false
+claim, one understated blocker and one stale line:
+
+- **Batch by shared code path, not by feature.** Custom properties, sibling
+  combinators, `[a=v i]` and the form-state pseudo-classes all touch the CSS
+  parser and the resolver: one build, one test cycle, four features. The font
+  API, text layout and paint are one file chain and must not be split across
+  sessions.
+- **Every item carries the step that proves it.** A capability is not started
+  until there is a way to see it working through the real pipeline — a reftest
+  shape, a pixel, or a counter in the window summary.
+
 ### High value
 
-1. **Vector fonts and text shaping.** The renderer uses a bitmap font, so text
-   quality is the single largest visual gap against any real browser.
-   **Font parsing is done** (`src/rendering/ttf_font.*`: `cmap` formats 4/12,
+1. **Vector fonts and text shaping.** The renderer measures text a byte at a
+   time — `FontMetrics::advance(char)` in `src/rendering/font.hpp` — so a
+   rasteriser cannot be wired in until the font API asks for glyphs. **That API
+   change is the first step, not the last.** **Font parsing is done**
+   (`src/rendering/ttf_font.*`: `cmap` formats 4/12,
    `head`/`hhea`/`maxp`/`hmtx`/`loca`/`glyf`, simple-glyph outlines in font
    units). **A glyph rasteriser is done** (`src/rendering/glyph_rasterizer.*`:
    quadratic flattening, scanline fill with vertical supersampling and exact
-   horizontal coverage, producing anti-aliased coverage bitmaps). Still needed:
-   wiring it into text layout and paint, then kerning and shaping.
+   horizontal coverage, producing anti-aliased coverage bitmaps).
+   Order: (a) font API returning glyph ids and per-glyph advances, and
+   `TextLayout::measure_text` using them; (b) paint through the rasteriser;
+   (c) kerning; (d) shaping, Arabic and Indic last. (a) is the blocker for
+   everything else in this row.
 2. ~~`requestAnimationFrame`~~ — **done** (`performance.now()` and
    `requestAnimationFrame` on virtual time). Still missing: a compositor and a
    real clock, so a page expecting wall-clock pacing runs as fast as the loop
@@ -109,10 +126,15 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
 3a. ~~Scrolling~~ — **done**: paint-time offset, wheel and key routing,
    scrollbar geometry, `--render-window --scroll-y` for headless verification.
 4. **CSS coverage**: complete `flex`/`grid`, pseudo-elements
-   (`::before`/`::after` need layout-level synthetic boxes), `@font-face`,
-   `position: sticky`, transitions/animations. **Media queries and the
-   structural pseudo-classes (`:first-child`, `:last-child`, `:only-child`,
-   `:nth-child(n)`) are done. **`transform` (translate/scale) is done.**
+   (`::before`/`::after` need layout-level synthetic boxes — upstream generates
+   the pseudo-element's computed style beside the element's, `DOM/Element.cpp`),
+   `@font-face`, `position: sticky`, transitions/animations, and **CSS custom
+   properties (`var()`), which are absent and are the cheapest large page-compat
+   win on this list** — parser-level substitution, no layout work.
+   **Media queries, the structural pseudo-classes (`:first-child`,
+   `:last-child`, `:only-child`, `:nth-child(n)`, `:empty`, `:root`,
+   `-of-type`, `An+B`), `:is()`/`:where()`/`:has()`/`:not(list)` and `transform`
+   (translate/scale) are done.**
    `position: sticky` was deliberately deferred while there was no scroll
    offset to stick to. **The scroll offset now exists** (`PaintOffset` in the
    paint pass, `Viewport` in the window loop, wheel/PageUp/PageDown/Home/End
@@ -130,10 +152,29 @@ code path, large tasks last — is in [PHASES.md](PHASES.md).**
    `Tools/check_tls_verification.sh`, which checks that an untrusted certificate
    is refused, one trusted via `AETHERIS_CA_FILE` is accepted, and a trusted
    certificate for the wrong host is still refused.
-8. **Security model**: process/site isolation, CSP, mixed-content blocking,
-   same-origin policy enforcement in the script bindings.
-9. **A real UI shell**: the browser is headless and renders to PPM. There is no
-   window, no tab strip, no bookmarks or history UI in the shipped binary.
+8. **Security model**: mixed-content blocking, same-origin policy enforcement in
+   the script bindings, and the rest of CSP. **CSP is partly done**: the
+   `<meta http-equiv="Content-Security-Policy">` policy is read and inline
+   scripts are gated by it (`src/main.cpp`). What is missing is the fetch
+   directives — `img-src`, `connect-src`, `style-src` and the rest — so the work
+   is finishing an existing path, not building one. Process/site isolation is
+   **out of scope** (see below).
+9. **A real UI shell**: the *window layer exists* — `src/ui/sdl_window.cpp`,
+   `window_host.cpp`, `window_manager.cpp`, `browser_session.cpp`,
+   `input_router.cpp`, with a chrome bar and a tab count in the window summary.
+   What is missing is the shell **UI**: no tab strip, no bookmarks, no history
+   view. The binary in this repository's default build runs the headless backend
+   and writes PPM frames, which is why the summary line reports a headless
+   backend rather than a window.
+
+### Out of scope
+
+- **Process and site isolation.** Upstream Ladybird does not ship it in this
+  shape either; it is a multi-year architectural project, not a browser-engine
+  task. Keeping it on this list made every honest estimate of "when is it safe"
+  wrong. The security bar this engine aims at is stated in
+  `docs/HANDOVER.md`: TLS verification, CSP for inline scripts, and
+  same-origin enforcement in the bindings.
 
 ### Lower value / deferred
 
