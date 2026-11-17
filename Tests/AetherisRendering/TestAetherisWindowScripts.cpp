@@ -107,6 +107,59 @@ static int summary_count(std::string const& output, std::string const& label)
     return std::atoi(output.c_str() + at + label.size());
 }
 
+// A frame the window wrote, decoded from its PPM.
+struct Frame {
+    int width { 0 };
+    int height { 0 };
+    std::vector<unsigned char> pixels;
+};
+
+// Reads the newest frame in `directory` (frames 1-8 are the ones the host keeps).
+static bool read_frame(std::string const& directory, Frame& frame)
+{
+    for (int index = 8; index >= 1; --index) {
+        std::string path = directory + "/frame-" + std::to_string(index) + ".ppm";
+        FILE* file = std::fopen(path.c_str(), "rb");
+        if (!file)
+            continue;
+        char magic[3] = { 0, 0, 0 };
+        int width = 0;
+        int height = 0;
+        int maximum = 0;
+        bool ok = std::fscanf(file, "%2s %d %d %d", magic, &width, &height, &maximum) == 4
+            && std::fgetc(file) == '\n' && width > 0 && height > 0;
+        frame.width = width;
+        frame.height = height;
+        frame.pixels.clear();
+        if (ok) {
+            frame.pixels.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 3);
+            ok = std::fread(frame.pixels.data(), 1, frame.pixels.size(), file) == frame.pixels.size();
+        }
+        std::fclose(file);
+        return ok;
+    }
+    return false;
+}
+
+// Whether two frames agree below the chrome strip. The chrome carries the URL, and the two runs
+// are served on different ports, so it can never match and is not the subject.
+static bool frames_match_below_chrome(std::string const& left, std::string const& right, int chrome_height)
+{
+    Frame a;
+    Frame b;
+    if (!read_frame(left, a) || !read_frame(right, b))
+        return false;
+    if (a.width != b.width || a.height != b.height)
+        return false;
+    auto const row_bytes = static_cast<std::size_t>(a.width) * 3;
+    for (int y = chrome_height; y < a.height; ++y) {
+        auto const offset = static_cast<std::size_t>(y) * row_bytes;
+        if (std::memcmp(a.pixels.data() + offset, b.pixels.data() + offset, row_bytes) != 0)
+            return false;
+    }
+    return true;
+}
+
 // Reads one pixel out of the last frame the window wrote. Returns false when the
 // frame is missing or malformed, so a broken writer fails loudly.
 static bool frame_pixel(std::string const& directory, int x, int y, int (&rgb)[3])
@@ -724,6 +777,54 @@ int main(int argc, char* argv[])
         require(is_blue(inside_first), "the first row grew to 60 px");
         require(is_green(after_first), "and the rows below moved down with it");
         std::system(("rm -rf " + directory).c_str());
+    }
+
+    // Differential check on the reuse path: a page mutated into a state must render exactly like
+    // the same page loaded in that state. Everything else in this suite asserts what I expect;
+    // this one compares against a fresh layout, which is the only reference that cannot inherit
+    // my assumptions about what the incremental path should produce.
+    {
+        std::string rows_plain;
+        std::string rows_baked;
+        for (int index = 0; index < 200; ++index) {
+            if (index == 100) {
+                rows_plain += "<div class='r' id='mid'>row 100</div>";
+                rows_baked += "<div class='r hit' id='mid'>row 100</div>";
+            } else {
+                std::string const row = "<div class='r'>row " + std::to_string(index) + "</div>";
+                rows_plain += row;
+                rows_baked += row;
+            }
+        }
+        // `.r` stays on the changed row: dropping it would change the row's height, move every row
+        // below it, and turn this into a test of nothing.
+        std::string const page = "<html><head><title>Differential</title><style>body{margin:0}"
+                                 "div.r{width:400px;height:3px;background:#00ff00}"
+                                 "#mid{background:#0000ff}#mid.hit{width:200px}"
+                                 "</style></head><body>";
+        std::string const mutated = "aetheris-differential-mutated";
+        std::string const baked = "aetheris-differential-baked";
+        std::system(("rm -rf " + mutated + " && mkdir -p " + mutated).c_str());
+        std::system(("rm -rf " + baked + " && mkdir -p " + baked).c_str());
+
+        auto changed = run_window(binary,
+            page + rows_plain + "<script>"
+                                "setTimeout(function () { document.getElementById('mid').setAttribute('class', 'r hit'); }, 5);"
+                                "</script></body></html>",
+            "", 2, mutated);
+        require(changed.status == 0, "the mutated run exits cleanly");
+        auto reference = run_window(binary, page + rows_baked + "</body></html>", "", 2, baked);
+        require(reference.status == 0, "the baked run exits cleanly");
+
+        require(frames_match_below_chrome(mutated, baked, 34),
+            "a page mutated into a state renders exactly like that state loaded fresh");
+        int reused = summary_count(changed.output, ", layout nodes: ");
+        int fresh = summary_count(reference.output, ", layout nodes: ");
+        require(reused > 0 && reused < 40,
+            "the mutated run laid out the chain and reused the rest of the page");
+        require(fresh > 200,
+            "the reference laid the whole page out at load, so the two runs did different work");
+        std::system(("rm -rf " + mutated + " && rm -rf " + baked).c_str());
     }
 
     // The style cache survives an interaction-state change: only the elements whose
