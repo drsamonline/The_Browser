@@ -20,6 +20,59 @@ batch; large tasks last.**
 
 Effort: **S** ≈ one session · **M** ≈ a few sessions · **L** ≈ multi-session.
 
+---
+
+## Reviewed order, 2026-11-17
+
+A review of this plan against the code found one false claim, one understated blocker and one stale line
+(`ROADMAP.md` corrected in `e10caf02`). The order below supersedes the batch list underneath it; the batches
+are kept for their detail, not for their sequencing. **Live progress is in
+[CHECKLIST.md](CHECKLIST.md) — update it in the same commit as the work.**
+
+### What the review changed
+
+| Was | Now | Why |
+| --- | --- | --- |
+| Fonts: "wire the rasteriser into text layout" | Font **API** first: glyph ids and per-glyph advances | Layout measures `FontMetrics::advance(char)`, one byte at a time. No rasteriser can be wired into a layout that never asks for a glyph |
+| `::before`/`::after` before custom properties | Custom properties first | Parser-level substitution vs a new node kind in `LayoutTreeBuilder`; far more pages per line |
+| CSP listed as absent | Finish the existing path | The `<meta>` policy is read and inline scripts are gated already |
+| Process/site isolation on the list | Out of scope | Upstream does not ship it in this shape; keeping it made every estimate wrong |
+
+### Order
+
+| Tier | Item | Upstream entry point | Proof it works |
+| --- | --- | --- | --- |
+| 0 | Coverage corpus — order the gaps by pages affected | — | a table of parse/cascade/layout/JS failures per site |
+| 1a | Custom properties, `var()` | `Rust/src/css/custom_properties.rs` | reftest: `:root` var → element |
+| 1b | Sibling combinators `+` `~` + sibling invalidation | `PreviousSiblings`, `AncestorTraversal` | reftest + a stale-frame control |
+| 1c | `[a=v i]` | attribute matcher | reftest |
+| 1d | `:checked`, `:disabled`, `:placeholder-shown` | form-state facts | reftest |
+| 1e | `localStorage` | `HTML/Storage.*` | write, reload, read |
+| 1f | `focus()`, `getBoundingClientRect` | `Element.idl` | the page asserts its own numbers |
+| 2a | Font API: glyph ids, per-glyph advances | `LibGfx` font stack | line breaks change |
+| 2b | Wire the rasteriser into paint | `glyph_rasterizer.cpp` | pixel: antialiased edge |
+| 2c | Kerning | `LibGfx/FontCascadeList` | fixture per pair |
+| 2d | Shaping, Arabic and Indic last | — | fixture per script |
+| 3a | `::before` / `::after` synthetic boxes | `DOM/Element.cpp` pseudo-element generation | reftest: badge page |
+| 3b | `position: sticky` | `Layout/Node.cpp` | scroll + pixel |
+| 3c | Complete flex and grid | — | fixture per property |
+| 4 | Shell UI over the existing `window_manager` | — | tabs switch, history navigates |
+| 5a | CSP fetch directives | `ContentSecurityPolicy` | blocked-fetch fixture |
+| 5b | Same-origin enforcement in the bindings | — | cross-origin fetch refused |
+| 5c | Mixed-content blocking | — | http subresource on an https page refused |
+
+### Batching
+
+| Batch | Items | Shared code path |
+| --- | --- | --- |
+| A | 1b, 1c, 1d | CSS parser → `matches_simple` → resolver. One build, one test cycle, three features |
+| B | 1e, 1f | JS bindings |
+| C | 2a, 2b | `font.hpp` → `text_layout.cpp` → paint. **Do not split across sessions** |
+| D | 5a, 5b, 5c | fetch path |
+
+**Blocked here:** tier 0 needs network access this sandbox does not have (allowlisted hosts only). Tier 3c
+needs layout fixtures that do not exist yet. `docs/COVERAGE.md` carries the corpus commands.
+
 ## Batch 1 — Bookkeeping and JS API polish (S)
 
 Five small items, all in `src/js/js.cpp`, `src/main.cpp` and the docs. One cycle.

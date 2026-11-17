@@ -37,7 +37,8 @@ the tree is older than this prompt):
 
 ## Step 1 — read, in this order
 
-1. `docs/SESSION-HANDOFF-2026-11-17.md` — 18 items, in order, each with what shipped and the numbers.
+0. `docs/CHECKLIST.md` — the live progress list. **Read it first and update it in the same commit as any work.**
+1. `docs/SESSION-HANDOFF-2026-11-17.md` — 21 items, in order, each with what shipped and the numbers.
 2. `docs/HANDOVER.md` — build, the state table (one row per mechanism), known limitations.
 3. `docs/UPSTREAM-FIRST.md` — **read upstream before writing any feature.**
 
@@ -52,7 +53,8 @@ selector parsing. The C++ side is a bridge; the answers are often in the Rust.
 
 ## Step 2 — the first task
 
-The handoff's `Next` list, in order:
+`docs/CHECKLIST.md` is the authority on what is open. `docs/PHASES.md` (section "Reviewed order, 2026-11-17")
+says what order to take it in and which rows batch together. The handoff's `Next` list, for reference:
 
 1. **`:is`, `:where`, `:has`.** Each needs a selector-list argument. `:has` also needs invalidation in the
    other direction — a child's change restyling an ancestor — which the current dirty sets do not do.
