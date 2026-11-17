@@ -35,22 +35,96 @@ bool element_position(DomNode const& node, int& index, int& count, int& type_ind
     return index > 0;
 }
 
-// `nth-child(3)` and `nth-of-type(3)`: the argument up to the closing paren, as a plain number.
-// An+b notation is not parsed; a page using it gets no match rather than a wrong one.
+// The An+B microsyntax, as far as `:nth-child()` and its siblings need it: `odd`, `even`, a plain
+// integer, `n`, `-n`, `2n`, `2n+1`, `-n+3`, `+3n-2`. Returns false for anything else, so a page
+// using a form this does not understand gets no match rather than a wrong one.
+bool parse_an_plus_b(std::string argument, int& step, int& offset)
+{
+    // The argument arrives with whatever whitespace the author wrote; the microsyntax allows it
+    // around the sign but not inside a number.
+    std::string compact;
+    for (char c : argument) {
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
+            compact += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (compact.empty())
+        return false;
+    if (compact == "odd") {
+        step = 2;
+        offset = 1;
+        return true;
+    }
+    if (compact == "even") {
+        step = 2;
+        offset = 0;
+        return true;
+    }
+
+    auto const n = compact.find('n');
+    if (n == std::string::npos) {
+        char* end = nullptr;
+        long value = std::strtol(compact.c_str(), &end, 10);
+        if (end == compact.c_str() || *end != '\0')
+            return false;
+        step = 0;
+        offset = static_cast<int>(value);
+        return true;
+    }
+
+    // `an` part.
+    std::string const coefficient = compact.substr(0, n);
+    if (coefficient.empty() || coefficient == "+") {
+        step = 1;
+    } else if (coefficient == "-") {
+        step = -1;
+    } else {
+        char* end = nullptr;
+        long value = std::strtol(coefficient.c_str(), &end, 10);
+        if (end == coefficient.c_str() || *end != '\0')
+            return false;
+        step = static_cast<int>(value);
+    }
+
+    // `+b` part, which must be signed when present.
+    std::string const remainder = compact.substr(n + 1);
+    if (remainder.empty()) {
+        offset = 0;
+        return true;
+    }
+    if (remainder.front() != '+' && remainder.front() != '-')
+        return false;
+    char* end = nullptr;
+    long value = std::strtol(remainder.c_str(), &end, 10);
+    if (end == remainder.c_str() || *end != '\0')
+        return false;
+    offset = static_cast<int>(value);
+    return true;
+}
+
+// Upstream's predicate (Rust/src/css/style/selector.rs, matches_an_plus_b): the position is
+// step * k + offset for some k >= 0, which `difference / step >= 0` expresses for either sign.
+bool matches_an_plus_b(int step, int offset, int position)
+{
+    if (step == 0)
+        return position == offset;
+    long const difference = static_cast<long>(position) - static_cast<long>(offset);
+    return difference % step == 0 && difference / step >= 0;
+}
+
 bool matches_nth(std::string const& pseudo, std::string const& name, int position)
 {
     auto const prefix = name + "(";
     if (pseudo.rfind(prefix, 0) != 0)
         return false;
     std::string argument = pseudo.substr(prefix.size());
-    auto close = argument.find(')');
+    auto close = argument.rfind(')');
     if (close != std::string::npos)
         argument = argument.substr(0, close);
-    char* end = nullptr;
-    long wanted = std::strtol(argument.c_str(), &end, 10);
-    if (end == argument.c_str())
+    int step = 0;
+    int offset = 0;
+    if (!parse_an_plus_b(argument, step, offset))
         return false;
-    return static_cast<long>(position) == wanted;
+    return matches_an_plus_b(step, offset, position);
 }
 
 bool matches_structural_pseudo(DomNode const& node, std::string const& pseudo)
