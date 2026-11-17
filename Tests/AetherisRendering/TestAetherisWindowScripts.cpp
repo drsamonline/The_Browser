@@ -779,6 +779,60 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // Custom properties and var(). Upstream resolves them at style-resolution time against an
+    // inherited store with cycle tracking (Rust/src/css/custom_properties.rs, resolve_vars); here the
+    // store is the same property map, the inheritance is a prefix copy, and the cycle guard is a
+    // depth limit.
+    {
+        std::string const directory = "aetheris-var-frames";
+        struct VarCase {
+            char const* what;
+            std::string css;
+            std::string body;
+            int expected[3];
+        };
+        std::vector<VarCase> const cases {
+            { "a var() reads a custom property from :root",
+                ":root{--c:#ff00ff}.box{width:400px;height:100px;background:var(--c)}",
+                "<div class='box'></div>", { 255, 0, 255 } },
+            { "an unresolvable var() takes its fallback",
+                ".box{width:400px;height:100px;background:var(--missing, #00ff00)}",
+                "<div class='box'></div>", { 0, 255, 0 } },
+            { "a var() chain resolves through two properties",
+                ":root{--a:#ff00ff;--b:var(--a)}.box{width:400px;height:100px;background:var(--b)}",
+                "<div class='box'></div>", { 255, 0, 255 } },
+            { "an inline style substitutes an inherited custom property",
+                ":root{--c:#ff00ff}.box{width:400px;height:100px;background:#0000ff}",
+                "<div class='box' style='background:var(--c)'></div>", { 255, 0, 255 } },
+            { "a var() reads a custom property two elements up",
+                ":root{--c:#ff00ff}#outer{width:400px;height:100px;background:#0000ff}"
+                "#outer .box{background:var(--c)}",
+                "<div id='outer'><div class='box' style='height:100px'></div></div>", { 255, 0, 255 } },
+        };
+        for (auto const& var_case : cases) {
+            std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+            std::string const html = "<html><head><title>Var</title><style>body{margin:0}"
+                + var_case.css + "</style></head><body>" + var_case.body + "</body></html>";
+            auto result = run_window(binary, html, "", 2, directory);
+            std::string const message = std::string("the var run for ") + var_case.what + " exits cleanly";
+            require(result.status == 0, message.c_str());
+            int rgb[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 200, 34 + 50, rgb), "the var pixel is readable");
+            require(rgb[0] == var_case.expected[0] && rgb[1] == var_case.expected[1]
+                    && rgb[2] == var_case.expected[2],
+                var_case.what);
+        }
+
+        // A cycle must terminate and must not paint the wrong colour. It exits 0 with no substitution,
+        // so the declaration is dropped and the box keeps the default background.
+        auto cycle = run_window(binary,
+            "<html><head><title>Var cycle</title><style>body{margin:0}"
+            ":root{--a:var(--b);--b:var(--a)}.box{width:400px;height:100px;background:var(--a)}"
+            "</style></head><body><div class='box'></div></body></html>", "", 2, directory);
+        require(cycle.status == 0, "a var() cycle terminates instead of recursing forever");
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // The structural pseudo-class set. Each rule is asserted on a row it must match and on rows it
     // must not, so every assertion can come out the other way.
     {
