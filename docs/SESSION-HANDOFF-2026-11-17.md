@@ -441,10 +441,48 @@ The fourth row is the control: a positional selector means any row's style can c
 The narrowing to "the parent alone" is sound because a positional selector is the only way one child's
 presence restyles another, and the user-agent sheet has none — checked, not assumed.
 
+### Twelfth item: reftests, in upstream's shape — and a SIGSEGV they found
+
+Upstream verifies rendering with `Tests/LibWeb/Ref`: an input declares its reference with
+`<link rel="match" href="...-ref.html">` and the two must render identically. That is the same idea as the
+single differential added two items ago, so the item was to generalise it — upstream first, then the matrix.
+
+| Commit | What |
+| --- | --- |
+| `1e7fb156` | five shapes, each mutated-vs-baked, byte-identical below the chrome |
+| `253ab301` | the fix for what it found |
+
+| shape | mutation |
+| --- | --- |
+| a text write | `textContent`, same length |
+| a width change by class | class `r hit`, 400 → 200 px |
+| a paint-only class change | class `r hot`, background only |
+| an appended child | `appendChild` a styled span |
+| an innerHTML replace | `innerHTML` = one styled span |
+
+**What it found.** The innerHTML case crashed the browser:
+
+    thread 29145 panic: member access within misaligned address ... for type
+    'const aetheris::rendering::DomNode', which requires 8 byte alignment
+    render_document.cpp:254 in relayout
+
+`js_inner_html_set()` moved parsed children in with `push_back()`, so they kept the parent pointer they had
+while being parsed — to the fragment root, which dies at the end of the block. Nothing walked `parent` after
+an `innerHTML` set until the layout dirty-set walk did. `append_child()` sets the link, and every other
+insertion path already used it.
+
+That is the whole argument for a reference-based test: five cases agreed with my expectations and the sixth
+was a use-after-free. Asserting what I expect would never have reached it.
+
+**Two fixture errors, both mine.** `className` is not implemented here — only `classList` — so the appended
+span had no class and the case failed for the wrong reason; `setAttribute` fixed it. And the failure message
+had to name the case before it was worth reading, which is why `require` now gets a built string.
+
 ### Next, from here
 
-1. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
-2. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
-3. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
-   callers note the child-list change. A new caller that forgets to will leave the page stale; that is the
-   one sharp edge this change introduced.
+1. `className` is not implemented (only `classList`), so `el.className = 'x'` silently does nothing to the
+   DOM. Common enough to be worth adding.
+2. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
+3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
+   callers note the child-list change. A new caller that forgets to will leave the page stale.
