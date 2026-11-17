@@ -313,38 +313,39 @@ static void serialize_html(rendering::DomNode const& node, std::string& out)
     }
 }
 
-// Sets one declaration in an element's style attribute, preserving the rest.
-static void apply_style_property(rendering::DomNode* node, std::string const& property, std::string const& value)
+// The declarations in an element's style attribute, in the order they appear. Upstream exposes the
+// same list as CSSStyleDeclaration's length/item (CSS/CSSStyleDeclaration.idl), so the accessors
+// below are the declared surface and not an invention.
+static std::vector<std::pair<std::string, std::string>> parse_declarations(rendering::DomNode const* node)
 {
     std::vector<std::pair<std::string, std::string>> declarations;
-    if (auto* existing = node->attribute("style")) {
-        std::istringstream stream(*existing);
-        std::string declaration;
-        while (std::getline(stream, declaration, ';')) {
-            auto colon = declaration.find(':');
-            if (colon == std::string::npos)
-                continue;
-            std::string name = declaration.substr(0, colon);
-            std::string text = declaration.substr(colon + 1);
-            auto trim = [](std::string& s) {
-                auto b = s.find_first_not_of(" \t\r\n");
-                auto e = s.find_last_not_of(" \t\r\n");
-                s = b == std::string::npos ? std::string() : s.substr(b, e - b + 1);
-            };
-            trim(name);
-            trim(text);
-            if (!name.empty())
-                declarations.emplace_back(name, text);
-        }
+    auto* existing = node->attribute("style");
+    if (!existing)
+        return declarations;
+    std::istringstream stream(*existing);
+    std::string declaration;
+    while (std::getline(stream, declaration, ';')) {
+        auto colon = declaration.find(':');
+        if (colon == std::string::npos)
+            continue;
+        std::string name = declaration.substr(0, colon);
+        std::string text = declaration.substr(colon + 1);
+        auto trim = [](std::string& s) {
+            auto b = s.find_first_not_of(" \t\r\n");
+            auto e = s.find_last_not_of(" \t\r\n");
+            s = b == std::string::npos ? std::string() : s.substr(b, e - b + 1);
+        };
+        trim(name);
+        trim(text);
+        if (!name.empty())
+            declarations.emplace_back(name, text);
     }
-    bool replaced = false;
-    for (auto& entry : declarations)
-        if (entry.first == property) {
-            entry.second = value;
-            replaced = true;
-        }
-    if (!replaced && !value.empty())
-        declarations.emplace_back(property, value);
+    return declarations;
+}
+
+// Writes the list back, through the attribute choke point so the renderer hears about it.
+static void write_declarations(rendering::DomNode* node, std::vector<std::pair<std::string, std::string>> const& declarations)
+{
     std::string joined;
     for (auto const& entry : declarations) {
         if (entry.second.empty())
@@ -354,6 +355,21 @@ static void apply_style_property(rendering::DomNode* node, std::string const& pr
         joined += entry.first + ": " + entry.second;
     }
     rendering::set_attribute(*node, "style", joined);
+}
+
+// Sets one declaration in an element's style attribute, preserving the rest.
+static void apply_style_property(rendering::DomNode* node, std::string const& property, std::string const& value)
+{
+    auto declarations = parse_declarations(node);
+    bool replaced = false;
+    for (auto& entry : declarations)
+        if (entry.first == property) {
+            entry.second = value;
+            replaced = true;
+        }
+    if (!replaced && !value.empty())
+        declarations.emplace_back(property, value);
+    write_declarations(node, declarations);
 }
 
 // ---- JavaScript DOM host -----------------------------------------------------
@@ -1123,11 +1139,81 @@ JSValue js_style_remove_property(JSContext* context, JSValueConst this_value, in
     if (!node || argc < 1)
         return JS_UNDEFINED;
     const char* property = JS_ToCString(context, argv[0]);
-    if (property)
-        apply_style_property(node, property, "");
+    if (!property)
+        return JS_NewString(context, "");
+    std::string name = property;
+    JS_FreeCString(context, property);
+    auto declarations = parse_declarations(node);
+    std::string removed;
+    for (auto it = declarations.begin(); it != declarations.end();) {
+        if (it->first == name) {
+            removed = it->second;
+            it = declarations.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    write_declarations(node, declarations);
+    // CSSStyleDeclaration.removeProperty() returns the value it removed, not undefined.
+    return JS_NewString(context, removed.c_str());
+}
+
+JSValue js_style_css_text_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    auto* value = node->attribute("style");
+    return JS_NewString(context, value ? value->c_str() : "");
+}
+
+JSValue js_style_css_text_set(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    const char* raw = argc > 0 ? JS_ToCString(context, argv[0]) : nullptr;
+    rendering::set_attribute(*node, "style", raw ? raw : "");
+    if (raw)
+        JS_FreeCString(context, raw);
+    return JS_UNDEFINED;
+}
+
+JSValue js_style_get_property_value(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 1)
+        return JS_UNDEFINED;
+    const char* property = JS_ToCString(context, argv[0]);
+    std::string name = property ? property : "";
     if (property)
         JS_FreeCString(context, property);
-    return JS_UNDEFINED;
+    for (auto const& entry : parse_declarations(node))
+        if (entry.first == name)
+            return JS_NewString(context, entry.second.c_str());
+    return JS_NewString(context, "");
+}
+
+JSValue js_style_length_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    return JS_NewInt32(context, static_cast<int>(parse_declarations(node).size()));
+}
+
+// item(index) is the property *name* at that position, per CSS/CSSStyleDeclaration.idl.
+JSValue js_style_item(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node || argc < 1)
+        return JS_UNDEFINED;
+    int index = 0;
+    JS_ToInt32(context, &index, argv[0]);
+    auto declarations = parse_declarations(node);
+    if (index < 0 || static_cast<std::size_t>(index) >= declarations.size())
+        return JS_NewString(context, "");
+    return JS_NewString(context, declarations[static_cast<std::size_t>(index)].first.c_str());
 }
 
 JSValue js_style_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
@@ -1137,6 +1223,19 @@ JSValue js_style_get(JSContext* context, JSValueConst this_value, int, JSValueCo
     JS_SetOpaque(style, node);
     JS_SetPropertyStr(context, style, "setProperty", JS_NewCFunction(context, js_style_set_property, "setProperty", 2));
     JS_SetPropertyStr(context, style, "removeProperty", JS_NewCFunction(context, js_style_remove_property, "removeProperty", 1));
+    JS_SetPropertyStr(context, style, "getPropertyValue", JS_NewCFunction(context, js_style_get_property_value, "getPropertyValue", 1));
+    JS_SetPropertyStr(context, style, "item", JS_NewCFunction(context, js_style_item, "item", 1));
+    // cssText and length are accessors, as in the IDL; a page reads them as properties.
+    auto define_on_style = [&](char const* name, JSCFunction* getter, JSCFunction* setter) {
+        JSAtom atom = JS_NewAtom(context, name);
+        JS_DefinePropertyGetSet(context, style, atom,
+            JS_NewCFunction(context, getter, name, 0),
+            setter ? JS_NewCFunction(context, setter, name, 1) : JS_UNDEFINED,
+            JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE);
+        JS_FreeAtom(context, atom);
+    };
+    define_on_style("cssText", js_style_css_text_get, js_style_css_text_set);
+    define_on_style("length", js_style_length_get, nullptr);
     return style;
 }
 
