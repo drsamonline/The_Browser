@@ -59,17 +59,11 @@ struct CssStyleSheet {
                         return true;
                 // A sibling combinator at the top level. Inside parentheses it belongs to a nested
                 // selector (`:has(+ .x)`), which this engine answers false anyway.
-                int depth = 0;
-                for (char const c : selector) {
-                    if (c == '(' || c == '[') {
-                        ++depth;
-                    } else if (c == ')' || c == ']') {
-                        if (depth > 0)
-                            --depth;
-                    } else if (depth == 0 && (c == '+' || c == '~')) {
+                // Any depth, deliberately: `:has(+ .x)` is a sibling dependency written inside
+                // parentheses, and skipping nested combinators would leave that page stale.
+                for (char const c : selector)
+                    if (c == '+' || c == '~')
                         return true;
-                    }
-                }
             }
         return false;
     }

@@ -865,9 +865,9 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
                     continue;
                 char const lead = part.front();
                 bool const child_only = lead == '>';
-                if (lead == '+' || lead == '~')
-                    continue;
-                auto body = (child_only || lead == ' ') ? part.substr(1) : part;
+                bool const next_only = lead == '+';
+                bool const any_following = lead == '~';
+                auto body = (child_only || next_only || any_following || lead == ' ') ? part.substr(1) : part;
                 auto begin = body.find_first_not_of(" \t\r\n");
                 if (begin == std::string::npos)
                     continue;
@@ -884,7 +884,39 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
                     }
                     return false;
                 };
-                if (search(node)) {
+                // The sibling forms look forward, not down: `:has(+ .x)` is "the element after me
+                // matches". Upstream reaches them through the same relative-selector walk.
+                auto next_element_sibling = [](DomNode const& from) -> DomNode const* {
+                    auto const* parent = from.parent;
+                    if (!parent)
+                        return nullptr;
+                    bool seen = false;
+                    for (auto const& child : parent->children) {
+                        if (child.get() == &from) {
+                            seen = true;
+                            continue;
+                        }
+                        if (seen && child->type == DomNodeType::Element)
+                            return child.get();
+                    }
+                    return nullptr;
+                };
+
+                bool matched = false;
+                if (next_only || any_following) {
+                    for (auto const* sibling = next_element_sibling(node); sibling;
+                         sibling = next_element_sibling(*sibling)) {
+                        if (matches(*sibling, body, interaction_state)) {
+                            matched = true;
+                            break;
+                        }
+                        if (next_only)
+                            break;
+                    }
+                } else {
+                    matched = search(node);
+                }
+                if (matched) {
                     any = true;
                     break;
                 }

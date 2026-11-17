@@ -217,6 +217,14 @@ void RenderDocument::relayout()
         }
     } else if (mutated) {
         collect_dirty(*mutated, dirty);
+        // A sibling combinator means this node's change can restyle its siblings: `.a + .b`, and
+        // `:has(+ .x)` which reads forward from the element before. Ancestors are already dirty; the
+        // siblings are not, and without them the row before a class change keeps its old colour.
+        if (m_stylesheet.uses_sibling_sequence() && mutated->parent) {
+            for (auto const& sibling : mutated->parent->children)
+                if (sibling->type == DomNodeType::Element && sibling.get() != mutated)
+                    dirty.insert(sibling.get());
+        }
     } else {
         // A structural mutation with no parent recorded: nothing in the cache can be trusted.
         m_style_cache.clear();
