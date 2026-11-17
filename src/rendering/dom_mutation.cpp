@@ -16,13 +16,23 @@ DomNode const* g_last_node { nullptr };
 void note_dom_mutation()
 {
     g_last_node = nullptr;
+    g_last_attribute.clear();
     ++g_serial;
 }
 
 void note_dom_mutation_at(DomNode const* node)
 {
     g_last_node = node;
+    g_last_attribute.clear();
     ++g_serial;
+}
+
+void note_text_mutation(DomNode const* node)
+{
+    // Same state as note_dom_mutation_at(): the node, and no attribute name. The
+    // separate entry point is the one the text path calls, so the distinction a host
+    // reads (node set, name empty) is visible at the call site and not only here.
+    note_dom_mutation_at(node);
 }
 
 DomNode const* last_mutated_node()

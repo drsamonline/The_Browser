@@ -262,7 +262,9 @@ static std::string node_text(rendering::DomNode const& node)
 
 static void set_node_text(rendering::DomNode& node, std::string const& text)
 {
-    rendering::note_dom_mutation_at(&node);
+    // A text write, not an attribute write: it clears the recorded attribute name, so
+    // relayout() can tell this can reflow and never skips the pass for it.
+    rendering::note_text_mutation(&node);
     node.children.clear();
     node.append_child(std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", text));
 }
@@ -750,8 +752,11 @@ JSValue js_set_attribute(JSContext* context, JSValueConst this_value, int argc, 
         return JS_UNDEFINED;
     }
     const char* name = JS_ToCString(context, argv[0]);
-    rendering::note_attribute_mutation(name ? name : "");
+    // Order matters: the node-scoped note clears the recorded attribute name, so it
+    // must run first and the attribute note after it. Reversed, the write looks like a
+    // text edit and the attribute gate stops gating.
     rendering::note_dom_mutation_at(node);
+    rendering::note_attribute_mutation(name ? name : "");
     const char* value = JS_ToCString(context, argv[1]);
     if (name && value)
         node->attributes[name] = value;
