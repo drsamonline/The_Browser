@@ -730,6 +730,10 @@ int main(int argc, char* argv[])
         int resolved = summary_count(many.output, ", resolves: ");
         require(resolved > 0 && resolved < 40,
             "a hover in a 200-row page re-resolves a handful of nodes, not the page");
+        // The page is 406 nodes; the key comparison must be over the 5 that restyled, since
+        // only a node whose style was re-resolved can have a different key.
+        require(summary_count(many.output, ", key checks: ") == resolved,
+            "the layout key comparison covers the nodes that restyled, not the page");
         require(many.output.find("relayouts: 0") == std::string::npos,
             "and it still relayouts, so the hover is not dropped");
 
