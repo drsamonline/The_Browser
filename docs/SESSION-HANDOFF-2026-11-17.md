@@ -238,10 +238,38 @@ Two fixture traps, both the instrument and both found by reading pixels:
 The test now pins the focus targets by window coordinate, calibrated against pixels first (`--focus-key`
 takes a window y and the window subtracts the 34 px chrome).
 
+### Fifth item: the layout key was an allow-list, and it was incomplete
+
+Audited the layout key against the properties `layout.cpp` reads. Nine were missing — `gap`, `row-gap`,
+`column-gap`, `flex-direction`, `flex-grow`, `align-items`, `justify-content`, `grid-template-columns`,
+`aspect-ratio` — and a class toggle changing only `gap` skipped the pass and left the second box at x 50.
+A stale frame, of exactly the kind the mechanism exists to prevent.
+
+| Commit | What |
+| --- | --- |
+| `89d03716` | the key is the whole style minus a deny-list of paint-only properties |
+| `a00d1bf2` | a `gap` change must reflow; a `color` change must not |
+
+| page | before | after |
+| --- | --- | --- |
+| only `gap` changes | layouts 1, box at x 50 | layouts 2, box at x 250 |
+| only `background` changes | layouts 1 | layouts 1 |
+| only `color` changes | layouts 1 | layouts 1 |
+
+`StyleProperties::digest_excluding()` carries it, and `fingerprint()` is now `digest_excluding({})`, so the
+cache key and the layout key share one implementation and one sort.
+
+An allow-list fails unsafely: a property nobody classified silently stops reflowing. A deny-list of
+paint-only properties fails the other way — a wasted pass — which is the failure this project can afford.
+
+One fixture trap, caught by checking: `flex-grow` is not honoured by this layout engine at all (a page that
+sets it at load renders identically), so the `gap` page is the one that demonstrates the bug. The first
+fixture I wrote proved nothing.
+
 ### Next, from here
 
-1. Extend `kLayoutProperties` when a property is added to `style.cpp` — a missing entry is a silent
-   stale-geometry bug, not a slow path.
+1. `flex-grow` is read by `layout.cpp` and appears to have no effect; worth a separate look, with a page
+   that discriminates.
 2. `[a=v i]` case flag, if a page needs it.
 3. Sibling combinators (`+`, `~`) are not matched; adding them means adding sibling invalidation to
    `collect_state_change_dirty()`.
