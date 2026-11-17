@@ -881,6 +881,64 @@ int main(int argc, char* argv[])
             }
         }
 
+        // `:has(<relative selector list>)`. Upstream matches it with matches_relative(list, anchor,
+        // anchor, context): a combinator plus a selector, descendant unless written. The sibling
+        // combinators are not matched anywhere here, so `:has(+ .x)` answers false.
+        auto has_page = [](std::string const& rule) {
+            return "<html><head><title>Has</title><style>body{margin:0}"
+                   ".box{width:400px;height:20px;background:#00ff00}"
+                   ".x{width:50px;height:10px;background:#ffff00}"
+                 + rule +
+                   "</style></head><body>"
+                   "<div class='box'><span class='x'>x</span></div>"
+                   "<div class='box'><em><span class='x'>x</span></em></div>"
+                   "</body></html>";
+        };
+        struct HasCase {
+            char const* what;
+            std::string html;
+            bool direct_matches;
+            bool deep_matches;
+        };
+        std::vector<HasCase> const has_cases {
+            { ":has(.x) matches a descendant at any depth", has_page(".box:has(.x){background:#ff00ff}"), true, true },
+            { ":has(> .x) matches a direct child only", has_page(".box:has(> .x){background:#ff00ff}"), true, false },
+            { ":has(.nope) matches nothing", has_page(".box:has(.nope){background:#ff00ff}"), false, false },
+        };
+        for (auto const& has_case : has_cases) {
+            auto result = run_window(binary, has_case.html, "", 2, directory);
+            std::string const message = std::string("the :has run for ") + has_case.what + " exits cleanly";
+            require(result.status == 0, message.c_str());
+            int direct[3] = { 0, 0, 0 };
+            int deep[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 300, 34 + 10, direct), "the :has pixel is readable");
+            require(frame_pixel(directory, 300, 34 + 30, deep), "the second :has pixel is readable");
+            if (has_case.direct_matches)
+                require(is_magenta(direct), has_case.what);
+            else
+                require(is_green(direct), has_case.what);
+            if (has_case.deep_matches)
+                require(is_magenta(deep), has_case.what);
+            else
+                require(is_green(deep), has_case.what);
+        }
+
+        // The invalidation direction: a child arriving restyles the ancestor that has it. The dirty
+        // sets already include ancestors of any mutation, so this needed no change - asserted
+        // because "it already works" is a claim, not a reason to skip the test.
+        auto has_mutation = run_window(binary,
+            "<html><head><title>Has mutation</title><style>body{margin:0}"
+            "#box{width:400px;height:100px;background:#00ff00}#box:has(.x){background:#ff00ff}"
+            ".x{width:50px;height:10px;background:#ffff00}"
+            "</style></head><body><div id='box'></div><script>setTimeout(function () {"
+            "var s = document.createElement('span'); s.setAttribute('class', 'x');"
+            "document.getElementById('box').appendChild(s); }, 5);</script></body></html>",
+            "", 2, directory);
+        require(has_mutation.status == 0, "the :has mutation run exits cleanly");
+        int restyled[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 300, 34 + 80, restyled), "the :has mutation pixel is readable");
+        require(is_magenta(restyled), "appending a matching child restyles the :has ancestor");
+
         // `:not()` takes a compound, and a positional pseudo-class inside it still works.
         auto negated = run_window(binary,
             "<html><head><title>Not</title><style>body{margin:0}"
