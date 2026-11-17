@@ -104,16 +104,30 @@ void RenderDocument::resolve_images(LayoutNode& node)
     for (auto& child : node.children) resolve_images(*child);
 }
 
-void RenderDocument::apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width)
+bool RenderDocument::apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width)
 {
     if (m_visual_generation == interaction_state.generation && !interaction_state.layout_dirty && !interaction_state.paint_dirty)
-        return;
+        return false;
+
+    // Upstream invalidates only the elements whose pseudo-class state changed. The
+    // cheap half of that: if no selector mentions the class that just changed, no
+    // element can restyle, so the rebuild is wasted work.
+    std::string_view const pseudo = interaction_state.last_change == InteractionChange::Hover ? ":hover"
+        : interaction_state.last_change == InteractionChange::Focus                          ? ":focus"
+        : interaction_state.last_change == InteractionChange::Active                         ? ":active"
+                                                                                            : "";
+    if (!pseudo.empty() && !m_stylesheet.uses_pseudo_class(pseudo)) {
+        m_visual_generation = interaction_state.generation;
+        return false;
+    }
+
     m_last_visual_state = interaction_state;
     m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet, &interaction_state);
     LayoutEngine {}.layout(*m_layout_root, viewport_width);
     resolve_images(*m_layout_root);
     m_render_tree = RenderTree::from_layout(*m_layout_root);
     m_visual_generation = interaction_state.generation;
+    return true;
 }
 
 SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color clear_color) const

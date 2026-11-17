@@ -1811,8 +1811,7 @@ static bool apply_active_visual_state(rendering::RenderDocument& rendered,
 {
     if (!state.set_active(node))
         return false;
-    rendered.apply_visual_state(state, viewport_width);
-    return true;
+    return rendered.apply_visual_state(state, viewport_width);
 }
 
 // Applies a hover change to the cascade. Returns true when the page needs a new
@@ -1822,8 +1821,7 @@ static bool apply_hover_visual_state(rendering::RenderDocument& rendered,
 {
     if (!state.set_hovered(node))
         return false;
-    rendered.apply_visual_state(state, viewport_width);
-    return true;
+    return rendered.apply_visual_state(state, viewport_width);
 }
 
 // Moves the pointer to a point in the content area: the element losing the

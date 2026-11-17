@@ -41,7 +41,10 @@ public:
     SoftwareSurface render_to_surface(int width, int height, Color clear_color, PaintOffset offset) const;
     // Rebuilds layout and the render tree from the (possibly mutated) document.
     void relayout();
-    void apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width);
+    // Rebuilds layout and the render tree for a new interaction state. Returns
+    // false when the rebuild was skipped because no rule in the sheet mentions the
+    // pseudo-class that changed - upstream's rule, cheaply applied.
+    bool apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width);
     std::size_t visual_generation() const { return m_visual_generation; }
 
 private:
