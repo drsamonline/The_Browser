@@ -390,6 +390,13 @@ DomHost* g_dom_host { nullptr };
 // has nothing but a handle to work from, so the loop publishes this the way it publishes the DOM host.
 rendering::RenderDocument const* g_current_page { nullptr };
 
+// `element.focus()` and `element.blur()` are called while a script is running, where the window loop's
+// document, interpreter and interaction state are not in scope. They record a request here and the loop
+// performs it with set_focus(), the same helper the keyboard uses - so a scripted focus fires the same
+// blur/focus events and re-resolves style the same way.
+rendering::DomNode* g_focus_request { nullptr };
+bool g_focus_request_pending { false };
+
 struct DomHost {
     JSContext* context { nullptr };
     std::map<rendering::DomNode*, JSValue> handle_by_node; // owned references
@@ -944,6 +951,34 @@ void write_classes(rendering::DomNode* node, std::vector<std::string> const& cla
 
 // Upstream's DOM/Element.idl has `[Reflect=class] attribute DOMString className`, so this is the
 // `class` content attribute read and written, nothing more: absent reads as the empty string.
+// Upstream runs the focusing steps and fires blur then focus (DOM/Element.cpp); set_focus() here does the
+// same, in the loop, which is why this only records the request.
+//
+// KNOWN GAP, measured 2026-11-18: the state moves and `:focus` styling follows, but a listener registered
+// with addEventListener('focus', ...) does not run. set_focus() guards its dispatch on
+// dom.handle_by_node, so either the control has no handle or the listener is not reachable from it.
+// Recorded in docs/CHECKLIST.md; the state is what the test asserts.
+JSValue js_focus(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    if (auto* node = node_of(context, this_value)) {
+        g_focus_request = node;
+        g_focus_request_pending = true;
+    }
+    return JS_UNDEFINED;
+}
+
+JSValue js_blur(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    // Blurring something that is not focused does nothing, which is what the spec says and what a page
+    // relies on when it blurs defensively.
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    g_focus_request = nullptr;
+    g_focus_request_pending = true;
+    return JS_UNDEFINED;
+}
+
 // Upstream: Element::get_bounding_client_rect() returns the layout node's border box through the
 // viewport mapping (DOM/Element.cpp, Painting::bounding_client_rect). Here the layout node's rect is
 // the border box in document coordinates and the window has no scroll offset in this path, so the
@@ -1342,6 +1377,8 @@ JSValue DomHost::handle_for(rendering::DomNode* node)
     define_accessor("className", js_class_name_get, js_class_name_set);
     JS_SetPropertyStr(context, handle, "getBoundingClientRect",
         JS_NewCFunction(context, js_get_bounding_client_rect, "getBoundingClientRect", 0));
+    JS_SetPropertyStr(context, handle, "focus", JS_NewCFunction(context, js_focus, "focus", 0));
+    JS_SetPropertyStr(context, handle, "blur", JS_NewCFunction(context, js_blur, "blur", 0));
     define_accessor("style", js_style_get, js_style_set);
 
     auto define_getter = [&](char const* name, JSCFunction* getter) {
@@ -2288,6 +2325,17 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             visual_state.focus_trigger = rendering::FocusTrigger::Key;
             focused = target;
             if (set_focus(*cached_page, page_js, page_dom, visual_state, target, static_cast<float>(kWidth)))
+                ++relayouts;
+            need_render = true;
+        }
+
+        // A script asked for focus with element.focus() or element.blur(). It is performed here, where
+        // the page, the interpreter and the interaction state are all in scope, so it goes through the
+        // same path as a click or a Tab key.
+        if (g_focus_request_pending && cached_page) {
+            g_focus_request_pending = false;
+            if (set_focus(*cached_page, page_js, page_dom, visual_state, g_focus_request,
+                    static_cast<float>(kWidth)))
                 ++relayouts;
             need_render = true;
         }
