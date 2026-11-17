@@ -3,6 +3,7 @@
 #include "quickjs.h"
 
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,20 @@ public:
 
     // True when the most recent dispatch had preventDefault() called on it.
     bool last_event_prevented() const { return m_last_event_prevented; }
+
+    // The origin `localStorage` is scoped to. Upstream keeps a Storage object per origin in the
+    // document's local storage holder (HTML/Storage.idl, DOM/Document.h); here the store is a map on
+    // the interpreter, which lives as long as the window, so it survives a navigation.
+    void set_storage_origin(std::string origin) { m_storage_origin = std::move(origin); }
+    std::string const& storage_origin() const { return m_storage_origin; }
+
+    // One origin's key/value pairs. In memory only: upstream persists per profile, this does not.
+    std::map<std::string, std::string>& storage_for_origin() { return m_storage[m_storage_origin]; }
+    std::map<std::string, std::string> const* storage_for_origin() const
+    {
+        auto found = m_storage.find(m_storage_origin);
+        return found == m_storage.end() ? nullptr : &found->second;
+    }
 
     bool has_error() const { return m_has_error; }
     std::string const& error() const { return m_error; }
@@ -129,6 +144,8 @@ private:
     JSValue m_document { JS_UNDEFINED };
     bool m_has_error { false };
     bool m_last_event_prevented { false };
+    std::string m_storage_origin;
+    std::map<std::string, std::map<std::string, std::string>> m_storage;
     std::string m_error;
     std::vector<Timer> m_timers;
     int m_next_timer_id { 1 };

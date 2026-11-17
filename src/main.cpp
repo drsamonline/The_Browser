@@ -2190,6 +2190,17 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             cached_page.emplace(create_scripted_document(body, style.css, session.current_url(), nullptr,
                 page_js, page_dom, page_viewport_state, 0.0));
             g_current_page = &*cached_page;
+            // localStorage is scoped to the origin. Upstream keeps one Storage per origin; the
+            // interpreter keeps the map and lives as long as the window, so a navigation keeps it.
+            {
+                std::string origin = session.current_url();
+                auto const scheme_end = origin.find("://");
+                if (scheme_end != std::string::npos) {
+                    auto const host_end = origin.find('/', scheme_end + 3);
+                    origin = host_end == std::string::npos ? origin : origin.substr(0, host_end);
+                }
+                page_js.set_storage_origin(origin);
+            }
             session.set_page_title(document_title(cached_page->document().root()));
             session.set_loading(false);
 

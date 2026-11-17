@@ -527,8 +527,74 @@ static JSValue make_event(JSContext* context, std::string const& type, JSValueCo
     return event;
 }
 
+// The interpreter whose globals are being set up. The localStorage functions are plain C functions
+// taking a JSContext, and the store belongs to the interpreter, so they reach it through here - the
+// same pattern the window loop uses for the page and the DOM host.
+static Interpreter* g_active_interpreter { nullptr };
+
+static Interpreter* active_interpreter()
+{
+    return g_active_interpreter;
+}
+
+// Upstream's Storage interface (HTML/Storage.idl): length, key(index), getItem, setItem, removeItem,
+// clear. A missing key is null, not undefined, which is what `=== null` tests in pages rely on.
+static JSValue js_storage_get_item(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* interpreter = active_interpreter();
+    if (!interpreter || argc < 1)
+        return JS_NULL;
+    auto key = to_string(context, argv[0]);
+    auto& store = interpreter->storage_for_origin();
+    auto found = store.find(key);
+    if (found == store.end())
+        return JS_NULL;
+    return JS_NewString(context, found->second.c_str());
+}
+
+static JSValue js_storage_set_item(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* interpreter = active_interpreter();
+    if (!interpreter || argc < 2)
+        return JS_UNDEFINED;
+    interpreter->storage_for_origin()[to_string(context, argv[0])] = to_string(context, argv[1]);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_storage_remove_item(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* interpreter = active_interpreter();
+    if (!interpreter || argc < 1)
+        return JS_UNDEFINED;
+    interpreter->storage_for_origin().erase(to_string(context, argv[0]));
+    return JS_UNDEFINED;
+}
+
+static JSValue js_storage_clear(JSContext*, JSValueConst, int, JSValueConst*)
+{
+    if (auto* interpreter = active_interpreter())
+        interpreter->storage_for_origin().clear();
+    return JS_UNDEFINED;
+}
+
+static JSValue js_storage_key(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* interpreter = active_interpreter();
+    if (!interpreter || argc < 1)
+        return JS_NULL;
+    int32_t index = 0;
+    JS_ToInt32(context, &index, argv[0]);
+    auto& store = interpreter->storage_for_origin();
+    if (index < 0 || static_cast<std::size_t>(index) >= store.size())
+        return JS_NULL;
+    auto it = store.begin();
+    std::advance(it, index);
+    return JS_NewString(context, it->first.c_str());
+}
+
 void Interpreter::setup_globals()
 {
+    g_active_interpreter = this;
     JSValue global = JS_GetGlobalObject(m_context);
 
     // console
@@ -561,6 +627,25 @@ void Interpreter::setup_globals()
     install_viewport_properties(m_context, scrolling_element);
     JS_SetPropertyStr(m_context, document, "scrollingElement", scrolling_element);
     JS_SetPropertyStr(m_context, global, "document", JS_DupValue(m_context, document));
+
+    // localStorage: one object, scoped to the origin the embedder set.
+    JSValue storage = JS_NewObject(m_context);
+    define_function(m_context, storage, "getItem", js_storage_get_item);
+    define_function(m_context, storage, "setItem", js_storage_set_item);
+    define_function(m_context, storage, "removeItem", js_storage_remove_item);
+    define_function(m_context, storage, "clear", js_storage_clear);
+    define_function(m_context, storage, "key", js_storage_key);
+    // `length` is an attribute in the IDL, not a function: a page reads `localStorage.length`.
+    JSAtom length_atom = JS_NewAtom(m_context, "length");
+    JSValue getter = JS_NewCFunction(m_context, [](JSContext* context, JSValueConst, int, JSValueConst*) -> JSValue {
+        auto* interpreter = active_interpreter();
+        if (!interpreter)
+            return JS_NewInt32(context, 0);
+        return JS_NewInt32(context, static_cast<int32_t>(interpreter->storage_for_origin().size()));
+    }, "length", 0);
+    JS_DefinePropertyGetSet(m_context, storage, length_atom, getter, JS_UNDEFINED, 0);
+    JS_FreeAtom(m_context, length_atom);
+    JS_SetPropertyStr(m_context, global, "localStorage", storage);
 
     // window
     JSValue window = JS_NewObject(m_context);
