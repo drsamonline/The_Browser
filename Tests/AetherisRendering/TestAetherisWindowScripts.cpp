@@ -779,6 +779,54 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // The structural pseudo-class set. Each rule is asserted on a row it must match and on rows it
+    // must not, so every assertion can come out the other way.
+    {
+        std::string const directory = "aetheris-pseudo-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto result = run_window(binary,
+            "<html><head><title>Pseudo classes</title><style>body{margin:0}"
+            "div{width:400px;height:10px;background:#00ff00}"
+            "span{display:block;width:400px;height:10px;background:#00ff00}"
+            "div:first-of-type{background:#ff00ff}"
+            "div:nth-of-type(2){background:#00ffff}"
+            "div:last-of-type{background:#0000ff}"
+            "span:only-of-type{background:#ffff00}"
+            "</style></head><body><div>a</div><div>b</div><div>c</div><span>s</span>"
+            "</body></html>", "", 2, directory);
+        require(result.status == 0, "the pseudo-class run exits cleanly");
+        struct Row {
+            char const* what;
+            int y;
+            int colour[3];
+        };
+        Row const rows[] {
+            { "div:first-of-type matches the first div", 5, { 255, 0, 255 } },
+            { "div:nth-of-type(2) matches the second div", 15, { 0, 255, 255 } },
+            { "div:last-of-type matches the third div", 25, { 0, 0, 255 } },
+            { "span:only-of-type matches the only span", 35, { 255, 255, 0 } },
+        };
+        for (auto const& row : rows) {
+            int rgb[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 200, 34 + row.y, rgb), "a pseudo-class pixel is readable");
+            require(rgb[0] == row.colour[0] && rgb[1] == row.colour[1] && rgb[2] == row.colour[2], row.what);
+        }
+
+        // `:not()` takes a compound, and a positional pseudo-class inside it still works.
+        auto negated = run_window(binary,
+            "<html><head><title>Not</title><style>body{margin:0}"
+            "div{width:400px;height:10px;background:#00ff00}div:not(:first-child){background:#0000ff}"
+            "</style></head><body><div>a</div><div>b</div><div>c</div></body></html>", "", 2, directory);
+        require(negated.status == 0, "the :not run exits cleanly");
+        int first[3] = { 0, 0, 0 };
+        int second[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 5, first), "the :not first pixel is readable");
+        require(frame_pixel(directory, 200, 34 + 15, second), "the :not second pixel is readable");
+        require(is_green(first), "div:not(:first-child) does not match the first div");
+        require(is_blue(second), "div:not(:first-child) matches the second");
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // A structural change invalidates the child sequence it changed, not the document. Upstream
     // records a tree delta for the departed or arrived sequence (StyleEngineInput.cpp); this is
     // the same set, and when the sheet has no positional selector it is the parent alone.
@@ -819,6 +867,14 @@ int main(int argc, char* argv[])
         require(positional.status == 0, "the positional run exits cleanly");
         require(summary_count(positional.output, ", resolves: ") > 200,
             "a positional selector makes a structural change re-resolve the child sequence");
+
+        // And the same for the -of-type family, which is the entry most likely to be forgotten when
+        // a pseudo-class is added: uses_positional_pseudo_class() is one list for both.
+        auto of_type = run_window(binary,
+            page + "div.r:first-of-type{background:#ffff00}</style></head><body>" + rows + append_to_body, "", 2);
+        require(of_type.status == 0, "the of-type run exits cleanly");
+        require(summary_count(of_type.output, ", resolves: ") > 200,
+            ":first-of-type also makes a structural change re-resolve the child sequence");
 
         // `:empty` is the parent's own state, so the parent is dirtied even when no sibling can
         // see the change. Three runs, because one direction cannot fail: an empty box must be blue
