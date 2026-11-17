@@ -319,9 +319,40 @@ style on every relayout. Only a node whose style was *re-resolved* can have a di
 `key checks:` is in the window summary beside `layouts:` and `resolves:`, so the cost of the decision is a
 number rather than an inference.
 
+### Eighth item: per-node layout — the pass stops entering clean subtrees
+
+The skip was all-or-nothing for the document. Now a node whose subtree nothing restyled, and that is laid
+out at the origin and available width it was laid out at last time, takes its recorded geometry and the pass
+never enters it.
+
+| Commit | What |
+| --- | --- |
+| `f0ce1b21` | `LayoutReuse` context; `reuse_subtree()`; origin recorded per node; `layout nodes:` in the summary |
+| `5606dc69` | the text-edit case and the moving-row control |
+
+| 405-node page, one edit, 2 frames | layout nodes |
+| --- | --- |
+| text edit in row 100 of 200 | **4** |
+| first row grows 3 px → 60 px (control) | 204 |
+
+The control matters: every row below the grown one moved, so none of them can be reused where it used to be,
+and the pass lays them out. Pixels read off the frame: content y 1 blue (inside the grown row), content y 70
+green (the first row after it).
+
+### The invariant, stated because the change rests on it
+
+A node's subtree geometry is a function of (its resolved style, x, y, available_width, its DOM subtree).
+
+- The style is fixed for a clean node: any style change marks the node restyled, and any structural change
+  clears the style cache so every node restyles.
+- x, y and available_width are exactly what the parent decided, which is why all three are in the cache key
+  and why a node that moves — or whose width changes because a sibling grew — is laid out again.
+- Anything that makes geometry depend on something outside that tuple breaks the invariant. `float` is not
+  implemented, and flex items get their width from the parent, so nothing in the current engine does.
+
 ### Next, from here
 
-1. Per-node layout: the skip is still all-or-nothing for the document. A dirty layout subtree is the next
-   structural step, and the biggest.
-2. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
-3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+1. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
+2. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+3. The window summary now carries four counters (`relayouts`, `layouts`, `key checks`, `layout nodes`) —
+   enough that a fifth should replace one rather than be added.
