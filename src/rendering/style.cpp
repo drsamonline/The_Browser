@@ -64,10 +64,25 @@ void StyleProperties::set(std::string property, std::string value)
 
 std::string StyleProperties::fingerprint() const
 {
+    return digest_excluding({});
+}
+
+std::string StyleProperties::digest_excluding(std::span<std::string_view const> excluded) const
+{
     std::vector<std::string> parts;
     parts.reserve(m_properties.size());
-    for (auto const& entry : m_properties)
+    for (auto const& entry : m_properties) {
+        bool skip = false;
+        for (auto const& name : excluded) {
+            if (entry.first == name) {
+                skip = true;
+                break;
+            }
+        }
+        if (skip)
+            continue;
         parts.push_back(entry.first + ":" + entry.second);
+    }
     // The map is unordered, so sort before joining or two equal styles compare unequal.
     std::sort(parts.begin(), parts.end());
     std::string joined;

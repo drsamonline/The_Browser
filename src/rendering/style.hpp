@@ -4,6 +4,7 @@
 #include "dom.hpp"
 #include "visual_state.hpp"
 
+#include <span>
 #include <string>
 #include <string>
 #include <string_view>
@@ -22,6 +23,11 @@ public:
     // style is still valid: if the parent's resolved style is unchanged, a clean
     // child resolves to the same thing it did last time.
     std::string fingerprint() const;
+
+    // The same digest, without the named properties. Callers that want "everything except
+    // these" say so with the exceptions rather than with an allow-list of their own: a
+    // property nobody named is then included, which is the safe way to be wrong.
+    std::string digest_excluding(std::span<std::string_view const> excluded) const;
 
 private:
     std::unordered_map<std::string, std::string> m_properties;

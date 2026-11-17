@@ -37,36 +37,29 @@ void collect_dirty(rendering::DomNode const& mutated, std::unordered_set<renderi
             dirty.insert(ancestor);
 }
 
-// The properties that can move a box. Deliberately a hand-written list, not "every
-// property except the paint ones": a property nobody thought of would be assumed
-// paint-only and silently stop relaying out, which is a stale-frame bug. Anything
-// missing here is a bug of that kind, so the list is the thing to extend.
-char const* const kLayoutProperties[] = {
-    "display", "width", "height", "min-width", "max-width", "min-height", "max-height",
-    "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
-    "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
-    "border", "border-width", "border-top-width", "border-right-width",
-    "border-bottom-width", "border-left-width",
-    "font-size", "font-family", "font-weight", "line-height", "white-space",
-    "position", "top", "right", "bottom", "left", "float", "overflow", "overflow-wrap",
-    "text-align", "letter-spacing", "word-spacing",
+// The properties that cannot move a box, only repaint it. This is a deny-list on purpose.
+//
+// It used to be the other way round - a list of the properties that *do* affect layout - and
+// that list was missing `gap`, `row-gap`, `column-gap`, `flex-direction`, `flex-grow`,
+// `align-items`, `justify-content`, `grid-template-columns` and `aspect-ratio`, all of which
+// `layout.cpp` reads. A class toggle that changed only `gap` therefore skipped the pass and
+// left the boxes where they were: a stale frame, found by auditing this list against the
+// properties the layout engine reads. With the deny-list, a property nobody classified costs a
+// wasted layout pass instead, which is the failure this project can afford.
+std::string_view const kPaintOnlyProperties[] = {
+    "background-color", "background-image", "background-position", "background-repeat",
+    "background-size", "border-color", "border-radius", "border-style", "box-shadow",
+    "color", "object-fit", "opacity", "outline", "text-decoration", "transform", "z-index",
 };
 
 } // namespace
 
 std::string RenderDocument::layout_key(StyleProperties const& style)
 {
-    std::string key;
-    for (auto const* property : kLayoutProperties) {
-        auto const* value = style.get(property);
-        if (!value)
-            continue;
-        key += property;
-        key += '=';
-        key += *value;
-        key += ';';
-    }
-    return key;
+    // Everything the style resolved, minus what can only repaint. Shorthands never reach here -
+    // `margin`, `padding`, `border` and `background` are expanded by the cascade - so only
+    // longhands have to be named.
+    return style.digest_excluding(kPaintOnlyProperties);
 }
 
 bool RenderDocument::layout_keys_changed(LayoutNode const& root) const
