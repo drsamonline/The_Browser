@@ -534,12 +534,38 @@ Here the map is public, so the audit was a grep for `attributes[...] =`. Six run
 `[data-x]{background}` — 10000 against 100 — and read blue. The relayout count said the note worked; the pixel
 said the rule lost. That tell is now reliable enough to name: relayout right, pixel wrong, look at specificity.
 
+### Fifteenth item: the CSSStyleDeclaration surface, and one thing not built
+
+Upstream first, and it settled the question before any code was written: `CSS/CSSStyleDeclaration.idl` declares
+`cssText`, `length`, `item(index)`, `getPropertyValue`, `getPropertyPriority`, `setProperty`, `removeProperty`
+— and **no named-property accessor at all**. `el.style.background = v` is not part of the interface upstream
+either. The way a page sets a property is `setProperty` or `cssText`.
+
+So the item changed shape: not "add named properties", but "complete the declared surface".
+
+| member | behaviour |
+| --- | --- |
+| `cssText` | get: the style attribute; set: writes it |
+| `getPropertyValue(p)` | the declared value, or `""` |
+| `removeProperty(p)` | returns the value it removed (was `undefined`) |
+| `length` | number of declarations |
+| `item(i)` | the property *name* at that position |
+
+The declaration list is parsed once into a vector that both the accessors and `apply_style_property` share,
+so `cssText` and `item()` agree with what `setProperty` wrote. Every write still goes through the attribute
+choke point, so setting a property restyles.
+
+Read back by the page in a test, not inferred: `cssText` = `background: #ff00ff`, `getPropertyValue` =
+`#ff00ff`, `length` 1, `item(0)` = `background`, `removeProperty` = `#ff00ff`, `length` 0 after.
+
+**The value of reading first, this time:** I was about to build a proxy so that `el.style.prop = v` would
+work. Upstream's IDL says that is not the interface. Building it would have been a day of machinery for an API
+that does not exist in the spec either — and the note in the handoff would then have been wrong in the other
+direction, claiming a feature the engine does not need.
+
 ### Next, from here
 
-1. `el.style.background = v` sets a property on the throwaway object `js_style_get()` returns. Upstream has a
-   real `CSSStyleDeclaration` (`[PutForwards=cssText] readonly attribute CSSStyleDeclaration style`). That is
-   a CSSOM feature, not an invalidation fix.
-2. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
-3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
-4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
+1. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
+2. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+3. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
    callers note the child-list change. A new caller that forgets to will leave the page stale.
