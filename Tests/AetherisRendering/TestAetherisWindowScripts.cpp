@@ -96,6 +96,17 @@ static bool is_red(int const (&rgb)[3]) { return rgb[0] > 200 && rgb[1] < 100 &&
 static bool is_green(int const (&rgb)[3]) { return rgb[0] < 100 && rgb[1] > 120 && rgb[2] < 100; }
 static bool is_blue(int const (&rgb)[3]) { return rgb[0] < 100 && rgb[1] < 100 && rgb[2] > 200; }
 
+// Reads an integer count out of the window summary, or -1 when the label is missing,
+// so a count that is not reported fails the assertion instead of matching nothing.
+// The leading ", " matters: "layouts: " on its own also matches inside "relayouts: ".
+static int summary_count(std::string const& output, std::string const& label)
+{
+    auto at = output.find(label);
+    if (at == std::string::npos)
+        return -1;
+    return std::atoi(output.c_str() + at + label.size());
+}
+
 // Reads one pixel out of the last frame the window wrote. Returns false when the
 // frame is missing or malformed, so a broken writer fails loudly.
 static bool frame_pixel(std::string const& directory, int x, int y, int (&rgb)[3])
@@ -550,6 +561,81 @@ int main(int argc, char* argv[])
         int painted[3] = { 0, 0, 0 };
         require(frame_pixel(directory, 200, 34 + 50, painted), "the repaint pixel is readable");
         require(is_magenta(painted), "a class change repaints through the cache");
+    }
+
+    // Incremental layout: an attribute write that can only change paint must rebuild
+    // the render tree without running the layout engine. The summary reports both
+    // counts, so "laid out" and "repainted" are told apart from outside the process.
+    {
+        // Background only, written on every tick: six relayouts, one layout - the one
+        // the page loaded with.
+        auto paint = run_window(binary,
+            "<html><head><title>Incremental</title><style>body{margin:0}"
+            "div{width:400px;height:100px;background:#0000ff}.on{background:#ff00ff}"
+            "</style></head><body><div id='a'>a</div><script>"
+            "setInterval(function () { document.getElementById('a').setAttribute('class', 'on'); }, 50);"
+            "</script></body></html>", "", 20);
+        require(paint.status == 0, "the paint-only run exits cleanly");
+        require(summary_count(paint.output, ", relayouts: ") == 6,
+            "a background-only class write relayouts on every tick");
+        require(summary_count(paint.output, ", layouts: ") == 1,
+            "a background-only class write never runs the layout engine");
+
+        // A text write can reflow, so every relayout of one runs the engine. This is
+        // the other direction of the same claim, and it must be able to come out the
+        // other way or the first assertion proves nothing.
+        auto text = run_window(binary,
+            "<html><head><title>Incremental text</title></head><body><div id='n'>0</div><script>var n = 0;"
+            "setInterval(function () { n++; document.getElementById('n').textContent = String(n); }, 50);"
+            "</script></body></html>", "", 20);
+        require(text.status == 0, "the text-write run exits cleanly");
+        require(summary_count(text.output, ", relayouts: ") == 6,
+            "a text write relayouts on every tick");
+        require(summary_count(text.output, ", layouts: ") == summary_count(text.output, ", relayouts: ") + 1,
+            "a text write runs the layout engine on every relayout");
+
+        // The control: the same attribute write, changing width instead of background.
+        // If this also skipped, the skip would be unconditional and the two runs above
+        // would agree by accident.
+        auto width = run_window(binary,
+            "<html><head><title>Incremental width</title><style>body{margin:0}"
+            "div{width:400px;height:100px;background:#0000ff}.on{width:200px}"
+            "</style></head><body><div id='a'>a</div><script>var n = 0;"
+            "setInterval(function () { n++; document.getElementById('a').setAttribute('class', n === 1 ? 'on' : ''); }, 50);"
+            "</script></body></html>", "", 20);
+        require(width.status == 0, "the width-change run exits cleanly");
+        require(summary_count(width.output, ", relayouts: ") == 6,
+            "a width-changing class write relayouts on every tick");
+        require(summary_count(width.output, ", layouts: ") > 1,
+            "a class write that changes width does run the layout engine");
+
+        // And the skipped layout must not skip the paint. The frame is read, not
+        // inferred: a stale frame after a skipped layout is the bug this project has
+        // shipped twice.
+        // Under the build tree, not /tmp: this sandbox's /tmp is a 64 MB tmpfs and the
+        // suite's other frame dumps already fill it, which truncated these frames to
+        // zero bytes and failed this assertion for a reason that had nothing to do with
+        // layout. The frame is 1024x768x3, so eight of them are 19 MB.
+        std::string directory = "aetheris-incremental-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto repaint = run_window(binary,
+            "<html><head><title>Incremental paint</title><style>body{margin:0}"
+            "div{width:400px;height:100px;background:#0000ff}.on{background:#ff00ff}"
+            "</style></head><body><div id='a'>A</div><script>"
+            "setTimeout(function () { document.getElementById('a').setAttribute('class', 'on'); }, 5);"
+            "</script></body></html>", "", 2, directory);
+        require(repaint.status == 0, "the skipped-layout repaint run exits cleanly");
+        require(summary_count(repaint.output, ", relayouts: ") == 1,
+            "the paint-only change relayouts once");
+        require(summary_count(repaint.output, ", layouts: ") == 1,
+            "and does not run the layout engine");
+        int painted[3] = { 0, 0, 0 };
+        int outside[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 50, painted), "the repaint pixel is readable");
+        require(frame_pixel(directory, 500, 34 + 50, outside), "the control pixel is readable");
+        require(is_magenta(painted), "a skipped layout still repaints the new background");
+        require(!is_magenta(outside), "and the paint stops where the box does");
+        std::system(("rm -rf " + directory).c_str());
     }
 
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");
