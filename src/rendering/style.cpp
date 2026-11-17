@@ -29,6 +29,24 @@ bool element_position(DomNode const& node, int& index, int& count)
 
 bool matches_structural_pseudo(DomNode const& node, std::string const& pseudo)
 {
+    // `:empty` is about this node's children, not its position among siblings, so it is answered
+    // before element_position(). Upstream's definition (DOM/SelectorQuery.cpp): "Child nodes and
+    // their character data" - comments and doctypes do not count, and neither does text of length
+    // zero.
+    if (pseudo == "empty") {
+        for (auto const& child : node.children) {
+            if (child->type == DomNodeType::Text) {
+                if (!child->data.empty())
+                    return false;
+            } else if (child->type == DomNodeType::Comment || child->type == DomNodeType::Doctype) {
+                continue;
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+
     int index = 0;
     int count = 0;
     if (!element_position(node, index, count))
@@ -446,7 +464,7 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
     for (auto const& pseudo : pseudo_classes) {
         // Structural pseudo-classes need no interaction state.
         if (pseudo == "first-child" || pseudo == "last-child" || pseudo == "only-child"
-            || pseudo.rfind("nth-child(", 0) == 0) {
+            || pseudo == "empty" || pseudo.rfind("nth-child(", 0) == 0) {
             if (!matches_structural_pseudo(node, pseudo))
                 return false;
             continue;
