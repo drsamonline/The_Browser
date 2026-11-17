@@ -676,6 +676,56 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // Per-node layout: a subtree nothing restyled and that sits where it sat is copied from the
+    // last pass instead of laid out. `layout nodes:` is the count that says so.
+    {
+        std::string rows;
+        for (int index = 0; index < 200; ++index)
+            rows += "<div class='r'" + std::string(index == 100 ? " id='mid'" : "") + ">row "
+                + std::to_string(index) + "</div>";
+        std::string const page = "<html><head><title>Per-node layout</title><style>body{margin:0}"
+                                 "div.r{width:400px;height:3px;background:#00ff00}"
+                                 "#mid{background:#0000ff}"
+                                 "#first{width:400px;height:3px;background:#0000ff}"
+                                 "#first.tall{height:60px}";
+
+        // A text edit in row 100 that changes nothing else: the chain down to it is laid out,
+        // the other 400 nodes are not.
+        auto edit = run_window(binary,
+            page + "</style></head><body>" + rows + "<script>"
+                   "setTimeout(function () { document.getElementById('mid').textContent = 'ROW 100'; }, 5);"
+                   "</script></body></html>",
+            "", 2);
+        require(edit.status == 0, "the per-node text edit run exits cleanly");
+        require(summary_count(edit.output, ", relayouts: ") == 1, "the text edit relayouts once");
+        int laid_out = summary_count(edit.output, ", layout nodes: ");
+        require(laid_out > 0 && laid_out < 40,
+            "a text edit in row 100 of 200 lays out the chain, not the page");
+
+        // The control: growing the first row moves every row below it, so they cannot be reused
+        // where they were and the pass must lay them out.
+        std::string const directory = "aetheris-per-node-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto grow = run_window(binary,
+            page + "</style></head><body><div id='first'>first</div>" + rows + "<script>"
+                   "setTimeout(function () { document.getElementById('first').setAttribute('class', 'tall'); }, 5);"
+                   "</script></body></html>",
+            "", 2, directory);
+        require(grow.status == 0, "the growing-row run exits cleanly");
+        int moved = summary_count(grow.output, ", layout nodes: ");
+        require(moved > 200,
+            "rows that moved are laid out again, not reused where they used to be");
+        // Content y 1 is inside the 60 px first row after the change; content y 70 is the first
+        // row that follows it. Both were read off the frame before this assertion was written.
+        int inside_first[3] = { 0, 0, 0 };
+        int after_first[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 1, inside_first), "the first-row pixel is readable");
+        require(frame_pixel(directory, 200, 34 + 70, after_first), "the row-after pixel is readable");
+        require(is_blue(inside_first), "the first row grew to 60 px");
+        require(is_green(after_first), "and the rows below moved down with it");
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // The style cache survives an interaction-state change: only the elements whose
     // pseudo-class state moved are re-resolved, and a state that changes nothing but paint
     // does not run the layout engine. Upstream's ancestor_traversal_for_pseudo_class() is
