@@ -779,6 +779,45 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // element.focus() and element.blur(). The request is recorded during script execution and performed
+    // by the loop with set_focus(), the same helper a click or a Tab key uses, so the state moves and
+    // `:focus` re-resolves.
+    //
+    // What this asserts is the state, not the events: a listener registered with
+    // addEventListener('focus', ...) does not run (see CHECKLIST.md, open defects).
+    {
+        std::string const directory = "aetheris-focus-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto result = run_window(binary,
+            "<html><head><title>Focus</title><style>body{margin:0}"
+            "input{display:block;margin:0;padding:0;border:0;width:100px;height:20px;background:#00ff00}"
+            "input:focus{background:#ff00ff}"
+            "</style></head><body><input id='a'><input id='b'><script>"
+            "setTimeout(function () { document.getElementById('a').focus(); }, 5);"
+            "</script></body></html>", "", 3, directory);
+        require(result.status == 0, "the focus run exits cleanly");
+        int focused[3] = { 0, 0, 0 };
+        int other[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 50, 34 + 5, focused), "the focused control is readable");
+        require(frame_pixel(directory, 50, 34 + 25, other), "the unfocused control is readable");
+        require(is_magenta(focused), "element.focus() moves the focus state");
+        require(is_green(other), "focusing one control does not focus its sibling");
+
+        // blur() clears it again.
+        auto blurred = run_window(binary,
+            "<html><head><title>Blur</title><style>body{margin:0}"
+            "input{display:block;margin:0;padding:0;border:0;width:100px;height:20px;background:#00ff00}"
+            "input:focus{background:#ff00ff}"
+            "</style></head><body><input id='a'><script>"
+            "setTimeout(function () { var a = document.getElementById('a'); a.focus(); a.blur(); }, 5);"
+            "</script></body></html>", "", 3, directory);
+        require(blurred.status == 0, "the blur run exits cleanly");
+        int after[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 50, 34 + 5, after), "the blurred control is readable");
+        require(is_green(after), "element.blur() clears the focus state");
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // getBoundingClientRect(): the page asserts its own numbers, which is the proof style the plan
     // asks for - a geometry API checked by arithmetic the page does, not by a pixel someone eyeballed.
     //
