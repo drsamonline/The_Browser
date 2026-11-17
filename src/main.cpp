@@ -1711,11 +1711,24 @@ static bool parse_integer(std::string const& text, int& out)
     return true;
 }
 
+// Upstream's clauses, by tag name: Element::is_focusable() is a tabindex that
+// parses, HTMLAnchorElement adds "has an href", and form controls override with
+// their own rule (not disabled). The rendering requirement
+// (meets_focusable_area_rendering_requirements) is not checked here - this layer
+// has no per-node computed style to ask.
 static bool is_focusable(rendering::DomNode const& node)
 {
     auto const* tabindex = node.attribute("tabindex");
     int value = 0;
-    return tabindex && parse_integer(*tabindex, value);
+    if (tabindex && parse_integer(*tabindex, value))
+        return true;
+
+    if (node.name == "a" && node.attribute("href") != nullptr)
+        return true;
+
+    bool const control = node.name == "input" || node.name == "button"
+        || node.name == "select" || node.name == "textarea";
+    return control && node.attribute("disabled") == nullptr;
 }
 
 static void collect_focusable(rendering::DomNode const& node, std::vector<rendering::DomNode*>& out)
