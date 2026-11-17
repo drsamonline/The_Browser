@@ -818,6 +818,50 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // The focus and blur events, and the ordering bug that hid them. run_timers() runs every timer due
+    // in one frame's budget, so focus() then blur() inside that window used to have the first request
+    // overwritten before the loop performed it: the state moved for neither and no event fired. The
+    // request is a queue now, and both events arrive in order.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Focus events</title><style>body{margin:0}"
+            "input{display:block;margin:0;padding:0;border:0;width:100px;height:20px;background:#00ff00}"
+            "input:focus{background:#ff00ff}"
+            "</style></head><body><input id='a'><script>"
+            "var a = document.getElementById('a');"
+            "a.addEventListener('focus', function () { console.log('MARK F'); });"
+            "a.addEventListener('blur', function () { console.log('MARK B'); });"
+            "setTimeout(function () { a.focus(); }, 5);"
+            "setTimeout(function () { a.blur(); }, 12);"
+            "</script></body></html>", "", 5);
+        require(result.status == 0, "the focus-event run exits cleanly");
+        auto const focus_at = result.output.find("MARK F");
+        auto const blur_at = result.output.find("MARK B");
+        require(focus_at != std::string::npos, "element.focus() fires a focus event");
+        require(blur_at != std::string::npos, "element.blur() fires a blur event");
+        require(focus_at < blur_at, "the two events arrive in the order the script asked for them");
+
+        // The same script in one timer, which is where the slot was overwritten: focus, blur, focus
+        // must end focused, and the events must come in that order.
+        auto ordered = run_window(binary,
+            "<html><head><title>Focus order</title><style>body{margin:0}"
+            "input{display:block;margin:0;padding:0;border:0;width:100px;height:20px;background:#00ff00}"
+            "input:focus{background:#ff00ff}"
+            "</style></head><body><input id='a'><script>"
+            "var a = document.getElementById('a');"
+            "a.addEventListener('focus', function () { console.log('MARK F'); });"
+            "a.addEventListener('blur', function () { console.log('MARK B'); });"
+            "setTimeout(function () { a.focus(); a.blur(); a.focus(); }, 5);"
+            "</script></body></html>", "", 5);
+        require(ordered.status == 0, "the focus-order run exits cleanly");
+        auto const first_f = ordered.output.find("MARK F");
+        auto const b_at = ordered.output.find("MARK B");
+        auto const second_f = ordered.output.find("MARK F", first_f == std::string::npos ? 0 : first_f + 1);
+        require(first_f != std::string::npos && b_at != std::string::npos && second_f != std::string::npos,
+            "three focus calls in one timer all arrive");
+        require(first_f < b_at && b_at < second_f, "they arrive in the order the script asked for them");
+    }
+
     // getBoundingClientRect(): the page asserts its own numbers, which is the proof style the plan
     // asks for - a geometry API checked by arithmetic the page does, not by a pixel someone eyeballed.
     //
