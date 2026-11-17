@@ -352,6 +352,38 @@ int main(int argc, char* argv[])
         require(inner[1] > 120 && inner[0] < 60, "the focused child keeps its own background");
     }
 
+    // :focus-visible's text-entry clause: a control indicates focus even when the
+    // focus arrived by pointer, which for anything else is exactly when it does not.
+    // Both halves are asserted, and "magenta" is tested as magenta (green near zero),
+    // not as "not white" - white is (255,255,255), so a red-and-blue test matches it
+    // and the negative assertion silently becomes meaningless.
+    {
+        std::string html =
+            "<html><head><title>TE</title><style>body{margin:0}"
+            "#i:focus-visible{background:#ff00ff}"
+            "</style></head><body><input id='i' value='hello'></body></html>";
+
+        auto is_magenta = [](int const (&rgb)[3]) {
+            return rgb[0] > 200 && rgb[1] < 100 && rgb[2] > 200;
+        };
+
+        std::string directory = "/tmp/aetheris-text-entry-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto clicked = run_window(binary, html, "--click 60 42", 3, directory);
+        require(clicked.status == 0, "the text-entry click run exits cleanly");
+        int on_field[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 60, 34 + 8, on_field), "the field pixel is readable");
+        require(is_magenta(on_field), "a pointer-focused input matches :focus-visible (text-entry clause)");
+
+        directory = "/tmp/aetheris-text-entry-away-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto away = run_window(binary, html, "--click 600 300", 3, directory);
+        require(away.status == 0, "the click-away run exits cleanly");
+        int off_field[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 60, 34 + 8, off_field), "the control pixel is readable");
+        require(!is_magenta(off_field), "a pointer focus elsewhere does not match :focus-visible");
+    }
+
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");
     return 0;
 }
