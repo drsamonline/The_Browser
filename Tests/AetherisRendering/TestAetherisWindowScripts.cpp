@@ -832,6 +832,55 @@ int main(int argc, char* argv[])
                 "nth-child(2n) and nth-child(3n+1) stripe the list as written");
         }
 
+        // :is(), :where() and a list for :not(). Upstream matches all three over a selector list
+        // (Rust/src/css/style/component_matching.rs) and scores them as
+        // `greatest(arguments)` / zero / `greatest(arguments)` (selector_arena.rs).
+        //
+        // Two splitters had to learn about parentheses first: the rule parser split on every comma
+        // (`:is(#a, #b)` became `:is(#a` and `#b)`), and the combinator splitter read a space inside
+        // `:is(...)` as a descendant combinator. Both were found by these pixels.
+        auto stripe_page = [](std::string const& rule) {
+            std::string rows;
+            for (int index = 0; index < 6; ++index)
+                rows += "<div class='r' id='r" + std::to_string(index) + "'>r</div>";
+            return "<html><head><title>Is</title><style>body{margin:0}"
+                   "div.r{width:400px;height:10px;background:#00ff00}#r1{background:#0000ff}"
+                + rule + "</style></head><body>" + rows + "</body></html>";
+        };
+        struct IsCase {
+            char const* what;
+            std::string html;
+            int expected[6][3];
+        };
+        std::vector<IsCase> const is_cases {
+            // Row 2 is #r1's blue: every page carries that rule so the :where case has something
+            // to lose to, and :is(#r0, #r2, #r4) does not touch it.
+            { ":is(#r0, #r2, #r4) matches three rows",
+                stripe_page(":is(#r0, #r2, #r4){background:#ff00ff}"),
+                { { 255, 0, 255 }, { 0, 0, 255 }, { 255, 0, 255 }, { 0, 255, 0 }, { 255, 0, 255 }, { 0, 255, 0 } } },
+            { ":where() contributes no specificity, so it loses to both rules",
+                stripe_page(":where(.r){background:#ff00ff}"),
+                { { 0, 255, 0 }, { 0, 0, 255 }, { 0, 255, 0 }, { 0, 255, 0 }, { 0, 255, 0 }, { 0, 255, 0 } } },
+            { ":is() takes the greatest argument, so it ties with #r1 and wins on order",
+                stripe_page(":is(.r, #r1){background:#ff00ff}"),
+                { { 255, 0, 255 }, { 255, 0, 255 }, { 255, 0, 255 }, { 255, 0, 255 }, { 255, 0, 255 }, { 255, 0, 255 } } },
+            { ":not() takes a list and matches neither",
+                stripe_page("div:not(#r0, #r1){background:#ff00ff}"),
+                { { 0, 255, 0 }, { 0, 0, 255 }, { 255, 0, 255 }, { 255, 0, 255 }, { 255, 0, 255 }, { 255, 0, 255 } } },
+        };
+        for (auto const& is_case : is_cases) {
+            auto result = run_window(binary, is_case.html, "", 2, directory);
+            std::string const message = std::string("the :is run for ") + is_case.what + " exits cleanly";
+            require(result.status == 0, message.c_str());
+            for (int row = 0; row < 6; ++row) {
+                int rgb[3] = { 0, 0, 0 };
+                require(frame_pixel(directory, 200, 34 + row * 10 + 5, rgb), "an :is pixel is readable");
+                require(rgb[0] == is_case.expected[row][0] && rgb[1] == is_case.expected[row][1]
+                        && rgb[2] == is_case.expected[row][2],
+                    is_case.what);
+            }
+        }
+
         // `:not()` takes a compound, and a positional pseudo-class inside it still works.
         auto negated = run_window(binary,
             "<html><head><title>Not</title><style>body{margin:0}"
