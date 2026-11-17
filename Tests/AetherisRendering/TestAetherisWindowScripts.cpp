@@ -740,41 +740,66 @@ int main(int argc, char* argv[])
         require(is_magenta(sibling_pixel),
             "a descendant of the :focus-within ancestor restyled, so its subtree is too");
 
-        // The subtree rule is only needed when a rule can put `:focus-within` on an
-        // *ancestor*. A page whose only `:focus-within` rule styles the ancestor itself must
-        // not re-resolve 400 rows for a focus move.
+        // An ancestor's subtree is only dirtied when a rule can put `:focus-within` on *that*
+        // element. Asked sheet-wide, one `.card:focus-within .title` rule made every focus move
+        // in the document coarse; asked per element, it only affects the card.
+        //
+        // The title's base rule is `.title`, one class, so the `:focus-within` rule below wins
+        // on specificity. With `#card .title` as the base it would win instead, the rule would
+        // never apply, and this would have been a fixture that tested nothing.
         {
             std::string rows;
             for (int index = 0; index < 200; ++index)
                 rows += "<div class='r'>row " + std::to_string(index) + "</div>";
             std::string const page = "<html><head><title>State focus rows</title><style>body{margin:0}"
-                                     "#card{width:400px;height:200px;background:#0000ff}"
-                                     "#card:focus-within{background:#ff00ff}"
+                                     "#card{width:400px;height:100px;background:#0000ff}"
+                                     ".title{width:100px;height:20px;background:#00ff00}"
                                      "div.r{width:400px;height:3px;background:#00ff00}"
-                                     "input{width:200px;height:40px}";
-            auto narrow = run_window(binary,
-                page + "</style></head><body><div id='card'><input id='field'></div>" + rows
-                    + "</body></html>",
-                "--focus-key 100 60", 3);
-            require(narrow.status == 0, "the narrow focus run exits cleanly");
-            require(summary_count(narrow.output, ", layouts: ") == 1,
-                "a focus move on a 200-row page costs no layout");
-            int narrow_resolves = summary_count(narrow.output, ", resolves: ");
-            require(narrow_resolves > 0 && narrow_resolves < 40,
-                "without a descendant :focus-within rule, a focus move re-resolves a handful of nodes");
+                                     "input{display:block;width:100px;height:30px;margin:0}";
+            std::string const body = "</style></head><body><div id='card'><span class='title'>t</span>"
+                                     "<input id='inside'></div><input id='outside'>" + rows
+                + "</body></html>";
+            std::string const directory = "aetheris-focus-frames";
 
-            // The control: add the descendant rule and the same page must go coarse, or the
-            // assertion above would hold whether or not the sheet was ever consulted.
+            // A rule of that shape exists, but the focus is outside the card, so the card's
+            // subtree is not dirty - the sheet-wide answer would have dirtied the page.
+            std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+            auto outside = run_window(binary,
+                page + "#card:focus-within .title{background:#ff00ff}" + body,
+                "--focus-key 50 149", 3, directory);
+            require(outside.status == 0, "the focus-outside run exits cleanly");
+            require(summary_count(outside.output, ", layouts: ") == 1,
+                "a focus move on a 200-row page costs no layout");
+            int outside_resolves = summary_count(outside.output, ", resolves: ");
+            require(outside_resolves > 0 && outside_resolves < 40,
+                "a rule on another card's :focus-within does not make this focus move coarse");
+            int untouched[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 50, 34 + 10, untouched), "the title pixel is readable");
+            require(is_green(untouched), "a card that is not focus-within keeps its title");
+
+            // The same rule, focus inside the card: cheap, and the title must restyle.
+            std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+            auto inside = run_window(binary,
+                page + "#card:focus-within .title{background:#ff00ff}" + body,
+                "--focus-key 50 74", 3, directory);
+            require(inside.status == 0, "the focus-inside run exits cleanly");
+            int inside_resolves = summary_count(inside.output, ", resolves: ");
+            require(inside_resolves > 0 && inside_resolves < 40,
+                "the card the focus moved into is re-resolved, and the page is not");
+            int restyled[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 50, 34 + 10, restyled), "the restyled title pixel is readable");
+            require(is_magenta(restyled), "the descendant of the :focus-within card restyled");
+
+            // The control: a compound that matches a wide ancestor must go coarse, or the two
+            // assertions above would hold whether or not the sheet was ever consulted.
             auto coarse = run_window(binary,
-                page + "#card .title{width:400px;height:20px;background:#00ff00}"
-                       "#card:focus-within .title{background:#ffff00}</style></head>"
-                       "<body><div id='card'><span class='title'>t</span><input id='field'></div>" + rows
-                    + "</body></html>",
-                "--focus-key 100 60", 3);
+                page + "body:focus-within .title{background:#ff00ff}" + body,
+                "--focus-key 50 74", 3);
             require(coarse.status == 0, "the coarse focus run exits cleanly");
             int coarse_resolves = summary_count(coarse.output, ", resolves: ");
             require(coarse_resolves > 200,
-                "with a descendant :focus-within rule, a focus move re-resolves the page");
+                "a :focus-within rule on body re-resolves the page");
+            std::system(("rm -rf " + directory).c_str());
         }
 
         // `:active` is a separate branch of the same switch and must take the same path.
