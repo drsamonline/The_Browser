@@ -386,9 +386,32 @@ aetheris::js::Interpreter* g_js { nullptr };
 struct DomHost;
 DomHost* g_dom_host { nullptr };
 
+// Resolves an href against the page it was found on. Absolute stays absolute, a leading slash takes the
+// scheme and host, anything else replaces the last path segment. Not RFC 3986 - no dot-segment removal,
+// no query merging - which is enough for a link and stated here rather than implied.
+static std::string resolve_url(std::string const& base, std::string const& href)
+{
+    if (href.rfind("http://", 0) == 0 || href.rfind("https://", 0) == 0)
+        return href;
+    auto const scheme_end = base.find("://");
+    if (scheme_end == std::string::npos)
+        return href;
+    auto const host_end = base.find('/', scheme_end + 3);
+    std::string const origin = host_end == std::string::npos ? base : base.substr(0, host_end);
+    if (!href.empty() && href.front() == '/')
+        return origin + href;
+    auto const slash = base.find_last_of('/');
+    std::string const directory = slash == std::string::npos || slash < scheme_end + 3 ? origin + "/" : base.substr(0, slash + 1);
+    return directory + href;
+}
+
 // The page the window loop is currently driving. `getBoundingClientRect()` needs the layout tree and
 // has nothing but a handle to work from, so the loop publishes this the way it publishes the DOM host.
 rendering::RenderDocument const* g_current_page { nullptr };
+
+// The URL the current page was loaded from. `location.href` reads it and a relative href resolves
+// against it.
+std::string g_current_url;
 
 // `element.focus()` and `element.blur()` are called while a script is running, where the window loop's
 // document, interpreter and interaction state are not in scope. They record a request here and the loop
@@ -398,6 +421,12 @@ rendering::RenderDocument const* g_current_page { nullptr };
 // focus() and then blur() inside that window used to have the first request overwritten before the loop
 // performed it - the focus state moved for neither, and no focus event fired. Measured 2026-11-18.
 std::vector<rendering::DomNode*> g_focus_requests;
+
+// Navigation requested from script or from a click. The loop performs it, because the session and the
+// page-dirty flag live there. Empty means nothing pending; a reload request re-fetches the same URL.
+std::string g_navigation_request;
+bool g_navigation_pending { false };
+bool g_navigation_reload { false };
 
 struct DomHost {
     JSContext* context { nullptr };
@@ -2142,6 +2171,15 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     constexpr int kHeight = 768;
     int content_height = kHeight - kChromeHeight;
 
+    // `location` asks these two questions and nothing else.
+    aetheris::js::set_navigation_hooks(
+        [] { return g_current_url; },
+        [](std::string target, bool reload) {
+            g_navigation_request = reload || target.empty() ? g_current_url : resolve_url(g_current_url, target);
+            g_navigation_pending = true;
+            g_navigation_reload = reload;
+        });
+
     ui::BrowserSession session;
     if (!session.open(url)) {
         std::cerr << "Not a loadable URL: " << url << std::endl;
@@ -2184,16 +2222,11 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                 return false;
             }
             std::string body(loaded.resource->bytes.begin(), loaded.resource->bytes.end());
-            auto style = collect_page_style(body, session.current_url(), fetcher);
-            // Scripts run here, so a page that builds its content in JavaScript
-            // renders in the window instead of coming up blank.
-            cached_page.emplace(create_scripted_document(body, style.css, session.current_url(), nullptr,
-                page_js, page_dom, page_viewport_state, 0.0));
-            g_current_page = &*cached_page;
-            // localStorage is scoped to the origin. Upstream keeps one Storage per origin; the
-            // interpreter keeps the map and lives as long as the window, so a navigation keeps it.
+            // The URL and the storage origin are set BEFORE the page is built: its scripts run inside
+            // create_scripted_document(), so `location.href` and `localStorage` have to be right by then.
+            g_current_url = session.current_url();
             {
-                std::string origin = session.current_url();
+                std::string origin = g_current_url;
                 auto const scheme_end = origin.find("://");
                 if (scheme_end != std::string::npos) {
                     auto const host_end = origin.find('/', scheme_end + 3);
@@ -2201,7 +2234,13 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                 }
                 page_js.set_storage_origin(origin);
             }
-            session.set_page_title(document_title(cached_page->document().root()));
+            auto style = collect_page_style(body, session.current_url(), fetcher);
+            // Scripts run here, so a page that builds its content in JavaScript
+            // renders in the window instead of coming up blank.
+            cached_page.emplace(create_scripted_document(body, style.css, session.current_url(), nullptr,
+                page_js, page_dom, page_viewport_state, 0.0));
+            g_current_page = &*cached_page;
+session.set_page_title(document_title(cached_page->document().root()));
             session.set_loading(false);
 
             // The viewport can only scroll once it knows how tall the document
@@ -2342,6 +2381,20 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // A script asked for focus with element.focus() or element.blur(). It is performed here, where
         // the page, the interpreter and the interaction state are all in scope, so it goes through the
         // same path as a click or a Tab key.
+        // A navigation requested by script or by a click on a link. The interpreter is deliberately
+        // kept: it holds localStorage, and it lives as long as the window. That also means the old
+        // page's globals and listeners survive, which is a real limitation, not a design choice.
+        if (g_navigation_pending) {
+            g_navigation_pending = false;
+            std::string const target = g_navigation_request;
+            g_navigation_request.clear();
+            if (session.navigate(target)) {
+                page_dirty = true;
+                cached_page.reset();
+                need_render = true;
+            }
+        }
+
         if (!g_focus_requests.empty() && cached_page) {
             // In order: focus then blur leaves nothing focused, and both events fire on the way.
             for (auto* requested : g_focus_requests) {
@@ -2398,6 +2451,16 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             if (dispatch_click_at(*cached_page, page_js, page_dom, viewport,
                     static_cast<float>(click_x), static_cast<float>(click_y - kChromeHeight)))
                 need_render = true;
+
+            // A click on a link navigates, unless a handler called preventDefault(). The anchor may be
+            // above the node that was hit, which is why this walks up.
+            auto* link = click_target;
+            while (link && !(link->name == "a" && link->attribute("href")))
+                link = const_cast<rendering::DomNode*>(link->parent);
+            if (link && !page_js.last_event_prevented()) {
+                g_navigation_request = resolve_url(g_current_url, *link->attribute("href"));
+                g_navigation_pending = true;
+            }
         }
 
         // A key requested on the command line fires once, after the page is up.

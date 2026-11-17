@@ -25,6 +25,11 @@ struct ViewportMetrics {
 // interpreter: the public surface is the same idea — run a script, capture
 // console output, and let the host supply DOM bindings — but the language is
 // now real ES2025 rather than a subset.
+// The two things `location` needs from whoever owns the window: the current URL, and a request to go
+// somewhere. Kept as hooks so the JS module does not have to know about sessions, tabs or fetching.
+void set_navigation_hooks(std::function<std::string()> current_url,
+    std::function<void(std::string, bool reload)> request_navigation);
+
 class Interpreter {
 public:
     Interpreter();

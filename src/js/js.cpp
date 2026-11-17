@@ -592,6 +592,41 @@ static JSValue js_storage_key(JSContext* context, JSValueConst, int argc, JSValu
     return JS_NewString(context, it->first.c_str());
 }
 
+// The embedder's navigation behaviour. Set once, before any page is built.
+static std::function<std::string()> g_current_url;
+static std::function<void(std::string, bool)> g_request_navigation;
+
+void set_navigation_hooks(std::function<std::string()> current_url,
+    std::function<void(std::string, bool reload)> request_navigation)
+{
+    g_current_url = std::move(current_url);
+    g_request_navigation = std::move(request_navigation);
+}
+
+// `location`. Upstream's Location is a full URL record; this is href, assign and reload, which is what a
+// page or a harness needs to move between documents. The request goes to the embedder, which owns the
+// session and the page.
+static JSValue js_location_href_get(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    if (!g_current_url)
+        return JS_NewString(context, "");
+    return JS_NewString(context, g_current_url().c_str());
+}
+
+static JSValue js_location_href_set(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc >= 1 && g_request_navigation)
+        g_request_navigation(to_string(context, argv[0]), false);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_location_reload(JSContext*, JSValueConst, int, JSValueConst*)
+{
+    if (g_request_navigation)
+        g_request_navigation({}, true);
+    return JS_UNDEFINED;
+}
+
 void Interpreter::setup_globals()
 {
     g_active_interpreter = this;
@@ -646,6 +681,17 @@ void Interpreter::setup_globals()
     JS_DefinePropertyGetSet(m_context, storage, length_atom, getter, JS_UNDEFINED, 0);
     JS_FreeAtom(m_context, length_atom);
     JS_SetPropertyStr(m_context, global, "localStorage", storage);
+
+    // location
+    JSValue location = JS_NewObject(m_context);
+    define_function(m_context, location, "assign", js_location_href_set);
+    define_function(m_context, location, "reload", js_location_reload);
+    JSAtom href_atom = JS_NewAtom(m_context, "href");
+    JS_DefinePropertyGetSet(m_context, location, href_atom,
+        JS_NewCFunction(m_context, js_location_href_get, "href", 0),
+        JS_NewCFunction(m_context, js_location_href_set, "href", 1), 0);
+    JS_FreeAtom(m_context, href_atom);
+    JS_SetPropertyStr(m_context, global, "location", location);
 
     // window
     JSValue window = JS_NewObject(m_context);
