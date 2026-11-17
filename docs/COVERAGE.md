@@ -29,7 +29,7 @@ are at the bottom.
 | `:is()` `:where()` `:not(list)` `:has()` | done | `matches_simple()` |
 | `:checked` `:disabled` `:placeholder-shown` `:lang` `:dir` `:scope` | **absent** | no handling |
 | `::before` `::after` and other pseudo-elements | **absent** — no synthetic boxes | nothing in `layout.cpp` |
-| CSS custom properties `var()` | **absent** | no `var(` in parser or resolver |
+| CSS custom properties `var()` | done, 2026-11-17 — inherited, fallbacks, chains, cycle guard | `substitute_vars()` in `style.cpp` |
 | Media queries | done | `css_parser.cpp` |
 | `transform` (translate/scale) | done | paint pass |
 

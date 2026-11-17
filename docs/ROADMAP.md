@@ -128,9 +128,10 @@ claim, one understated blocker and one stale line:
 4. **CSS coverage**: complete `flex`/`grid`, pseudo-elements
    (`::before`/`::after` need layout-level synthetic boxes — upstream generates
    the pseudo-element's computed style beside the element's, `DOM/Element.cpp`),
-   `@font-face`, `position: sticky`, transitions/animations, and **CSS custom
-   properties (`var()`), which are absent and are the cheapest large page-compat
-   win on this list** — parser-level substitution, no layout work.
+   `@font-face`, `position: sticky`, transitions/animations.
+   **CSS custom properties (`var()`) are done as of 2026-11-17** — inherited by
+   prefix, collected before substitution, resolved at style time with a depth
+   limit for cycles.
    **Media queries, the structural pseudo-classes (`:first-child`,
    `:last-child`, `:only-child`, `:nth-child(n)`, `:empty`, `:root`,
    `-of-type`, `An+B`), `:is()`/`:where()`/`:has()`/`:not(list)` and `transform`

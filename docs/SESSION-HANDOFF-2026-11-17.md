@@ -726,3 +726,39 @@ syntax that treats the inside of parentheses as flat.** Worth assuming there is 
 3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
 4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
    callers note the child-list change. A new caller that forgets to will leave the page stale.
+
+### Twenty-first item: custom properties and `var()` — the first item of the reviewed plan
+
+The roadmap review put this first: parser-level, no layout work, the largest page-compat win per line. Upstream
+(`Rust/src/css/custom_properties.rs`, `resolve_vars`) resolves against an inherited store with a substitution
+context for cycles; this is the same shape with the ordinary property map, a prefix copy for inheritance and a
+depth limit for cycles.
+
+| case | result |
+| --- | --- |
+| `:root{--c}` → `var(--c)` | magenta |
+| `var(--missing, #00ff00)` | green (fallback) |
+| `--b: var(--a)` chain | magenta |
+| `style="background:var(--c)"` | magenta |
+| `var()` read two elements up | magenta |
+| `--a: var(--b); --b: var(--a)` | exits 0, no substitution, no hang |
+
+**Three orderings, each wrong on the first attempt** — and they are the whole item:
+
+1. Custom properties inherit — `inherit_from()` copied a fixed list of named properties, so `--*` had to be
+   added by prefix.
+2. They are collected in their own pass — `:root{--c}` outranks `div{background:var(--c)}`, so a single pass
+   substitutes the div before the variable is set.
+3. They are inherited **before** the cascade — full inheritance runs at the end of `resolve()`, which is too
+   late for substitution.
+
+The first measurement said `(0,0,0)` on the `:root` case while the *fallback* case worked, which located the
+problem in the lookup rather than the parser in one step: the fallback path never touches the store.
+
+### Next, from here
+
+1. The rest of the reviewed tier 1: sibling combinators with sibling invalidation, `[a=v i]`, the form-state
+   pseudo-classes (`:checked`, `:disabled`, `:placeholder-shown`) — one parser+resolver cycle.
+2. The coverage corpus (`docs/COVERAGE.md` has the commands) — blocked here, no open internet.
+3. Font API: glyph ids and per-glyph advances before any rasteriser wiring.
+4. Family P0 builds on a machine with dev packages.
