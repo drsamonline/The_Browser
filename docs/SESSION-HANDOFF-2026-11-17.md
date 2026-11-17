@@ -653,3 +653,41 @@ invalidation contract (one attribute choke point, six writers fixed), and the ve
 3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
 4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
    callers note the child-list change. A new caller that forgets to will leave the page stale.
+
+### Nineteenth item: `:is()`, `:where()`, list `:not()` — and two splitters that were not paren-aware
+
+The sandbox recycled between sessions; the tree was re-cloned at `235f8956` and rebuilt from the recipe in
+`START-PROMPT.md`, baseline 59/59 confirmed before any edit.
+
+Upstream (`Rust/src/css/style/component_matching.rs`) matches all three over a **selector list**, and
+`selector_arena.rs` scores them: `Is | Not => greatest(arguments)`, `Where => zero`, else one class.
+
+| rule | rows coloured, six-row list |
+| --- | --- |
+| `:is(#r0, #r2, #r4)` | 1, 3, 5 |
+| `:where(.r)` | none — zero specificity loses to `div.r` and `#r1` |
+| `:is(.r, #r1)` | all six — 1 id, ties with `#r1`, wins on order |
+| `div:not(#r0, #r1)` | 3, 4, 5, 6 |
+| `#box :is(#r2, #r3)` | 3, 4 |
+
+**Two splitters had to learn about parentheses, and the first one is the more dangerous kind of bug.**
+
+- The rule parser split selectors on *every* comma token. `:is(#r0, #r2, #r4)` became `:is(#r0`, ` #r2` and
+  ` #r4)` — and ` #r2` is a valid bare id selector, so it *matched*. A wrong rule that quietly works on one
+  row is worse than one that fails: the pixel showed only the middle row magenta, which looks like a partially
+  working feature.
+- The combinator splitter read the space inside `:is(...)` as a descendant combinator, so after the first fix
+  the selector became a descendant chain and matched nothing at all.
+
+Both were found by reading pixels before writing assertions, which is the only reason the first one did not
+ship as "`:is` mostly works".
+
+### Next, from here
+
+1. `:has(...)` — a child's change restyling an ancestor. The dirty sets already include ancestors of any
+   mutation, so `:has(> .x)` and `:has(.x)` may need no invalidation change; `:has(+ .x)` cannot match until
+   sibling combinators exist. Read `invalidate_style_after_pseudo_class_state_change` first.
+2. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
+3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
+   callers note the child-list change. A new caller that forgets to will leave the page stale.
