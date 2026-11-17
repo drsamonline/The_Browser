@@ -60,7 +60,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; a click focuses and keys reach the focused element then bubble to document; repeating timers tick once per frame. `keyup`, `mouseleave`, `keyup` and tab order are still missing |
+| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; a click focuses and keys reach the focused element then bubble to document; repeating timers tick once per frame. `keyup`, `mouseleave`, tab order is still missing |
 | Page load | One path: `create_scripted_document`. `--render` passes a negative timer budget to drain the queue; `--window` passes 0 and ticks per frame |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |

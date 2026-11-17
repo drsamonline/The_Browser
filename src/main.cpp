@@ -1719,10 +1719,19 @@ static void dispatch_key_to_focus(aetheris::js::Interpreter& js, DomHost& dom,
         // EventHandler does and what a page listening on document expects.
         dispatch_bubbling(js, dom, focused, "keydown");
         js.dispatch_event("keydown");
+        // The key coming back up takes the same path, as upstream's
+        // EventHandler::handle_keyup does through fire_keyboard_event.
+        dispatch_bubbling(js, dom, focused, "keyup");
+        js.dispatch_event("keyup");
         js.set_event_key({});
         return;
     }
-    js.dispatch_key(key);
+    // Set the key around both events: dispatch_key() clears it after its keydown,
+    // which is why the first attempt logged `keyup undefined`.
+    js.set_event_key(key);
+    js.dispatch_event("keydown");
+    js.dispatch_event("keyup");
+    js.set_event_key({});
 }
 
 // Applies a pressed element to the cascade, so `:active` styling shows while the
