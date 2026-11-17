@@ -28,9 +28,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | Row | Item | Status | Proof / blocker |
 | --- | --- | --- | --- |
 | 1a | Custom properties and `var()` | `[x]` | `a64cf097`; 6 cases in `TestAetherisWindowScripts` (`e6694100`) |
-| 1b | Sibling combinators `+` `~`, with sibling invalidation | `[ ]` | — |
-| 1c | `[a=v i]` case flag | `[ ]` | — |
-| 1d | `:checked`, `:disabled`, `:placeholder-shown` | `[ ]` | — |
+| 1b | Sibling combinators `+` `~`, with sibling invalidation | `[x]` | `dd310ca3`; 2 stripe pages + `uses_sibling_sequence()` |
+| 1c | `[a=v i]` case flag | `[x]` | `dd310ca3`; both directions and the case-sensitive default |
+| 1d | `:checked`, `:disabled`, `:placeholder-shown` | `[x]` | `dd310ca3`; 4 borderless controls, one per state |
 | 1e | `localStorage` / `sessionStorage` | `[ ]` | — |
 | 1f | `focus()`, `blur()`, `getBoundingClientRect()` | `[ ]` | — |
 
@@ -83,11 +83,19 @@ Recorded so the same ground is not re-covered. Detail in `SESSION-HANDOFF-2026-1
 | Verification | reftest matrix (11 shapes); honest `layout nodes:`; 3 false-green controls replaced | found a SIGSEGV and a missing `:empty` |
 | Docs | `ROADMAP.md` claims corrected; `COVERAGE.md` added; `START-PROMPT.md` rewritten | `e10caf02`, `235f8956` |
 
+## Closed — 2026-11-18
+
+| Row | What | Proof |
+| --- | --- | --- |
+| 1b | `+` and `~`, with sibling invalidation on both a state change and a child-list change | `dd310ca3`, `43b7ff4a` |
+| 1c | `[a=v i]`, which also found the fourth nested-syntax scanner (brackets) | `dd310ca3` |
+| 1d | `:checked`, `:disabled`, `:placeholder-shown` | `dd310ca3` |
+
 ## Open defects
 
 | Defect | State | Where |
 | --- | --- | --- |
-| 4th nested-syntax bug (parens treated as flat) | suspected, 3 found so far | `specificity()`, `split_selector_list()` |
+| 4th nested-syntax bug — **found**, brackets as well as parentheses | fixed in 4 scanners; `specificity()` is the one left unchecked | `dd310ca3` |
 | `of S` argument in `:nth-child(2n of .x)` | not built | `style.cpp` |
 | `register_subtree`/`purge_subtree` callers must note the child-list change | sharp edge | `main.cpp` |
 | `DocumentRuntime::set_attribute` keeps its own `mark_dirty` contract | unaudited | `document_runtime.cpp` |

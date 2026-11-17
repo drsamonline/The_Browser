@@ -19,15 +19,16 @@ are at the bottom.
 | HTML5 parsing (gumbo) | done | `third_party/gumbo` |
 | CSS cascade, specificity | done, incl. `:is`/`:not` greatest-argument and `:where` zero | `src/rendering/style.cpp` |
 | Compound, descendant and child selectors | done | `matches()` in `style.cpp` |
-| Sibling combinators `+` `~` | **absent** — match nothing, silently | `style.cpp` splits on whitespace and `>` only |
+| Sibling combinators `+` `~` | done, 2026-11-18 | `matches()` walks previous element siblings |
 | Attribute selectors (6 forms) | done | `style.cpp` |
-| `[a=v i]` case flag | **absent** | no `i` handling |
+| `[a=v i]` case flag | done, 2026-11-18 | `AttributeRequirement::insensitive` |
 | `:hover` `:focus` `:active` `:focus-visible` `:focus-within` | done | `visual_state.hpp`, `style.cpp` |
 | `:first-child` `:last-child` `:only-child` `:nth-child(n)` + An+B | done | `matches_structural_pseudo()` |
 | `:nth-last-child`, `-of-type` family | done | same |
 | `:empty`, `:root` | done | same |
 | `:is()` `:where()` `:not(list)` `:has()` | done | `matches_simple()` |
-| `:checked` `:disabled` `:placeholder-shown` `:lang` `:dir` `:scope` | **absent** | no handling |
+| `:checked` `:disabled` `:enabled` `:placeholder-shown` | done, 2026-11-18 | attribute facts in `matches_simple()` |
+| `:lang` `:dir` `:scope` | **absent** | no handling |
 | `::before` `::after` and other pseudo-elements | **absent** — no synthetic boxes | nothing in `layout.cpp` |
 | CSS custom properties `var()` | done, 2026-11-17 — inherited, fallbacks, chains, cycle guard | `substitute_vars()` in `style.cpp` |
 | Media queries | done | `css_parser.cpp` |
