@@ -67,7 +67,8 @@ All credited in `CREDITS.md`.
 | ~~`:focus-within` with Tab~~ | **Verified 2026-11-17**: an ancestor matches when a child is Tab-focused, asserted by pixel in `AetherisWindowScripts`. |
 | `activeElement` during load | Falls back to `body` as upstream does, but only from the first frame after load. Inline scripts that run while the page is being built see `null`, because the window has no page to ask yet. |
 | Form controls | Render as bordered boxes now (`input`/`textarea`/`select`/`button`), but they are not interactive: no value editing, no caret, no click-to-type. Their width comes from `min-width: 8em`; an input appears to fill its line, which makes hit-testing ambiguous. |
-| `:focus-visible` text-entry branch | **Still unproven.** Clicking an input paints it magenta, but so does clicking far from it — the input appears to span the line, so the control case cannot discriminate. Needs a fixed-width input before the branch can be tested. |
+| Test harness vs CLI | `AetherisWindowScripts` and the same page driven from the CLI disagree on whether a click away from a field leaves it `:focus-visible` (CLI: no; harness: yes). Cause unknown; the test case was reverted rather than shipped unexplained. Prime suspect: how `run_window` in the test feeds the page (string vs served URL). |
+| `:focus-visible` text-entry branch | **Proven from the CLI, not in a test.** With `width: 12em` the pair discriminates from the CLI: clicking the field paints it magenta (pointer focus, so only the text-entry clause can match), clicking away leaves it white. The equivalent assertions do not pass inside the test harness, for the reason in the row above. |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
 | Scrollbar drag | A click on the track scrolls to that point; dragging the thumb is not implemented |

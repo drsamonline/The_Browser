@@ -78,7 +78,10 @@ input, textarea, select, button {
     padding: 1px 3px;
     background-color: #ffffff;
     color: #000000;
-    min-width: 8em;
+    /* A fixed width, not a minimum: an inline-block with no intrinsic width fills
+     * the line here, which makes a click anywhere hit the control and makes hit
+     * testing impossible to test. Upstream sizes a field from its size attribute. */
+    width: 12em;
     min-height: 1.2em;
 }
 button, select, input[type=submit], input[type=button], input[type=reset] {
