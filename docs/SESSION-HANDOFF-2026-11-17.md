@@ -616,9 +616,39 @@ frame — the worst kind here. A page using `:first-of-type` would have gone sta
 
 Guard: a 200-row page with `div.r:first-of-type` in its sheet re-resolves 405 nodes on an append, not 5.
 
+### Eighteenth item: An+B, which is what `:nth-child(2n)` is for
+
+Upstream's predicate is four lines (`Rust/src/css/style/selector.rs`):
+
+    if step == 0 { return index == offset }
+    let difference = index - offset;
+    difference % step == 0 && difference / step >= 0
+
+`difference / step >= 0` is what makes a negative step work: `-n+3` matches the first three and nothing after.
+Ported with the microsyntax the arguments need — `odd`, `even`, an integer, `n`, `-n`, `2n`, `2n+1`, `-n+3`,
+`+3n-2` — and anything else returns no match rather than a wrong one, which is what every form did before.
+
+| rule | rows it colours (six-row list) |
+| --- | --- |
+| `nth-child(2n)` | 2, 4, 6 |
+| `nth-child(odd)` | 1, 3, 5 |
+| `nth-child(-n+2)` | 1, 2 |
+| `nth-child(3n+1)` | 1, 4 |
+
+Read off the pixels in cascade order. The zebra-stripe case is in the window test: `2n` and `3n+1` over six
+rows, six pixels, and no row would have matched either rule before this.
+
+### Where the session stands
+
+47 commits between `966ab44c` and here, in four groups: incremental layout (skip, then per-node reuse, then the
+key comparison), style invalidation (across state changes, per element, for structural changes), the DOM layer's
+invalidation contract (one attribute choke point, six writers fixed), and the verification that found most of it
+(the reftest matrix, which found a use-after-free).
+
 ### Next, from here
 
-1. `An+b` notation (`:nth-child(2n+1)`) is not parsed: a page using it gets no match rather than a wrong one.
+1. `:is`, `:where`, `:has` — each needs a selector-list argument; `:has` needs invalidation in the other
+   direction (a child's change restyling an ancestor).
 2. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
 3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
 4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
