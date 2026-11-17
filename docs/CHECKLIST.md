@@ -32,7 +32,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1c | `[a=v i]` case flag | `[x]` | `dd310ca3`; both directions and the case-sensitive default |
 | 1d | `:checked`, `:disabled`, `:placeholder-shown` | `[x]` | `dd310ca3`; 4 borderless controls, one per state |
 | 1e | `localStorage` / `sessionStorage` | `[ ]` | — |
-| 1f | `focus()`, `blur()`, `getBoundingClientRect()` | `[ ]` | — |
+| 1f | `getBoundingClientRect()` | `[x]` | `+` the commit before this one; page asserts its own numbers |
+| 1f2 | `focus()`, `blur()` | `[ ]` | needs the interaction state published the way `g_current_page` now is |
 
 ## Tier 2 — fonts and text (the largest visual gap)
 
@@ -95,7 +96,9 @@ Recorded so the same ground is not re-covered. Detail in `SESSION-HANDOFF-2026-1
 
 | Defect | State | Where |
 | --- | --- | --- |
-| 4th nested-syntax bug — **found**, brackets as well as parentheses | fixed in 4 scanners; `specificity()` is the one left unchecked | `dd310ca3` |
+| 4th nested-syntax bug — brackets as well as parentheses | fixed in 4 scanners | `dd310ca3` |
+| `specificity()` was the last scanner without a depth notion | **checked, correct**: brackets are consumed in one gulp and parens by the `:is`/`:not` branch | probe, 2026-11-18 |
+| `specificity()` with nested parens (`:is(:not(.a))`) | mis-scores: it takes the first `)` | not fixed, rare |
 | `of S` argument in `:nth-child(2n of .x)` | not built | `style.cpp` |
 | `register_subtree`/`purge_subtree` callers must note the child-list change | sharp edge | `main.cpp` |
 | `DocumentRuntime::set_attribute` keeps its own `mark_dirty` contract | unaudited | `document_runtime.cpp` |
