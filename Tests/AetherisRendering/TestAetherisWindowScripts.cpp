@@ -820,22 +820,47 @@ int main(int argc, char* argv[])
         require(summary_count(positional.output, ", resolves: ") > 200,
             "a positional selector makes a structural change re-resolve the child sequence");
 
-        // The correctness control for the narrow path: `:empty` is the parent's own state, so the
-        // parent is dirtied even when no sibling can see the change.
+        // `:empty` is the parent's own state, so the parent is dirtied even when no sibling can
+        // see the change. Three runs, because one direction cannot fail: an empty box must be blue
+        // (the :empty rule), and appending or removing a child must turn it magenta and back.
+        //
+        // The first version of this assertion only checked the append and expected magenta - which
+        // passed for two items' worth of commits while `:empty` was not implemented at all, because
+        // the base colour was magenta too. A control that cannot come out the other way is not one.
         std::string const directory = "aetheris-structural-frames";
-        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
-        auto empty_state = run_window(binary,
-            "<html><head><title>Empty</title><style>body{margin:0}"
-            "#box{width:400px;height:100px;background:#ff00ff}#box:empty{background:#0000ff}"
-            "</style></head><body><div id='box'></div><script>"
-            "setTimeout(function () { var d = document.createElement('span'); d.textContent = 'x';"
-            "document.getElementById('box').appendChild(d); }, 5);</script></body></html>",
-            "", 2, directory);
-        require(empty_state.status == 0, "the :empty run exits cleanly");
-        int box_pixel[3] = { 0, 0, 0 };
-        require(frame_pixel(directory, 200, 34 + 50, box_pixel), "the :empty pixel is readable");
-        require(is_magenta(box_pixel),
-            "appending a child restyles the parent, so :empty stopped matching");
+        std::string const empty_page = "<html><head><title>Empty</title><style>body{margin:0}"
+                                        "#box{width:400px;height:100px;background:#ff00ff}"
+                                        "#box:empty{background:#0000ff}</style></head><body>";
+        struct EmptyCase {
+            char const* what;
+            std::string html;
+            bool expect_blue;
+        };
+        std::vector<EmptyCase> const cases {
+            { "an empty box matches :empty",
+                empty_page + "<div id='box'></div></body></html>", true },
+            { "appending a child stops :empty matching",
+                empty_page + "<div id='box'></div><script>setTimeout(function () {"
+                       "var d = document.createElement('span'); d.textContent = 'x';"
+                       "document.getElementById('box').appendChild(d); }, 5);</script></body></html>",
+                false },
+            { "removing the only child matches :empty again",
+                empty_page + "<div id='box'><span id='sp'>s</span></div><script>setTimeout(function () {"
+                       "document.getElementById('sp').remove(); }, 5);</script></body></html>",
+                true },
+        };
+        for (auto const& empty_case : cases) {
+            std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+            auto result = run_window(binary, empty_case.html, "", 2, directory);
+            std::string const message = std::string("the :empty run for ") + empty_case.what + " exits cleanly";
+            require(result.status == 0, message.c_str());
+            int box_pixel[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 200, 34 + 50, box_pixel), "the :empty pixel is readable");
+            if (empty_case.expect_blue)
+                require(is_blue(box_pixel), empty_case.what);
+            else
+                require(is_magenta(box_pixel), empty_case.what);
+        }
         std::system(("rm -rf " + directory).c_str());
     }
 
