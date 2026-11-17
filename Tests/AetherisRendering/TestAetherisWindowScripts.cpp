@@ -779,6 +779,66 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // A structural change invalidates the child sequence it changed, not the document. Upstream
+    // records a tree delta for the departed or arrived sequence (StyleEngineInput.cpp); this is
+    // the same set, and when the sheet has no positional selector it is the parent alone.
+    {
+        std::string rows;
+        for (int index = 0; index < 200; ++index)
+            rows += "<div class='r' id='r" + std::to_string(index) + "'>row " + std::to_string(index) + "</div>";
+        std::string const page = "<html><head><title>Structural cost</title><style>body{margin:0}"
+                                 "div.r{width:400px;height:3px;background:#00ff00}"
+                                 "#r150{background:#0000ff}"
+                                 "span{background:#ff00ff}";
+        std::string const append = "<script>setTimeout(function () { var d = document.createElement('span');"
+                                   "d.textContent = 'x'; document.getElementById('r150').appendChild(d); }, 5);"
+                                   "</script></body></html>";
+
+        // Appending inside one row of 200: the parent's subtree is what can see it.
+        auto deep = run_window(binary, page + "</style></head><body>" + rows + append, "", 2);
+        require(deep.status == 0, "the deep append run exits cleanly");
+        int deep_resolves = summary_count(deep.output, ", resolves: ");
+        require(deep_resolves > 0 && deep_resolves < 40,
+            "appending inside one row of 200 re-resolves a handful of nodes, not the page");
+
+        // Appending to body with no positional selector in the sheet: only the parent can restyle,
+        // and the new child has no cache entry to reuse.
+        std::string const append_to_body = "<script>setTimeout(function () { var d = document.createElement('div');"
+                                           "d.textContent = 'new'; document.body.appendChild(d); }, 5);"
+                                           "</script></body></html>";
+        auto body_append = run_window(binary, page + "</style></head><body>" + rows + append_to_body, "", 2);
+        require(body_append.status == 0, "the body append run exits cleanly");
+        int body_resolves = summary_count(body_append.output, ", resolves: ");
+        require(body_resolves > 0 && body_resolves < 40,
+            "appending to body re-resolves the parent and the new node, not the 200 rows");
+
+        // The control: one positional selector in the sheet and the same append must go coarse,
+        // because :first-child can restyle any row when the sequence changes.
+        auto positional = run_window(binary,
+            page + "div.r:first-child{background:#ffff00}</style></head><body>" + rows + append_to_body, "", 2);
+        require(positional.status == 0, "the positional run exits cleanly");
+        require(summary_count(positional.output, ", resolves: ") > 200,
+            "a positional selector makes a structural change re-resolve the child sequence");
+
+        // The correctness control for the narrow path: `:empty` is the parent's own state, so the
+        // parent is dirtied even when no sibling can see the change.
+        std::string const directory = "aetheris-structural-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto empty_state = run_window(binary,
+            "<html><head><title>Empty</title><style>body{margin:0}"
+            "#box{width:400px;height:100px;background:#ff00ff}#box:empty{background:#0000ff}"
+            "</style></head><body><div id='box'></div><script>"
+            "setTimeout(function () { var d = document.createElement('span'); d.textContent = 'x';"
+            "document.getElementById('box').appendChild(d); }, 5);</script></body></html>",
+            "", 2, directory);
+        require(empty_state.status == 0, "the :empty run exits cleanly");
+        int box_pixel[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 50, box_pixel), "the :empty pixel is readable");
+        require(is_magenta(box_pixel),
+            "appending a child restyles the parent, so :empty stopped matching");
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // A click is not a layout. dispatch_click_at() used to call relayout() unconditionally, and
     // relayout() with no mutation on record is a structural change to it: the style cache was
     // cleared and the whole page laid out. On a 405-node page that was 407 resolves and 405 nodes
