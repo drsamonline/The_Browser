@@ -478,11 +478,37 @@ was a use-after-free. Asserting what I expect would never have reached it.
 span had no class and the case failed for the wrong reason; `setAttribute` fixed it. And the failure message
 had to name the case before it was worth reading, which is why `require` now gets a built string.
 
+### Thirteenth item: classList was writing to the DOM and telling nobody
+
+Upstream first: `DOM/Element.idl` has `[CEReactions, Reflect=class] attribute DOMString className` — a
+reflected attribute, the `class` content attribute read and written, nothing more.
+
+Looking for where to add it turned up something worse. `write_classes()` — the single place `classList`
+writes — set `node->attributes["class"]` directly and noted **no mutation at all**. So `classList.add('on')`
+on a page with `#a.on{background:...}` wrote the attribute, invalidated nothing, and left the frame blue.
+
+| page | before | after |
+| --- | --- | --- |
+| `classList.add('on')` | relayouts 0, pixel blue | relayouts 1, layouts 1, pixel magenta |
+| `className = 'on'` | relayouts 0, pixel blue | relayouts 1, layouts 1, pixel magenta |
+
+Both now go through `set_class_attribute()`, which writes the attribute and notes it in the order
+`js_set_attribute` uses — the node-scoped note first, because it clears the recorded attribute name.
+`className` is a reflected accessor now, absent reading as `""`.
+
+Both are in the reftest matrix, mutated against baked. That is the second bug in two items that the reference
+comparison caught and an expectation would not have: I had no reason to suspect either.
+
+**A third specificity trap, on the way.** My first `className` fixture used `#a{background:#0000ff}` against
+`.on{background:#ff00ff}` — 10000 against 100 — so the rule never applied and the fix looked broken. Same trap
+as the `body:focus-within .title` fixture earlier. The lesson has been written down twice and I walked into it
+again; the tell is always a relayout count that is right and a pixel that is not.
+
 ### Next, from here
 
-1. `className` is not implemented (only `classList`), so `el.className = 'x'` silently does nothing to the
-   DOM. Common enough to be worth adding.
-2. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
-3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
-4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
+1. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
+2. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+3. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
    callers note the child-list change. A new caller that forgets to will leave the page stale.
+4. Every DOM API that writes an attribute must note it, as `set_class_attribute()` does. `set_control_value()`
+   and the `value`/`checked` setters are worth an audit with this in mind.
