@@ -37,7 +37,8 @@ struct RunResult {
 // listener is shut down, never on an idle timeout: a loaded machine must not be
 // able to lose it mid-run.
 static RunResult run_window(std::string const& binary, std::string const& page,
-    std::string const& extra_arguments, int frames = 2, std::string const& frame_directory = {})
+    std::string const& extra_arguments, int frames = 2, std::string const& frame_directory = {},
+    std::string const& second_page = {})
 {
     int listener = ::socket(AF_INET, SOCK_STREAM, 0);
     require(listener >= 0, "listener socket");
@@ -53,16 +54,21 @@ static RunResult run_window(std::string const& binary, std::string const& page,
     require(::getsockname(listener, reinterpret_cast<struct sockaddr*>(&address), &length) == 0, "getsockname");
     uint16_t port = ntohs(address.sin_port);
 
-    std::thread server([listener, page]() {
+    std::thread server([listener, page, second_page]() {
         for (;;) {
             int connection = ::accept(listener, nullptr, nullptr);
             if (connection < 0)
                 break;
             char buffer[4096];
-            ::recv(connection, buffer, sizeof(buffer), 0);
+            auto received = ::recv(connection, buffer, sizeof(buffer), 0);
+            // A second document, served for any path containing "/b", so a navigation can be tested.
+            // The request line is "GET /b HTTP/1.1", and the body is chosen before the headers are sized.
+            std::string request(buffer, received > 0 ? static_cast<std::size_t>(received) : 0);
+            bool const wants_second = !second_page.empty() && request.find(" /b") != std::string::npos;
+            std::string const& body = wants_second ? second_page : page;
             std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n";
-            response += "Content-Length: " + std::to_string(page.size()) + "\r\nConnection: close\r\n\r\n";
-            response += page;
+            response += "Content-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
+            response += body;
             ::send(connection, response.data(), response.size(), 0);
             ::close(connection);
         }
@@ -816,6 +822,29 @@ int main(int argc, char* argv[])
         require(frame_pixel(directory, 50, 34 + 5, after), "the blurred control is readable");
         require(is_green(after), "element.blur() clears the focus state");
         std::system(("rm -rf " + directory).c_str());
+    }
+
+    // Navigation, and the cross-load localStorage persistence that depends on it. A click on a link
+    // navigates; the interpreter survives the navigation, so the store does too. This is the proof row
+    // 1e2 was waiting for, and it needs two documents, which is why run_window() grew a second one.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Nav A</title><style>body{margin:0}"
+            "a{display:block;width:400px;height:40px;background:#0000ff}"
+            "</style></head><body><a href='/b'>go</a><script>"
+            "localStorage.setItem('k', 'clicked');"
+            "console.log('MARK A href ' + (location.href.indexOf('127.0.0.1') !== -1));"
+            "</script></body></html>",
+            "--click 200,54", 5, {}, 
+            "<html><head><title>Nav B</title><style>body{margin:0}</style></head><body><script>"
+            "console.log('MARK B href ' + location.href.slice(-2));"
+            "console.log('MARK B read ' + localStorage.getItem('k'));"
+            "</script></body></html>");
+        require(result.status == 0, "the navigation run exits cleanly");
+        require(result.output.find("MARK A href true") != std::string::npos, "location.href is the page's own URL");
+        require(result.output.find("MARK B href /b") != std::string::npos, "a click on a link navigates");
+        require(result.output.find("MARK B read clicked") != std::string::npos,
+            "localStorage survives the navigation, which is what makes it storage");
     }
 
     // localStorage, the Storage interface upstream declares in HTML/Storage.idl: length, key(index),
