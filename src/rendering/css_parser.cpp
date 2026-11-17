@@ -126,17 +126,25 @@ void CssParser::parse_block(std::vector<CssToken> const& tokens, size_t& positio
         std::vector<std::string> selectors;
         std::string selector;
         bool found_open_brace = false;
+        // A comma inside parentheses is part of one selector, not a list separator:
+        // `:is(#a, #b)` was split into `:is(#a` and `#b)` and `#b)`, which then matched as a bare
+        // id selector. Depth is tracked rather than assumed, because `:not(:is(.a, .b))` nests.
+        int depth = 0;
 
         while (position < tokens.size() && tokens[position].type != CssTokenType::EndOfFile) {
             auto const& token = tokens[position++];
-            if (token.type == CssTokenType::OpenBrace) {
+            if (token.type == CssTokenType::OpenBrace && depth == 0) {
                 auto trimmed = trim(selector);
                 if (!trimmed.empty())
                     selectors.push_back(std::move(trimmed));
                 found_open_brace = true;
                 break;
             }
-            if (token.type == CssTokenType::Comma) {
+            if (token.type == CssTokenType::OpenParen)
+                ++depth;
+            else if (token.type == CssTokenType::CloseParen && depth > 0)
+                --depth;
+            if (token.type == CssTokenType::Comma && depth == 0) {
                 auto trimmed = trim(selector);
                 if (!trimmed.empty())
                     selectors.push_back(std::move(trimmed));

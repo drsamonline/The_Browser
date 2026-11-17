@@ -35,6 +35,35 @@ bool element_position(DomNode const& node, int& index, int& count, int& type_ind
     return index > 0;
 }
 
+// Splits a selector list on top-level commas, so `:is(.a, .b:not(.c, .d))` keeps its nesting.
+std::vector<std::string> split_selector_list(std::string const& list)
+{
+    std::vector<std::string> parts;
+    std::string current;
+    int depth = 0;
+    for (char c : list) {
+        if (c == '(') {
+            ++depth;
+        } else if (c == ')') {
+            --depth;
+        } else if (c == ',' && depth == 0) {
+            parts.push_back(current);
+            current.clear();
+            continue;
+        }
+        current += c;
+    }
+    if (!current.empty())
+        parts.push_back(current);
+    for (auto& part : parts) {
+        auto begin = part.find_first_not_of(" \t\r\n");
+        auto end = part.find_last_not_of(" \t\r\n");
+        part = begin == std::string::npos ? std::string() : part.substr(begin, end - begin + 1);
+    }
+    parts.erase(std::remove(parts.begin(), parts.end(), std::string()), parts.end());
+    return parts;
+}
+
 // The An+B microsyntax, as far as `:nth-child()` and its siblings need it: `odd`, `even`, a plain
 // integer, `n`, `-n`, `2n`, `2n+1`, `-n+3`, `+3n-2`. Returns false for anything else, so a page
 // using a form this does not understand gets no match rather than a wrong one.
@@ -314,9 +343,23 @@ bool StyleResolver::matches(DomNode const& node, std::string const& selector, Vi
 {
     // Fast path: a selector with no combinators (the common case: "div",
     // ".note", "#app") is a single compound and needs no splitting/allocation.
+    // Parentheses hold their own selectors (`:is(.a, .b)`), and a space inside one is part of the
+    // argument, not a descendant combinator. Depth is tracked here and in the splitter below;
+    // without it `:is(#a, #b)` was read as a descendant chain and matched nothing.
+    auto depth_at = [&selector](std::size_t index) {
+        int depth = 0;
+        for (std::size_t i = 0; i < index && i < selector.size(); ++i) {
+            if (selector[i] == '(')
+                ++depth;
+            else if (selector[i] == ')' && depth > 0)
+                --depth;
+        }
+        return depth;
+    };
     bool has_combinator = false;
-    for (char c : selector) {
-        if (c == '>' || std::isspace(static_cast<unsigned char>(c))) {
+    for (std::size_t index = 0; index < selector.size(); ++index) {
+        char const c = selector[index];
+        if ((c == '>' || std::isspace(static_cast<unsigned char>(c))) && depth_at(index) == 0) {
             has_combinator = true;
             break;
         }
@@ -344,7 +387,26 @@ bool StyleResolver::matches(DomNode const& node, std::string const& selector, Vi
         }
     };
 
+    int depth = 0;
     for (char c : selector) {
+        if (c == '(') {
+            ++depth;
+            current += c;
+            have_part = true;
+            continue;
+        }
+        if (c == ')') {
+            if (depth > 0)
+                --depth;
+            current += c;
+            have_part = true;
+            continue;
+        }
+        if (depth > 0) {
+            current += c;
+            have_part = true;
+            continue;
+        }
         if (c == '>') {
             flush();
             pending = '>';
@@ -595,16 +657,34 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
                 return false;
             continue;
         }
-        // `:not(<compound>)` - one compound, no combinators, which is what this matcher can answer.
-        // The argument goes back through matches_simple(), so `:not(:first-child)` works.
-        if (pseudo.rfind("not(", 0) == 0) {
-            auto close = pseudo.rfind(')');
-            if (close == std::string::npos || close <= 4)
-                return false;
-            auto inner = pseudo.substr(4, close - 4);
-            if (matches_simple(node, inner, interaction_state))
-                return false;
-            continue;
+        // The list-taking pseudo-classes. Upstream (Rust/src/css/style/component_matching.rs):
+        //   Pc::Is | Pc::Where => self.matches_any(arguments, ...)
+        //   Pc::Not           => Ok(!self.matches_any(arguments, ...))
+        // so all three take a selector list and the arguments go back through matches(), which
+        // means a complex argument like `:is(.card .title)` works.
+        {
+            std::string_view const list_takers[] = { "is(", "where(", "not(" };
+            std::string_view const* taker = nullptr;
+            for (auto const& candidate : list_takers)
+                if (pseudo.rfind(candidate, 0) == 0)
+                    taker = &candidate;
+            if (taker) {
+                auto close = pseudo.rfind(')');
+                if (close == std::string::npos || close <= taker->size())
+                    return false;
+                auto inner = pseudo.substr(taker->size(), close - taker->size());
+                bool any = false;
+                for (auto const& part : split_selector_list(inner)) {
+                    if (matches(node, part, interaction_state)) {
+                        any = true;
+                        break;
+                    }
+                }
+                bool const negated = *taker == "not(";
+                if (any == negated)
+                    return false;
+                continue;
+            }
         }
 
         if (!interaction_state) return false;
@@ -668,12 +748,52 @@ int StyleResolver::specificity(std::string const& selector)
             if (i < selector.size())
                 ++i;
         } else if (c == ':') {
-            ++classes;
             ++i;
             if (i < selector.size() && selector[i] == ':')
                 ++i; // pseudo-element marker; the name is counted once
+            auto const name_begin = i;
             while (i < selector.size() && is_ident_char(selector[i]))
                 ++i;
+            std::string const name = selector.substr(name_begin, i - name_begin);
+            // Upstream (Rust/src/css/selector_arena.rs, specificity()):
+            //   Has | Is | Not => greatest(argument_selector_list)
+            //   Where          => Specificity::default()
+            //   everything else => one class
+            if (i < selector.size() && selector[i] == '(' && (name == "is" || name == "where" || name == "not")) {
+                auto close = selector.find(')', i);
+                if (close == std::string::npos)
+                    return ids * 10000 + classes * 100 + elements;
+                std::string const inner = selector.substr(i + 1, close - i - 1);
+                if (name != "where") {
+                    // The greatest argument, compared component-wise: an int max would pick
+                    // 100 classes over 1 id, which is the wrong way round.
+                    int best_ids = 0;
+                    int best_classes = 0;
+                    int best_elements = 0;
+                    bool have_best = false;
+                    for (auto const& part : split_selector_list(inner)) {
+                        int const value = specificity(part);
+                        int const part_ids = value / 10000;
+                        int const part_classes = (value / 100) % 100;
+                        int const part_elements = value % 100;
+                        bool const better = !have_best || part_ids > best_ids
+                            || (part_ids == best_ids && part_classes > best_classes)
+                            || (part_ids == best_ids && part_classes == best_classes && part_elements > best_elements);
+                        if (better) {
+                            best_ids = part_ids;
+                            best_classes = part_classes;
+                            best_elements = part_elements;
+                            have_best = true;
+                        }
+                    }
+                    ids += best_ids;
+                    classes += best_classes;
+                    elements += best_elements;
+                }
+                i = close + 1;
+            } else {
+                ++classes;
+            }
         } else if (std::isspace(static_cast<unsigned char>(c)) || c == '>' || c == '+' || c == '~' || c == '*') {
             ++i;
         } else {
