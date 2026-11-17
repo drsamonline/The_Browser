@@ -563,9 +563,36 @@ work. Upstream's IDL says that is not the interface. Building it would have been
 that does not exist in the spec either — and the note in the handoff would then have been wrong in the other
 direction, claiming a feature the engine does not need.
 
+### Sixteenth item: `:empty` was not implemented, and a test had been lying about it
+
+Looking for the next item, I probed `el.remove()` and `insertBefore` at runtime. Both work. Then the pixel on
+the removal page was the wrong colour, and the reason was not the removal: **`:empty` was never implemented**.
+
+Upstream's definition, from `DOM/SelectorQuery.cpp`: "Child nodes and their character data" — comments and
+doctypes do not count, and neither does text of length zero. Answered before `element_position()` here,
+because it is about the node's children rather than its position among siblings.
+
+**The consequence is the part worth recording.** Two items ago I narrowed structural invalidation to the
+parent, with this reasoning: "only the parent can change (`:empty`)". The reasoning was sound and the selector
+it was for did not exist. The test I wrote for it asserted magenta after appending a child into an empty box —
+and the base colour was magenta too, so it passed for two commits while testing nothing. A control that cannot
+come out the other way is not a control; that rule is in `UPSTREAM-FIRST.md` and I broke it by writing an
+assertion whose expected value matched the failure case.
+
+| case | expect |
+| --- | --- |
+| an empty box matches `:empty` | blue |
+| appending a child stops `:empty` matching | magenta |
+| removing the only child matches again | blue |
+
+The first row could not have passed before these two commits, which is what makes it a control.
+
 ### Next, from here
 
 1. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
 2. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
 3. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
    callers note the child-list change. A new caller that forgets to will leave the page stale.
+4. The structural pseudo-class set is `:first-child`, `:last-child`, `:only-child`, `:nth-child(n)`, `:empty`.
+   `:nth-of-type`, `:first-of-type`, `:not(...)` and the rest are absent — a sweep of the list against
+   upstream's `SelectorMatching.cpp` would say which of them a page would actually miss.
