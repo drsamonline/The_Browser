@@ -293,6 +293,28 @@ int main(int argc, char* argv[])
         require(other[2] > 200 && other[0] < 60, "the element without :active stayed blue");
     }
 
+    // Tab moves focus, and the focus ring appears. Both halves matter: the focus
+    // state can be right and the frame still never redrawn, which is exactly how
+    // :focus-visible stayed "broken" for two sessions.
+    {
+        std::string directory = "/tmp/aetheris-tab-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto result = run_window(binary,
+            "<html><head><title>Tab</title><style>body{margin:0}"
+            "#a{width:400px;height:100px;background:#0000ff}"
+            "#a:focus-visible{background:#ff00ff}"
+            "</style></head><body><div id='a' tabindex='0'>A</div></body></html>",
+            "--key tab", 3, directory);
+        require(result.status == 0, "the tab run exits cleanly");
+
+        // The last frame is the one after the Tab. If focus moved but nothing asked
+        // for a repaint, this stays blue and the test fails - which is the whole
+        // point: the state can be correct while the frame is stale.
+        int after[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 50, after), "the frame after Tab is readable");
+        require(after[0] > 200 && after[2] > 200, ":focus-visible paints after Tab (magenta)");
+    }
+
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");
     return 0;
 }
