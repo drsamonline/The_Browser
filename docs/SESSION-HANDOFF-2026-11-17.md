@@ -6,15 +6,16 @@ Read this first, then `docs/HANDOVER.md`. This file covers one session; the hand
 
 | Item | Value |
 | --- | --- |
-| `main` tip | `408c4c1a` — `perf(style): per-node invalidation with a style cache` |
+| `main` tip | `408c4c1a` — `perf(style): per-node invalidation with a style cache`, then `c884bf23` (docs) |
 | Suite | 59/59 passing on that commit |
 | Audit log | `drsamonline/audit` at `b8b9d53` |
 
-### Uncommitted work, possibly lost
+### Uncommitted work — **resolved, shipped 2026-11-17**
 
 Incremental layout (first increment) was **applied, built and green (59/59) but not committed** when the
-sandbox began failing with HTTP 500. `/scratch/work` does not survive a recycle, so treat it as lost and
-re-apply from the design below. Do not assume it is on disk.
+sandbox began failing with HTTP 500, and was treated as lost. It was re-applied from the design below in
+the resume session and committed. See "Resumed session" at the end of this file; the design below is kept
+because it is still the specification the code follows.
 
 ## What shipped this session
 
@@ -105,7 +106,56 @@ and check that a symbol you expect (`set_focus`, `layout_passes`) actually exist
 
 ## Next, in order
 
-1. Re-apply and **commit** incremental layout; verify with the three-row table above.
-2. Cache across interaction-state changes (upstream's per-pseudo-class traversal).
+1. ~~Re-apply and **commit** incremental layout~~ — done in the resume session; see below.
+2. Cache across interaction-state changes (upstream's `ancestor_traversal_for_pseudo_class`).
 3. `[a=v i]` case flag, if a page needs it.
 4. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+
+---
+
+## Resumed session — same day, from `c884bf23`
+
+Re-applied the incremental-layout design from Appendix B, from scratch, and committed it. The design was
+intact in the handoff; only the code had been lost.
+
+| Commit | What | Evidence |
+| --- | --- | --- |
+| `1114541e` | text write vs attribute write (`note_text_mutation`, `note_dom_mutation_at` clears the name) | 59/59, no behaviour change on its own |
+| `1b2417d7` | skip the layout pass when no layout key changed; `layouts:` in the summary | see the table below |
+| `ac4f1fdf` | `AetherisWindowScripts`: a relayout is not a layout, four runs | 59/59 |
+| `833ecabd` | remove the frame dumps on the way out | 59/59 twice in a row |
+
+The three-row verification table, measured with 20 frames at 16 ms per frame, plus one control the design
+did not have:
+
+| Page | relayouts | layouts |
+| --- | --- | --- |
+| class toggle changing only `background` | 6 | **1** |
+| `textContent` write | 6 | 7 |
+| idle | 0 | 1 |
+| class toggle changing `width` (control) | 6 | 3 |
+
+The control is the point: the skip is conditional on the layout keys, not unconditional. A skip that
+cannot fail proves nothing.
+
+The pixel was read, not inferred: on a 2-frame run the div at (200, 84) goes `(0,0,255)` to `(255,0,255)`
+with `layouts: 1`, and (500, 84) stays white. So a skipped layout still repaints — the stale-frame bug this
+project has shipped twice is still not present.
+
+### Two instrument failures, both environmental
+
+1. **A full `/tmp` looked like a bad render.** The suite writes ~58 MB of frames into a 64 MB tmpfs and
+   never removed them, so the second run in a sandbox started full: `AetherisDomHost` failed "render exits
+   0" and `AetherisWindowScripts` failed "the repaint pixel is readable" on zero-byte frames. Both passed
+   on a clean `/tmp`. Fixed by clearing the dumps at the end of the window test; recorded in `HANDOVER.md`.
+2. **`zig cc` with `-Og` does not define `__OPTIMIZE__`**, so `_FORTIFY_SOURCE=3` warns and `-Werror`
+   turns it into a build failure on the first translation unit. `-DCMAKE_CXX_FLAGS="-Wno-error=#warnings"`
+   builds; fortify is inert at `-Og` either way. Worth knowing before blaming the tree.
+
+### Next, from here
+
+1. Cache across interaction-state changes: reuse the geometry snapshot in `apply_visual_state()` keyed on
+   the pseudo-class that changed, instead of rebuilding every node.
+2. Extend `kLayoutProperties` when a property is added to `style.cpp` — a missing entry is a silent
+   stale-geometry bug, not a slow path.
+3. `[a=v i]` case flag, if a page needs it.
