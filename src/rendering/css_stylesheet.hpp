@@ -47,6 +47,29 @@ struct CssStyleSheet {
                     return true;
         return false;
     }
+
+    // Whether any selector puts `pseudo` on a compound that is not the last one, as in
+    // `.card:focus-within .title`. Only then can an element's style depend on an *ancestor*
+    // matching the pseudo-class, which is the one thing that makes a state change reach a
+    // subtree other than the changed element's own. Upstream asks a sharper question - does
+    // a rule mention this pseudo-class on *this* element - because it has selector analysis;
+    // this is the sheet-wide version, and it answers "maybe" for the whole sheet.
+    bool uses_pseudo_class_before_combinator(std::string_view pseudo) const
+    {
+        for (auto const& rule : rules)
+            for (auto const& selector : rule.selectors) {
+                for (auto at = selector.find(pseudo); at != std::string::npos;
+                    at = selector.find(pseudo, at + pseudo.size())) {
+                    // A combinator after the pseudo-class means its compound is an ancestor of
+                    // the subject. `+` and `~` are not combinators in this engine, but treating
+                    // them as boundaries only ever answers "maybe", which is the safe way to be
+                    // wrong here.
+                    if (selector.find_first_of(" >+~", at + pseudo.size()) != std::string::npos)
+                        return true;
+                }
+            }
+        return false;
+    }
 };
 
 } // namespace aetheris::rendering

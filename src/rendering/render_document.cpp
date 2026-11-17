@@ -300,9 +300,11 @@ bool RenderDocument::collect_state_change_dirty(VisualInteractionState const& in
             continue;
         // `:focus-within` on an ancestor styles its *other* descendants - `.card:focus-within
         // .title` matches a sibling of the focused input, which is neither on the chain nor in
-        // the focused subtree - so a focus move dirties the ancestor's whole subtree. Upstream
-        // narrows this with selector analysis; there is none here, so it is the subtree. A
-        // focus move therefore re-resolves most of the page, and gains only the layout skip.
+        // the focused subtree - so only a rule of that shape makes the ancestor's whole subtree
+        // dirty. Ask the sheet first: without such a rule the chain above is the whole story,
+        // and a focus move stays cheap.
+        if (!m_stylesheet.uses_pseudo_class_before_combinator(":focus-within"))
+            continue;
         for (auto const* ancestor = node->parent; ancestor; ancestor = ancestor->parent)
             collect_dirty(*ancestor, dirty, false);
     }
