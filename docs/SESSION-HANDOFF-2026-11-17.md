@@ -262,14 +262,37 @@ cache key and the layout key share one implementation and one sort.
 An allow-list fails unsafely: a property nobody classified silently stops reflowing. A deny-list of
 paint-only properties fails the other way — a wasted pass — which is the failure this project can afford.
 
-One fixture trap, caught by checking: `flex-grow` is not honoured by this layout engine at all (a page that
-sets it at load renders identically), so the `gap` page is the one that demonstrates the bug. The first
-fixture I wrote proved nothing.
+One fixture trap: my first fixture used `flex-grow` and proved nothing, because its children had no `height`
+and every probe fell below them. `flex-grow` itself is fine — see the sixth item, which took that claim back.
+
+### Sixth item: `flex-grow` — no bug, and a claim taken back
+
+The fifth item left `flex-grow` on the list as "read by `layout.cpp` and appears to have no effect". That was
+wrong, and it was wrong in a pushed commit message as well, which cannot be rewritten — so it is corrected
+here and in the audit entry.
+
+`layout_flex_children()` implements it (`width = free_space * grow / total_grow` for an item with no
+`width`), and `TestAetherisFlexLayout` has covered it since before this session ("flex-grow expands both
+items").
+
+My fixture was wrong: the children had no `height`, so they were one text line tall and every probe at
+y = 84 read the *parent's* background. Re-measured with `height:100px` on both children and
+`flex-grow: 1` against `flex-grow: 2` on a 400 px row:
+
+| fixture | x=100 | x=150 | x=200 | x=300 |
+| --- | --- | --- | --- | --- |
+| `flex-grow: 1` / `2` | magenta | green | green | green |
+| no `flex-grow` | blue | blue | blue | blue |
+
+133 px of magenta is the 1:2 split of 400 px. The engine is right; the measurement was not. Third time this
+session, and the same cause every time: a coordinate that did not mean what I assumed.
+
+No code change. A window-level test for `flex-grow` would duplicate `TestAetherisFlexLayout`, which asserts
+the widths directly rather than through pixels.
 
 ### Next, from here
 
-1. `flex-grow` is read by `layout.cpp` and appears to have no effect; worth a separate look, with a page
-   that discriminates.
-2. `[a=v i]` case flag, if a page needs it.
-3. Sibling combinators (`+`, `~`) are not matched; adding them means adding sibling invalidation to
+1. `[a=v i]` case flag, if a page needs it.
+2. Sibling combinators (`+`, `~`) are not matched; adding them means adding sibling invalidation to
    `collect_state_change_dirty()`.
+3. Per-node layout granularity: the key comparison is still whole-document.
