@@ -39,6 +39,27 @@ struct CssStyleSheet {
         return false;
     }
 
+    // Whether any selector's subject can change when a *sibling sequence* changes. A positional
+    // pseudo-class is the only way one child's presence restyles another, so this is the question
+    // the structural invalidation asks before narrowing to the parent alone
+    // (render_document.cpp). `:not(` counts: its argument may be positional.
+    //
+    // It lives here, next to the sheet, so that adding a pseudo-class to style.cpp and forgetting
+    // this list is one edit apart rather than two files apart.
+    bool uses_positional_pseudo_class() const
+    {
+        static char const* const positional[] = {
+            ":first-child", ":last-child", ":only-child", ":nth-child", ":nth-last-child",
+            "-of-type", ":not(",
+        };
+        for (auto const& rule : rules)
+            for (auto const& selector : rule.selectors)
+                for (auto const* pseudo : positional)
+                    if (selector.find(pseudo) != std::string::npos)
+                        return true;
+        return false;
+    }
+
     bool uses_pseudo_class(std::string_view pseudo) const
     {
         for (auto const& rule : rules)

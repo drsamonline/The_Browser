@@ -205,10 +205,7 @@ void RenderDocument::relayout()
         // parent can change (`:empty`), and the new children resolve themselves because they have
         // no cache entry. That is the difference between appending a row to a 200-row page
         // re-resolving 406 nodes and re-resolving 4.
-        bool const positional = m_stylesheet.uses_pseudo_class(":first-child")
-            || m_stylesheet.uses_pseudo_class(":last-child")
-            || m_stylesheet.uses_pseudo_class(":only-child")
-            || m_stylesheet.uses_pseudo_class(":nth-child");
+        bool const positional = m_stylesheet.uses_positional_pseudo_class();
         for (auto const* parent : child_lists) {
             if (positional) {
                 collect_dirty(*parent, dirty);

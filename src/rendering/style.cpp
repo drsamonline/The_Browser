@@ -9,22 +9,48 @@ namespace aetheris::rendering {
 
 namespace {
 
-// 1-based position of `node` among its element siblings, and the sibling count.
-bool element_position(DomNode const& node, int& index, int& count)
+// 1-based position of `node` among its element siblings, the sibling count, and the same two
+// counted only among siblings with the same tag name - which is what the -of-type family means.
+bool element_position(DomNode const& node, int& index, int& count, int& type_index, int& type_count)
 {
     auto* parent = node.parent;
     if (!parent)
         return false;
     index = 0;
     count = 0;
+    type_index = 0;
+    type_count = 0;
     for (auto const& child : parent->children) {
         if (child->type != DomNodeType::Element)
             continue;
         ++count;
         if (child.get() == &node)
             index = count;
+        if (child->name == node.name) {
+            ++type_count;
+            if (child.get() == &node)
+                type_index = type_count;
+        }
     }
     return index > 0;
+}
+
+// `nth-child(3)` and `nth-of-type(3)`: the argument up to the closing paren, as a plain number.
+// An+b notation is not parsed; a page using it gets no match rather than a wrong one.
+bool matches_nth(std::string const& pseudo, std::string const& name, int position)
+{
+    auto const prefix = name + "(";
+    if (pseudo.rfind(prefix, 0) != 0)
+        return false;
+    std::string argument = pseudo.substr(prefix.size());
+    auto close = argument.find(')');
+    if (close != std::string::npos)
+        argument = argument.substr(0, close);
+    char* end = nullptr;
+    long wanted = std::strtol(argument.c_str(), &end, 10);
+    if (end == argument.c_str())
+        return false;
+    return static_cast<long>(position) == wanted;
 }
 
 bool matches_structural_pseudo(DomNode const& node, std::string const& pseudo)
@@ -47,9 +73,15 @@ bool matches_structural_pseudo(DomNode const& node, std::string const& pseudo)
         return true;
     }
 
+    // `:root` is the document's own element child, so it is answered before any sibling question.
+    if (pseudo == "root")
+        return node.parent && node.parent->type == DomNodeType::Document;
+
     int index = 0;
     int count = 0;
-    if (!element_position(node, index, count))
+    int type_index = 0;
+    int type_count = 0;
+    if (!element_position(node, index, count, type_index, type_count))
         return false;
     if (pseudo == "first-child")
         return index == 1;
@@ -57,17 +89,22 @@ bool matches_structural_pseudo(DomNode const& node, std::string const& pseudo)
         return index == count;
     if (pseudo == "only-child")
         return count == 1;
-    if (pseudo.rfind("nth-child(", 0) == 0) {
-        std::string argument = pseudo.substr(10);
-        auto close = argument.find(')');
-        if (close != std::string::npos)
-            argument = argument.substr(0, close);
-        char* end = nullptr;
-        long wanted = std::strtol(argument.c_str(), &end, 10);
-        if (end == argument.c_str())
-            return false;
-        return static_cast<long>(index) == wanted;
-    }
+    if (pseudo == "first-of-type")
+        return type_index == 1;
+    if (pseudo == "last-of-type")
+        return type_index == type_count;
+    if (pseudo == "only-of-type")
+        return type_count == 1;
+    if (matches_nth(pseudo, "nth-child", index))
+        return true;
+    if (matches_nth(pseudo, "nth-last-child", count - index + 1))
+        return true;
+    if (matches_nth(pseudo, "nth-of-type", type_index))
+        return true;
+    if (matches_nth(pseudo, "nth-last-of-type", type_count - type_index + 1))
+        return true;
+    if (pseudo.rfind("nth-", 0) == 0)
+        return false;
     return false;
 }
 
@@ -382,6 +419,18 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
         std::string value;
         while (i < text.size() && !is_marker(text[i]))
             value += text[i++];
+        // A functional pseudo-class: markers inside the parens (`:not(.a)`) must not end it, so
+        // consume to the matching ')'. Without this `:not(.a)` captured "not(" and matched nothing.
+        if (marker == ':' && !value.empty() && value.back() == '(') {
+            int depth = 1;
+            while (i < text.size() && depth > 0) {
+                if (text[i] == '(')
+                    ++depth;
+                else if (text[i] == ')')
+                    --depth;
+                value += text[i++];
+            }
+        }
         if (marker == '#')
             id = value;
         else if (marker == '.' && !value.empty())
@@ -464,11 +513,26 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
     for (auto const& pseudo : pseudo_classes) {
         // Structural pseudo-classes need no interaction state.
         if (pseudo == "first-child" || pseudo == "last-child" || pseudo == "only-child"
-            || pseudo == "empty" || pseudo.rfind("nth-child(", 0) == 0) {
+            || pseudo == "empty" || pseudo == "root"
+            || pseudo == "first-of-type" || pseudo == "last-of-type" || pseudo == "only-of-type"
+            || pseudo.rfind("nth-child(", 0) == 0 || pseudo.rfind("nth-last-child(", 0) == 0
+            || pseudo.rfind("nth-of-type(", 0) == 0 || pseudo.rfind("nth-last-of-type(", 0) == 0) {
             if (!matches_structural_pseudo(node, pseudo))
                 return false;
             continue;
         }
+        // `:not(<compound>)` - one compound, no combinators, which is what this matcher can answer.
+        // The argument goes back through matches_simple(), so `:not(:first-child)` works.
+        if (pseudo.rfind("not(", 0) == 0) {
+            auto close = pseudo.rfind(')');
+            if (close == std::string::npos || close <= 4)
+                return false;
+            auto inner = pseudo.substr(4, close - 4);
+            if (matches_simple(node, inner, interaction_state))
+                return false;
+            continue;
+        }
+
         if (!interaction_state) return false;
         if (pseudo == "hover" && interaction_state->hovered != &node) return false;
         if (pseudo == "focus" && interaction_state->focused != &node) return false;
