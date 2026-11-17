@@ -290,9 +290,38 @@ session, and the same cause every time: a coordinate that did not mean what I as
 No code change. A window-level test for `flex-grow` would duplicate `TestAetherisFlexLayout`, which asserts
 the widths directly rather than through pixels.
 
+### Seventh item: two CSS features closed by evidence, and the key walk narrowed
+
+**`[a=v i]` and sibling combinators — not built.** The brief for both was "if a page needs it". No page in
+this tree needs either: no fixture, test page or stylesheet under `Tests/`, `docs/` or `src/` uses the `i`
+flag, and none uses `+` or `~` between compounds. The only `[x=y i]` hits are in the vendored LibWeb tree,
+which Aetheris does not render. Recorded rather than built.
+
+The sibling case is worth restating because the invalidation code leans on it: `style.cpp` splits selectors on
+whitespace and `>` only, so a `+`/`~` selector matches *nothing* — a silent no-op, not a wrong answer. If
+anyone adds them, `collect_state_change_dirty()` has a comment at the exact place that has to change with it.
+
+**The key walk, narrowed.** The remaining measured cost of the layout skip was that it digested every node's
+style on every relayout. Only a node whose style was *re-resolved* can have a different key, so
+`LayoutTreeBuilder` now reports the re-resolved set and the comparison walks that.
+
+| Commit | What |
+| --- | --- |
+| `9aeaf9b0` | `restyled` out-parameter; filtered comparison; `key checks:` in the summary |
+| `4c1fdffb` | the test asserts `key checks == resolves` |
+
+| measurement, 200-row page (406 nodes), one hover | value |
+| --- | --- |
+| key comparisons, before | 406 |
+| key comparisons, after | **5** |
+| layouts | 1 |
+
+`key checks:` is in the window summary beside `layouts:` and `resolves:`, so the cost of the decision is a
+number rather than an inference.
+
 ### Next, from here
 
-1. `[a=v i]` case flag, if a page needs it.
-2. Sibling combinators (`+`, `~`) are not matched; adding them means adding sibling invalidation to
-   `collect_state_change_dirty()`.
-3. Per-node layout granularity: the key comparison is still whole-document.
+1. Per-node layout: the skip is still all-or-nothing for the document. A dirty layout subtree is the next
+   structural step, and the biggest.
+2. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
+3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
