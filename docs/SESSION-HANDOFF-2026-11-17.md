@@ -208,10 +208,40 @@ The second row is the control: it shows the first is not passing because the she
 anywhere turns the coarse path back on for every focus move — the honest limit of a sheet-wide answer, where
 upstream has the per-element one.
 
+### Fourth item: per-element selector analysis — done
+
+The sheet-wide answer from the third item let one `.card:focus-within .title` rule make every focus move in
+the document coarse. `StyleResolver::matches_ancestor_pseudo_class_rule()` extracts the compound holding the
+pseudo-class (`.card:focus-within` out of `.card:focus-within .title`) and matches it against the ancestor,
+which is the question upstream's selector analysis asks. The sheet-wide helper is removed, not kept.
+
+| Commit | What |
+| --- | --- |
+| `45b258b9` | the per-element question; the sheet-wide helper deleted |
+| `de915893` | three runs, one of them the control |
+
+| rule | focus | resolves | hits |
+| --- | --- | --- | --- |
+| `#card:focus-within .title` | outside the card | **4** | 405 |
+| `#card:focus-within .title` | inside the card | 7 | 402 |
+| `body:focus-within .title` | inside the card | 408 | 1 |
+
+All three keep `layouts: 1`. The first row is the win — a rule on another card no longer costs the page —
+and the third is the control: a compound that matches a wide ancestor still re-resolves everything.
+
+Two fixture traps, both the instrument and both found by reading pixels:
+
+- `#card .title` as the base rule outranks `body:focus-within .title` (10100 against 202), so the rule never
+  applied and the page looked as if the matcher were broken.
+- A bare `:focus-within .title` matches nothing: this parser needs a tag or class in the compound.
+
+The test now pins the focus targets by window coordinate, calibrated against pixels first (`--focus-key`
+takes a window y and the window subtracts the 34 px chrome).
+
 ### Next, from here
 
-1. Per-element selector analysis, so one `:focus-within .x` rule stops disabling the narrow path for the whole
-   sheet.
-2. Extend `kLayoutProperties` when a property is added to `style.cpp` — a missing entry is a silent
+1. Extend `kLayoutProperties` when a property is added to `style.cpp` — a missing entry is a silent
    stale-geometry bug, not a slow path.
-3. `[a=v i]` case flag, if a page needs it.
+2. `[a=v i]` case flag, if a page needs it.
+3. Sibling combinators (`+`, `~`) are not matched; adding them means adding sibling invalidation to
+   `collect_state_change_dirty()`.
