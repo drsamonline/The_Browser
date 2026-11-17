@@ -691,3 +691,38 @@ ship as "`:is` mostly works".
 3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
 4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
    callers note the child-list change. A new caller that forgets to will leave the page stale.
+
+### Twentieth item: `:has()`, and a capture that stopped at a marker
+
+Upstream: `Pc::Has => self.matches_relative(arguments, node, node, context)` — a selector list of *relative*
+selectors (optional combinator, descendant unless written), searched over what the element contains.
+
+| rule | direct `.x` | `.x` two levels down |
+| --- | --- | --- |
+| `:has(.x)` | match | match |
+| `:has(> .x)` | match | no |
+| `:has(>.x)` | match | no |
+| `:has(.nope)` | no | no |
+
+**The invalidation needed no change**, which is the useful finding: `collect_dirty()` already includes the
+ancestors of any mutation, so a child arriving restyles a `:has()` ancestor. Asserted by pixel rather than
+assumed — "it already works" is a claim, not a reason to skip the test.
+
+**The bug, and it took three probes.** `:has(> .x)` matched nothing while `:has(.x)` and `:has(> span)` both
+worked. The compound scanner stops at `#`, `.`, `:` and `[`; my functional-pseudo fix-up fired only when the
+captured value *ended* with `(`, which is true for `:not(.a)` and false for `:has(> .x)` — there the capture
+stopped at the `.` after a space, so the pseudo text was `"has(> "`, with no `)` to find and the rule silently
+dropped. It now consumes to the matching `)` whenever the capture stopped with an unclosed paren.
+
+That is the third bug in this code path in two items — the rule parser's comma split, the combinator splitter's
+whitespace, and now the compound scanner's marker. All three are the same mistake: **a parser for a nested
+syntax that treats the inside of parentheses as flat.** Worth assuming there is a fourth.
+
+### Next, from here
+
+1. The fourth nested-syntax bug, if one exists: `specificity()` and `split_selector_list()` are the two places
+   left that scan a selector character by character.
+2. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
+3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
+   callers note the child-list change. A new caller that forgets to will leave the page stale.
