@@ -905,6 +905,19 @@ std::vector<std::string> read_classes(rendering::DomNode* node)
     return out;
 }
 
+// Writes the class attribute and tells the renderer. Order matters, as in js_set_attribute: the
+// node-scoped note clears the recorded attribute name, so it goes first.
+//
+// classList used to write node->attributes directly and note nothing, so classList.add() changed
+// the DOM and never restyled anything - a silent no-op in the renderer, which is how a page with
+// `#a.on{...}` and `classList.add('on')` stayed blue.
+void set_class_attribute(rendering::DomNode& node, std::string const& value)
+{
+    rendering::note_dom_mutation_at(&node);
+    rendering::note_attribute_mutation("class");
+    node.attributes["class"] = value;
+}
+
 void write_classes(rendering::DomNode* node, std::vector<std::string> const& classes)
 {
     std::string joined;
@@ -913,7 +926,31 @@ void write_classes(rendering::DomNode* node, std::vector<std::string> const& cla
             joined += ' ';
         joined += name;
     }
-    node->attributes["class"] = joined;
+    set_class_attribute(*node, joined);
+}
+
+// Upstream's DOM/Element.idl has `[Reflect=class] attribute DOMString className`, so this is the
+// `class` content attribute read and written, nothing more: absent reads as the empty string.
+JSValue js_class_name_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    if (auto* value = node->attribute("class"))
+        return JS_NewString(context, value->c_str());
+    return JS_NewString(context, "");
+}
+
+JSValue js_class_name_set(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    auto* node = node_of(context, this_value);
+    if (!node)
+        return JS_UNDEFINED;
+    const char* raw = argc > 0 ? JS_ToCString(context, argv[0]) : nullptr;
+    set_class_attribute(*node, raw ? raw : "");
+    if (raw)
+        JS_FreeCString(context, raw);
+    return JS_UNDEFINED;
 }
 
 JSValue js_class_add(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
@@ -1163,6 +1200,7 @@ JSValue DomHost::handle_for(rendering::DomNode* node)
     };
     define_accessor("textContent", js_text_content_get, js_text_content_set);
     define_accessor("innerHTML", js_inner_html_get, js_inner_html_set);
+    define_accessor("className", js_class_name_get, js_class_name_set);
     define_accessor("style", js_style_get, js_style_set);
 
     auto define_getter = [&](char const* name, JSCFunction* getter) {
