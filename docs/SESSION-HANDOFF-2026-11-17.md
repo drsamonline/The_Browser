@@ -188,10 +188,30 @@ Two things the dirty set deliberately does **not** narrow:
 - **Siblings** are never dirtied: `style.cpp` splits selectors on descendant and child combinators only, so
   `+` and `~` cannot reach a sibling. If they are ever matched, that is the place to fix it.
 
+### Third item: narrow the focus-move dirty set — done
+
+A focus move dirtied every ancestor's whole subtree. That is only needed when a selector can put
+`:focus-within` on an **ancestor** of the subject — `.card:focus-within .title`. `CssStyleSheet` gains
+`uses_pseudo_class_before_combinator()`, and the subtree walk is skipped when no rule of that shape exists.
+
+| Commit | What |
+| --- | --- |
+| `6cf3becb` | the sheet-wide question, and the guard on the subtree walk |
+| `3ba021cf` | two runs over the same 200-row page, one with such a rule |
+
+| page | resolves | hits | layouts |
+| --- | --- | --- | --- |
+| `#card:focus-within` only | **5** | 401 | 1 |
+| plus `#card:focus-within .title` | 408 | 0 | 1 |
+
+The second row is the control: it shows the first is not passing because the sheet is ignored. One such rule
+anywhere turns the coarse path back on for every focus move — the honest limit of a sheet-wide answer, where
+upstream has the per-element one.
+
 ### Next, from here
 
-1. Narrow the focus-move dirty set: the whole-subtree rule is correct but coarse. Selector analysis — does
-   any rule mention `:focus-within` on this ancestor — is what upstream uses instead.
+1. Per-element selector analysis, so one `:focus-within .x` rule stops disabling the narrow path for the whole
+   sheet.
 2. Extend `kLayoutProperties` when a property is added to `style.cpp` — a missing entry is a silent
    stale-geometry bug, not a slow path.
 3. `[a=v i]` case flag, if a page needs it.
