@@ -24,7 +24,7 @@ namespace {
 // under it (a descendant selector may depend on it), and its ancestors (they inherit
 // from their own parents and may match on their children's state). Siblings are safe
 // for text and attribute writes - structural mutations clear the cache instead.
-void collect_dirty(rendering::DomNode const& mutated, std::unordered_set<rendering::DomNode const*>& dirty)
+void collect_dirty(rendering::DomNode const& mutated, std::unordered_set<rendering::DomNode const*>& dirty, bool include_ancestors = true)
 {
     std::function<void(rendering::DomNode const&)> add_subtree = [&](rendering::DomNode const& node) {
         dirty.insert(&node);
@@ -32,8 +32,9 @@ void collect_dirty(rendering::DomNode const& mutated, std::unordered_set<renderi
             add_subtree(*child);
     };
     add_subtree(mutated);
-    for (auto const* ancestor = mutated.parent; ancestor; ancestor = ancestor->parent)
-        dirty.insert(ancestor);
+    if (include_ancestors)
+        for (auto const* ancestor = mutated.parent; ancestor; ancestor = ancestor->parent)
+            dirty.insert(ancestor);
 }
 
 // The properties that can move a box. Deliberately a hand-written list, not "every
@@ -144,11 +145,19 @@ RenderDocument RenderDocument::create_from_document(Document document, std::stri
     combined.append(css);
     auto sheet = CssParser {}.parse(combined);
 
-    auto layout_root = LayoutTreeBuilder {}.build(document.root(), sheet);
+    // Resolve the first pass into the cache as well as the layout tree, so the first
+    // interaction has something to reuse: without this the first :hover re-resolves the
+    // whole page, and the cache only starts paying on the second.
+    std::unordered_map<DomNode const*, StyleCacheEntry> cache;
+    std::unordered_set<DomNode const*> const nothing_clean;
+    StyleCacheStats stats;
+    auto layout_root = LayoutTreeBuilder {}.build(document.root(), sheet, nullptr, &cache, &nothing_clean, &stats);
     LayoutEngine {}.layout(*layout_root, viewport_width);
 
     auto render_tree = RenderTree::from_layout(*layout_root);
     RenderDocument result(std::move(document), std::move(layout_root), std::move(render_tree), std::move(sheet));
+    result.m_style_cache = std::move(cache);
+    result.m_last_style_stats = stats;
     result.m_viewport_width = viewport_width;
     if (resources) result.m_resources = *resources;
     result.m_source_url = std::string(source_url);
@@ -250,6 +259,58 @@ void RenderDocument::resolve_images(LayoutNode& node)
     for (auto& child : node.children) resolve_images(*child);
 }
 
+bool RenderDocument::collect_state_change_dirty(VisualInteractionState const& interaction_state, std::unordered_set<DomNode const*>& dirty) const
+{
+    DomNode const* before = nullptr;
+    DomNode const* after = nullptr;
+    switch (interaction_state.last_change) {
+    case InteractionChange::Hover:
+        before = m_last_visual_state ? m_last_visual_state->hovered : nullptr;
+        after = interaction_state.hovered;
+        break;
+    case InteractionChange::Active:
+        before = m_last_visual_state ? m_last_visual_state->active : nullptr;
+        after = interaction_state.active;
+        break;
+    case InteractionChange::Focus:
+        before = m_last_visual_state ? m_last_visual_state->focused : nullptr;
+        after = interaction_state.focused;
+        break;
+    case InteractionChange::None:
+        return false;
+    }
+    if (before == after)
+        return false;
+
+    // Upstream's ancestor_traversal_for_pseudo_class(): `:focus-within` is the one
+    // pseudo-class that propagates to ancestors. `:hover`, `:focus`, `:focus-visible` and
+    // `:active` match the element itself, which is what style.cpp tests - read that, not
+    // this comment, if it ever changes.
+    //
+    // The subtree is always dirty: `.card:hover .title` matches descendants, and they are
+    // what goes stale when the ancestor's state moves. The ancestors are always dirty too,
+    // because the element that *lost* the state may be an ancestor of the one that gained
+    // it - hovering a card then its title has to restyle the card.
+    bool const propagates = interaction_state.last_change == InteractionChange::Focus;
+    for (auto const* node : { before, after }) {
+        if (!node)
+            continue;
+        collect_dirty(*node, dirty, true);
+        if (!propagates)
+            continue;
+        // `:focus-within` on an ancestor styles its *other* descendants - `.card:focus-within
+        // .title` matches a sibling of the focused input, which is neither on the chain nor in
+        // the focused subtree - so a focus move dirties the ancestor's whole subtree. Upstream
+        // narrows this with selector analysis; there is none here, so it is the subtree. A
+        // focus move therefore re-resolves most of the page, and gains only the layout skip.
+        for (auto const* ancestor = node->parent; ancestor; ancestor = ancestor->parent)
+            collect_dirty(*ancestor, dirty, false);
+    }
+    // Sibling combinators (`+`, `~`) are not matched by style.cpp, so a state change cannot
+    // reach a sibling and none is dirtied. If they are ever added, this is the place.
+    return !dirty.empty();
+}
+
 bool RenderDocument::apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width)
 {
     if (m_visual_generation == interaction_state.generation && !interaction_state.layout_dirty && !interaction_state.paint_dirty)
@@ -263,18 +324,37 @@ bool RenderDocument::apply_visual_state(VisualInteractionState const& interactio
         : interaction_state.last_change == InteractionChange::Active                         ? ":active"
                                                                                             : "";
     if (!pseudo.empty() && !m_stylesheet.uses_pseudo_class(pseudo)) {
+        // No rule can observe it, so nothing restyles - but the state did move, and the next
+        // relayout() rebuilds with `m_last_visual_state`. Recording it here is what keeps
+        // that rebuild from resurrecting a stale hover.
+        m_last_visual_state = interaction_state;
         m_visual_generation = interaction_state.generation;
         return false;
     }
 
-    // Interaction state changes touch pseudo-classes everywhere, so the style cache
-    // cannot be trusted: clear it rather than reason about which nodes are affected.
-    m_style_cache.clear();
+    // Only the elements whose state actually changed, not the whole document. When no
+    // element identifies the change (a state that moved without the element moving, or a
+    // change no pseudo-class covers) nothing in the cache can be trusted, so it goes.
+    std::unordered_set<DomNode const*> dirty;
+    bool const identified = collect_state_change_dirty(interaction_state, dirty);
+    if (!identified)
+        m_style_cache.clear();
+
     m_last_visual_state = interaction_state;
     m_last_style_stats = {};
-    m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet, &interaction_state, nullptr, nullptr, nullptr);
-    // A state change rebuilds from scratch and does run the engine, so it counts as a
-    // pass, and its geometry is the one a later skip has to reuse.
+    m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet, &interaction_state,
+        &m_style_cache, identified ? &dirty : nullptr, &m_last_style_stats);
+
+    // The same skip relayout() takes, for the same reason: a pseudo-class that only changes
+    // a paint property must rebuild the render tree without moving any box.
+    if (!m_geometry.empty() && m_layout_width == viewport_width && !layout_keys_changed(*m_layout_root)) {
+        restore_geometry(*m_layout_root);
+        resolve_images(*m_layout_root);
+        m_render_tree = RenderTree::from_layout(*m_layout_root);
+        m_visual_generation = interaction_state.generation;
+        return true;
+    }
+
     ++m_layout_passes;
     LayoutEngine {}.layout(*m_layout_root, viewport_width);
     resolve_images(*m_layout_root);

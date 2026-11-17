@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <string_view>
 #include <vector>
 
@@ -94,6 +95,11 @@ private:
     RenderDocument(Document document, std::unique_ptr<LayoutNode> layout_root, RenderTree render_tree, CssStyleSheet sheet);
     void resolve_images(LayoutNode&);
 
+    // The nodes whose style can change because a pseudo-class moved. Follows upstream's
+    // ancestor_traversal_for_pseudo_class(): only `:focus-within` reaches ancestors, so
+    // only a focus change has to invalidate the chain above the element. Returns false
+    // when no element identifies what changed, and the cache cannot be trusted.
+    bool collect_state_change_dirty(VisualInteractionState const&, std::unordered_set<DomNode const*>& dirty) const;
     // The ~40 properties that can change geometry, joined into one comparable string.
     // Two equal keys mean this node's box cannot move because of style.
     static std::string layout_key(StyleProperties const&);
