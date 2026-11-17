@@ -812,6 +812,26 @@ int main(int argc, char* argv[])
             require(rgb[0] == row.colour[0] && rgb[1] == row.colour[1] && rgb[2] == row.colour[2], row.what);
         }
 
+        // An+B notation: the zebra-stripe rule every second list uses, and a form that only a
+        // parsed step can answer. Before this, `:nth-child(2n)` matched nothing at all.
+        auto stripes = run_window(binary,
+            "<html><head><title>Stripes</title><style>body{margin:0}"
+            "div{width:400px;height:10px;background:#00ff00}div:nth-child(2n){background:#ff00ff}"
+            "div:nth-child(3n+1){background:#0000ff}"
+            "</style></head><body><div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div>"
+            "</body></html>", "", 2, directory);
+        require(stripes.status == 0, "the An+B run exits cleanly");
+        // 3n+1 wins on rows 1 and 4, 2n on rows 2 and 6, and 3 and 5 are only 2n's business - so the
+        // expected colours are blue, magenta, green, blue, green, magenta.
+        int const expected[6][3] { { 0, 0, 255 }, { 255, 0, 255 }, { 0, 255, 0 },
+                                   { 0, 0, 255 }, { 0, 255, 0 }, { 255, 0, 255 } };
+        for (int row = 0; row < 6; ++row) {
+            int rgb[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 200, 34 + row * 10 + 5, rgb), "a stripe pixel is readable");
+            require(rgb[0] == expected[row][0] && rgb[1] == expected[row][1] && rgb[2] == expected[row][2],
+                "nth-child(2n) and nth-child(3n+1) stripe the list as written");
+        }
+
         // `:not()` takes a compound, and a positional pseudo-class inside it still works.
         auto negated = run_window(binary,
             "<html><head><title>Not</title><style>body{margin:0}"
