@@ -779,6 +779,34 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // getBoundingClientRect(): the page asserts its own numbers, which is the proof style the plan
+    // asks for - a geometry API checked by arithmetic the page does, not by a pixel someone eyeballed.
+    //
+    // Read after a timer: a script that runs at load has no layout to measure yet, and upstream
+    // returns an empty rect there too. There is no forced layout read here, which is the one place
+    // this differs from upstream's ForcedReadScope.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Rect</title><style>body{margin:0}"
+            "#a{width:200px;height:50px;background:#0000ff}"
+            "#b{width:100px;height:20px;margin-left:30px;background:#ff00ff}"
+            "</style></head><body><div id='a'></div><div id='b'></div><script>"
+            "setTimeout(function () {"
+            "var a = document.getElementById('a').getBoundingClientRect();"
+            "var b = document.getElementById('b').getBoundingClientRect();"
+            "console.log('MARK a ' + a.x + ' ' + a.y + ' ' + a.width + ' ' + a.height);"
+            "console.log('MARK corners ' + a.right + ' ' + a.bottom);"
+            "console.log('MARK b ' + b.x + ' ' + b.y + ' ' + b.width + ' ' + b.height);"
+            "}, 5);</script></body></html>", "", 3);
+        require(result.status == 0, "the getBoundingClientRect run exits cleanly");
+        require(result.output.find("MARK a 0 0 200 50") != std::string::npos,
+            "getBoundingClientRect reports the box's position and size");
+        require(result.output.find("MARK corners 200 50") != std::string::npos,
+            "right and bottom are the box's far edges");
+        require(result.output.find("MARK b 30 50 100 20") != std::string::npos,
+            "a margin and a preceding block are both in the coordinates");
+    }
+
     // Sibling combinators, the attribute case flag and the form states. Upstream matches `+` by
     // stepping to tree.previous_sibling() and `~` by walking back over earlier siblings
     // (Rust/src/css/style/component_matching.rs); the attribute flag threads through every match
