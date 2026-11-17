@@ -638,6 +638,122 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // The style cache survives an interaction-state change: only the elements whose
+    // pseudo-class state moved are re-resolved, and a state that changes nothing but paint
+    // does not run the layout engine. Upstream's ancestor_traversal_for_pseudo_class() is
+    // the shape - `:focus-within` is the one pseudo-class that reaches ancestors.
+    {
+        // A hover that changes only a background: one relayout, still one layout.
+        std::string directory = "aetheris-state-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto paint = run_window(binary,
+            "<html><head><title>State paint</title><style>body{margin:0}"
+            "#a{width:400px;height:100px;background:#0000ff}#a:hover{background:#ff00ff}"
+            "</style></head><body><div id='a'>A</div></body></html>",
+            "--move 200 80", 3, directory);
+        require(paint.status == 0, "the hover-paint run exits cleanly");
+        require(summary_count(paint.output, ", relayouts: ") == 1, "a hover relayouts once");
+        require(summary_count(paint.output, ", layouts: ") == 1,
+            "a hover that only changes paint does not run the layout engine");
+        int hovered[3] = { 0, 0, 0 };
+        int below[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 50, hovered), "the hovered pixel is readable");
+        require(frame_pixel(directory, 200, 34 + 150, below), "the control pixel is readable");
+        require(is_magenta(hovered), "the hover restyled the element it moved onto");
+        require(!is_magenta(below), "and nothing outside it");
+
+        // The control: the same hover changing width must run the engine.
+        auto width = run_window(binary,
+            "<html><head><title>State width</title><style>body{margin:0}"
+            "#a{width:400px;height:100px;background:#0000ff}#a:hover{width:200px}"
+            "</style></head><body><div id='a'>A</div></body></html>",
+            "--move 200 80", 3);
+        require(width.status == 0, "the hover-width run exits cleanly");
+        require(summary_count(width.output, ", relayouts: ") == 1, "a width hover relayouts once");
+        require(summary_count(width.output, ", layouts: ") == 2,
+            "a hover that changes width does run the layout engine");
+
+        // The cache is what makes it cheap: a hover on one row of a 200-row page must
+        // re-resolve a handful of nodes, not the page. Before this it cleared the whole
+        // cache and resolved all 406.
+        std::string rows;
+        for (int index = 0; index < 200; ++index)
+            rows += "<div class='r'>row " + std::to_string(index) + "</div>";
+        auto many = run_window(binary,
+            "<html><head><title>State many</title><style>body{margin:0}"
+            "#target{width:400px;height:20px;background:#0000ff}"
+            "div.r{width:400px;height:3px;background:#00ff00}"
+            "#target:hover{background:#ff00ff}</style></head>"
+            "<body><div id='target'>t</div>" + rows + "</body></html>",
+            "--move 200 44", 3);
+        require(many.status == 0, "the 200-row hover run exits cleanly");
+        require(summary_count(many.output, ", layouts: ") == 1,
+            "a hover in a 200-row page still costs no layout");
+        int resolved = summary_count(many.output, ", resolves: ");
+        require(resolved > 0 && resolved < 40,
+            "a hover in a 200-row page re-resolves a handful of nodes, not the page");
+        require(many.output.find("relayouts: 0") == std::string::npos,
+            "and it still relayouts, so the hover is not dropped");
+
+        // A descendant selector on a hovered ancestor: the subtree is dirty too.
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto descendant = run_window(binary,
+            "<html><head><title>State descendant</title><style>body{margin:0}"
+            "#card{width:400px;height:100px;background:#0000ff}"
+            "#card .title{width:100px;height:40px;background:#00ff00}"
+            "#card:hover .title{background:#ff00ff}</style></head>"
+            "<body><div id='card'><span class='title'>t</span></div></body></html>",
+            "--move 200 80", 3, directory);
+        require(descendant.status == 0, "the hover-descendant run exits cleanly");
+        require(summary_count(descendant.output, ", layouts: ") == 1,
+            "a descendant selector on a hovered ancestor costs no layout");
+        int title_pixel[3] = { 0, 0, 0 };
+        int card_pixel[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 50, 34 + 10, title_pixel), "the descendant pixel is readable");
+        require(frame_pixel(directory, 200, 34 + 80, card_pixel), "the card pixel is readable");
+        require(is_magenta(title_pixel), "a descendant of the hovered element restyled");
+        require(is_blue(card_pixel), "and the hovered element kept its own colour");
+
+        // `:focus-within` is the one pseudo-class that propagates to ancestors, so a focus
+        // move has to restyle the chain above - and a descendant of that ancestor that is a
+        // sibling of the focused element, which is the case a chain-only dirty set misses.
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto within = run_window(binary,
+            "<html><head><title>State focus-within</title><style>body{margin:0}"
+            "#card{width:400px;height:200px;background:#0000ff}"
+            "#card .title{width:400px;height:40px;background:#00ff00}"
+            "#card:focus-within{background:#ffff00}"
+            "#card:focus-within .title{background:#ff00ff}"
+            "input{width:200px;height:40px}</style></head>"
+            "<body><div id='card'><span class='title'>t</span><input id='field'></div></body></html>",
+            "--focus-key 200 140", 3, directory);
+        require(within.status == 0, "the focus-within run exits cleanly");
+        require(summary_count(within.output, ", relayouts: ") == 1, "a focus change relayouts once");
+        require(summary_count(within.output, ", layouts: ") == 1,
+            "a focus change that only changes paint does not run the layout engine");
+        int ancestor_pixel[3] = { 0, 0, 0 };
+        int sibling_pixel[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 150, ancestor_pixel), "the ancestor pixel is readable");
+        require(frame_pixel(directory, 200, 34 + 10, sibling_pixel), "the sibling pixel is readable");
+        require(ancestor_pixel[0] > 200 && ancestor_pixel[1] > 200 && ancestor_pixel[2] < 100,
+            ":focus-within restyled the ancestor, so the ancestor chain is in the dirty set");
+        require(is_magenta(sibling_pixel),
+            "a descendant of the :focus-within ancestor restyled, so its subtree is too");
+
+        // The control: `:focus-within` changing width must run the engine.
+        auto within_width = run_window(binary,
+            "<html><head><title>State focus-within width</title><style>body{margin:0}"
+            "#card{width:400px;height:200px;background:#0000ff}"
+            "#card:focus-within{width:200px}"
+            "input{width:200px;height:40px}</style></head>"
+            "<body><div id='card'><input id='field'></div></body></html>",
+            "--focus-key 200 100", 3);
+        require(within_width.status == 0, "the focus-within width run exits cleanly");
+        require(summary_count(within_width.output, ", layouts: ") == 2,
+            "a focus change that changes width does run the layout engine");
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // The frame dumps above total ~58 MB and this sandbox's /tmp is a 64 MB tmpfs, so a
     // second run in the same sandbox used to start with /tmp full and fail elsewhere for
     // a reason that had nothing to do with the engine - AetherisDomHost's "render exits 0"
