@@ -410,8 +410,41 @@ relayout that skipped read as if it had laid the page out. That is how `click_at
 fix and 0 after — the second number is the true one. A counter that can be stale is worse than no counter,
 because it looks like evidence.
 
+### Eleventh item: upstream first, then a structural change that costs its sequence
+
+Read upstream **before** writing this one, which was the point of the instruction.
+
+**The inline item is closed by upstream, not built.** `DOM/CharacterData.cpp` marks the text node's own box
+(`FfiBoxMarks::text_data_changed`) and lets the layout engine re-run the formatting context; the only
+`set_needs_layout_tree_update` calls are for whitespace and emptiness, where a box may appear or disappear. So
+upstream has no per-run text reuse at this layer to port — the formatting context is the unit, which is what
+this engine already does. Building per-run reuse would have been an invention resting on this engine's
+per-run wrapping, which a real line breaker would break.
+
+**The structural item came out of the same reading.** Any structural mutation cleared the whole style cache.
+Upstream records a tree delta for the sequence a node left or joined (`record_subtree_disconnecting`,
+`PreviousSiblings`) and invalidates that. Ported:
+
+| Commit | What |
+| --- | --- |
+| `06dd8bf4` | `note_child_list_mutation_at()`; the parent's subtree and ancestors instead of the cache; the parent alone when the sheet has no positional selector |
+| `d1180e76` | three counts and the `:empty` pixel |
+
+| 200-row page, one mutation, 2 frames | before | after |
+| --- | --- | --- |
+| append a span inside row 150 | 407 resolves | **6** |
+| innerHTML replace inside row 150 | 407 resolves | **6** |
+| append a div to body, no positional selector | 406 resolves | **5** |
+| append a div to body, `:first-child` in the sheet | 406 resolves | 406 (on purpose) |
+
+The fourth row is the control: a positional selector means any row's style can change when the sequence does.
+The narrowing to "the parent alone" is sound because a positional selector is the only way one child's
+presence restyles another, and the user-agent sheet has none — checked, not assumed.
+
 ### Next, from here
 
 1. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
-2. Partial reuse inside inline flow: a dirty inline container re-lays out all of its text runs.
-3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+2. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+3. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
+   callers note the child-list change. A new caller that forgets to will leave the page stale; that is the
+   one sharp edge this change introduced.
