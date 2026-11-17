@@ -779,6 +779,55 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // A click is not a layout. dispatch_click_at() used to call relayout() unconditionally, and
+    // relayout() with no mutation on record is a structural change to it: the style cache was
+    // cleared and the whole page laid out. On a 405-node page that was 407 resolves and 405 nodes
+    // laid out, for a handler that only logged.
+    {
+        std::string rows;
+        for (int index = 0; index < 200; ++index)
+            rows += "<div class='r'>row " + std::to_string(index) + "</div>";
+        std::string const page = "<html><head><title>Click cost</title><style>body{margin:0}"
+                                 "#a{width:400px;height:100px;background:#0000ff}"
+                                 "#a.grow{width:200px}"
+                                 "div.r{width:400px;height:3px;background:#00ff00}"
+                                 "</style></head><body><div id='a'>A</div>" + rows + "<script>";
+
+        auto static_page = run_window(binary,
+            page + "document.getElementById('a').addEventListener('click', function () {"
+                   "console.log('MARK clicked'); });</script></body></html>",
+            "--click 200 80", 3);
+        require(static_page.status == 0, "the static click run exits cleanly");
+        require(static_page.output.find("MARK clicked") != std::string::npos,
+            "the handler still runs when the click changes nothing");
+        require(summary_count(static_page.output, ", layouts: ") == 1,
+            "a click that changes nothing does not run the layout engine");
+
+        // A click that writes an attribute no rule mentions rebuilds and then skips: the pass is
+        // entered, and it lays nothing out.
+        auto attribute = run_window(binary,
+            page + "document.getElementById('a').addEventListener('click', function () {"
+                   "document.getElementById('a').setAttribute('class', 'x'); });</script></body></html>",
+            "--click 200 80", 3);
+        require(attribute.status == 0, "the attribute click run exits cleanly");
+        require(summary_count(attribute.output, ", layouts: ") == 1,
+            "a click writing an unobserved attribute does not run the layout engine");
+        require(summary_count(attribute.output, ", layout nodes: ") == 0,
+            "and the counter says nothing was laid out, rather than repeating the last pass");
+
+        // The control: a click that changes a width must reflow, and only the chain.
+        auto layout_change = run_window(binary,
+            page + "document.getElementById('a').addEventListener('click', function () {"
+                   "document.getElementById('a').setAttribute('class', 'grow'); });</script></body></html>",
+            "--click 200 80", 3);
+        require(layout_change.status == 0, "the layout-click run exits cleanly");
+        require(summary_count(layout_change.output, ", layouts: ") == 2,
+            "a click that changes a width does run the layout engine");
+        int clicked_nodes = summary_count(layout_change.output, ", layout nodes: ");
+        require(clicked_nodes > 0 && clicked_nodes < 40,
+            "and lays out the chain, not the page");
+    }
+
     // Differential check on the reuse path: a page mutated into a state must render exactly like
     // the same page loaded in that state. Everything else in this suite asserts what I expect;
     // this one compares against a fresh layout, which is the only reference that cannot inherit
