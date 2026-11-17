@@ -587,12 +587,39 @@ assertion whose expected value matched the failure case.
 
 The first row could not have passed before these two commits, which is what makes it a control.
 
+### Seventeenth item: the structural pseudo-class set, and the list that must not drift
+
+Upstream's set (`CSS/SelectorMatching.cpp`) is `:empty`, `:first-child`, `:first-of-type`, `:last-child`,
+`:last-of-type`, `:nth-child`, `:nth-last-child`, `:nth-of-type`, `:nth-last-of-type`, `:only-child`,
+`:only-of-type`, `:root`, plus `:not`, `:is`, `:where`, `:has` and the rest. This engine had four.
+
+Added: `:root`, the -of-type family, `:nth-last-child(n)`, and `:not(<compound>)` — the argument goes back
+through `matches_simple()`, so `:not(:first-child)` works.
+
+| rule | matching row | others |
+| --- | --- | --- |
+| `div:first-of-type` | magenta | — |
+| `div:nth-of-type(2)` | cyan | — |
+| `div:last-of-type` | blue | — |
+| `span:only-of-type` | yellow | — |
+| `div:not(.a)` | rows 2–3 | row 1 green |
+| `div:not(:first-child)` | rows 2–3 | row 1 green |
+
+**Two things this needed beyond the rules themselves.** `element_position()` now counts by tag name as well
+as by position, which is what -of-type means. And the compound scanner stopped at any marker, so `:not(.a)`
+captured `"not("` and matched nothing — a functional pseudo-class now consumes to its matching `)`.
+
+**The coupling is the point.** `uses_positional_pseudo_class()` is one list now, in `css_stylesheet.hpp` next
+to the sheet, replacing the four-term check in `render_document.cpp`. Adding a pseudo-class to `style.cpp` and
+forgetting the invalidation list was a two-file mistake waiting to happen, and the failure mode is a stale
+frame — the worst kind here. A page using `:first-of-type` would have gone stale silently.
+
+Guard: a 200-row page with `div.r:first-of-type` in its sheet re-resolves 405 nodes on an append, not 5.
+
 ### Next, from here
 
-1. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
-2. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
-3. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
+1. `An+b` notation (`:nth-child(2n+1)`) is not parsed: a page using it gets no match rather than a wrong one.
+2. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
+3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
+4. `register_subtree()`/`purge_subtree()` no longer note a mutation — they only manage handles, and their
    callers note the child-list change. A new caller that forgets to will leave the page stale.
-4. The structural pseudo-class set is `:first-child`, `:last-child`, `:only-child`, `:nth-child(n)`, `:empty`.
-   `:nth-of-type`, `:first-of-type`, `:not(...)` and the rest are absent — a sweep of the list against
-   upstream's `SelectorMatching.cpp` would say which of them a page would actually miss.
