@@ -1893,12 +1893,18 @@ static bool dispatch_click_at(rendering::RenderDocument& rendered, aetheris::js:
         std::cerr << "  [js] no element handle at the click point" << std::endl;
         return false;
     }
+    auto const before = rendering::dom_mutation_serial();
     dispatch_bubbling(js, dom, node, "click");
     // ...and then the document and window, which are not in the DOM ancestor
     // chain. Upstream bubbles a click from the target all the way up, so a page
     // listening on document must hear it too.
     js.dispatch_event("click");
-    rendered.relayout();
+    // A click that changed nothing must not reflow. relayout() with no mutation on record is a
+    // structural change to it - it clears the style cache and lays the page out from scratch -
+    // so clicking a static page used to be the most expensive thing the window could do:
+    // 407 resolves and 405 nodes laid out, for a handler that only logged.
+    if (rendering::dom_mutation_serial() != before && attribute_mutation_needs_relayout(rendered))
+        rendered.relayout();
     return true;
 }
 

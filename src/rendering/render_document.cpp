@@ -214,6 +214,8 @@ void RenderDocument::relayout()
         restore_geometry(*m_layout_root);
         resolve_images(*m_layout_root);
         m_render_tree = RenderTree::from_layout(*m_layout_root);
+        // Nothing was laid out, so the counter says so rather than repeating the last pass.
+        m_laid_out = 0;
         return;
     }
 
@@ -384,6 +386,7 @@ bool RenderDocument::apply_visual_state(VisualInteractionState const& interactio
         restore_geometry(*m_layout_root);
         resolve_images(*m_layout_root);
         m_render_tree = RenderTree::from_layout(*m_layout_root);
+        m_laid_out = 0;
         m_visual_generation = interaction_state.generation;
         return true;
     }
