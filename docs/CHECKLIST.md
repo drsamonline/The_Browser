@@ -36,6 +36,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1g | Navigation: `location.href`/`assign`/`reload`, a click follows a link | `[x]` | same commit; page B loads at /b |
 | 1g2 | Realm isolation on navigation (old globals and listeners survive) | `[ ]` | deliberate limit of keeping the interpreter alive |
 | 1g3 | `history`, `location.pathname`/`search`/`hash`, dot-segment URL resolution | `[ ]` | not built |
+| 1h | `:has(+ .x)`, `:has(~ .x)` | `[x]` | `+` the commit before this; 3 cases + the mutation |
 | 1e3 | `sessionStorage` | `[ ]` | same interface, scoped to the tab |
 | 1f | `getBoundingClientRect()` | `[x]` | `+` the commit before this one; page asserts its own numbers |
 | 1f2 | `focus()`, `blur()` — state | `[x]` | `+` the commit before this one; two runs, pixels |
