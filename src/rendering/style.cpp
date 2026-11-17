@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
+#include <functional>
 #include <sstream>
 #include <vector>
 
@@ -555,10 +557,16 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
         std::string value;
         while (i < text.size() && !is_marker(text[i]))
             value += text[i++];
-        // A functional pseudo-class: markers inside the parens (`:not(.a)`) must not end it, so
-        // consume to the matching ')'. Without this `:not(.a)` captured "not(" and matched nothing.
-        if (marker == ':' && !value.empty() && value.back() == '(') {
-            int depth = 1;
+        // A functional pseudo-class: markers inside the parens must not end it, so if the capture
+        // stopped with an unclosed paren, consume to its match.
+        //
+        // The first version of this only fired when the value *ended* with '(', which covered
+        // `:not(.a)` and missed `:has(> .x)` - there the capture stopped at the '.' after a space,
+        // so the pseudo text was "has(> " with no ')' and the whole rule matched nothing.
+        if (marker == ':') {
+            auto const opened = static_cast<int>(std::count(value.begin(), value.end(), '('));
+            auto const closed = static_cast<int>(std::count(value.begin(), value.end(), ')'));
+            int depth = opened - closed;
             while (i < text.size() && depth > 0) {
                 if (text[i] == '(')
                     ++depth;
@@ -657,6 +665,54 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
                 return false;
             continue;
         }
+        // `:has(<relative selector list>)`. Upstream (Rust/src/css/style/component_matching.rs):
+        //   Pc::Has => self.matches_relative(arguments, node, node, context),
+        // A relative selector is a combinator plus a selector, the combinator being a descendant
+        // unless written. The anchor is the element itself and the search is over what it contains,
+        // so `:has(> .x)` looks at children and `:has(.x)` at every descendant.
+        //
+        // The sibling combinators are not matched anywhere in this engine, so `:has(+ .x)` and
+        // `:has(~ .x)` are answered false rather than guessed at.
+        if (pseudo.rfind("has(", 0) == 0) {
+            auto close = pseudo.rfind(')');
+            if (close == std::string::npos || close <= 4)
+                return false;
+            auto inner = pseudo.substr(4, close - 4);
+            bool any = false;
+            for (auto const& part : split_selector_list(inner)) {
+                if (part.empty())
+                    continue;
+                char const lead = part.front();
+                bool const child_only = lead == '>';
+                if (lead == '+' || lead == '~')
+                    continue;
+                auto body = (child_only || lead == ' ') ? part.substr(1) : part;
+                auto begin = body.find_first_not_of(" \t\r\n");
+                if (begin == std::string::npos)
+                    continue;
+                body = body.substr(begin);
+
+                std::function<bool(DomNode const&)> search = [&](DomNode const& parent) {
+                    for (auto const& child : parent.children) {
+                        if (child->type != DomNodeType::Element)
+                            continue;
+                        if (matches(*child, body, interaction_state))
+                            return true;
+                        if (!child_only && search(*child))
+                            return true;
+                    }
+                    return false;
+                };
+                if (search(node)) {
+                    any = true;
+                    break;
+                }
+            }
+            if (!any)
+                return false;
+            continue;
+        }
+
         // The list-taking pseudo-classes. Upstream (Rust/src/css/style/component_matching.rs):
         //   Pc::Is | Pc::Where => self.matches_any(arguments, ...)
         //   Pc::Not           => Ok(!self.matches_any(arguments, ...))
