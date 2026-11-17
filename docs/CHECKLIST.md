@@ -33,7 +33,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1d | `:checked`, `:disabled`, `:placeholder-shown` | `[x]` | `dd310ca3`; 4 borderless controls, one per state |
 | 1e | `localStorage` / `sessionStorage` | `[ ]` | — |
 | 1f | `getBoundingClientRect()` | `[x]` | `+` the commit before this one; page asserts its own numbers |
-| 1f2 | `focus()`, `blur()` | `[ ]` | needs the interaction state published the way `g_current_page` now is |
+| 1f2 | `focus()`, `blur()` — state | `[x]` | `+` the commit before this one; two runs, pixels |
+| 1f3 | `focus`/`blur` **events** reach `addEventListener` | `[ ]` | state moves, listener never runs. `set_focus()` guards on `dom.handle_by_node` |
 
 ## Tier 2 — fonts and text (the largest visual gap)
 
@@ -102,3 +103,4 @@ Recorded so the same ground is not re-covered. Detail in `SESSION-HANDOFF-2026-1
 | `of S` argument in `:nth-child(2n of .x)` | not built | `style.cpp` |
 | `register_subtree`/`purge_subtree` callers must note the child-list change | sharp edge | `main.cpp` |
 | `DocumentRuntime::set_attribute` keeps its own `mark_dirty` contract | unaudited | `document_runtime.cpp` |
+| `element.focus()` moves the state but fires no `focus` event | open, measured 2026-11-18 | `set_focus()` in `main.cpp` |
