@@ -62,15 +62,25 @@ std::string RenderDocument::layout_key(StyleProperties const& style)
     return style.digest_excluding(kPaintOnlyProperties);
 }
 
-bool RenderDocument::layout_keys_changed(LayoutNode const& root) const
+bool RenderDocument::layout_keys_changed(LayoutNode const& root, std::unordered_set<DomNode const*> const& restyled)
 {
-    std::size_t seen = 0;
+    m_key_checks = 0;
+    // Nothing re-resolved, so no style moved and no key can have moved. This is the common
+    // case for a relayout that was only worth doing because the DOM changed somewhere that
+    // does not affect style, and it costs one comparison rather than one per node.
+    if (restyled.empty())
+        return false;
+
+    std::size_t in_tree = 0;
     std::function<bool(LayoutNode const&)> visit = [&](LayoutNode const& node) -> bool {
         if (node.dom_node) {
-            ++seen;
-            auto const found = m_layout_keys.find(node.dom_node);
-            if (found == m_layout_keys.end() || found->second != layout_key(node.style))
-                return true;
+            ++in_tree;
+            if (restyled.count(node.dom_node)) {
+                ++m_key_checks;
+                auto const found = m_layout_keys.find(node.dom_node);
+                if (found == m_layout_keys.end() || found->second != layout_key(node.style))
+                    return true;
+            }
         }
         for (auto const& child : node.children)
             if (visit(*child))
@@ -79,9 +89,11 @@ bool RenderDocument::layout_keys_changed(LayoutNode const& root) const
     };
     if (visit(root))
         return true;
-    // A node the last pass laid out and this tree does not have is a structural
-    // change. relayout() already refuses to skip one; this is the belt to that brace.
-    return seen != m_layout_keys.size();
+    // A node the last pass laid out and this tree does not have is a structural change.
+    // relayout() already refuses to skip one - a structural mutation clears the style cache,
+    // so every node re-resolves and `restyled` is everything - and this is the belt to that
+    // brace, at the cost of counting pointers rather than digesting styles.
+    return in_tree != m_layout_keys.size();
 }
 
 void RenderDocument::snapshot_layout(LayoutNode const& root)
@@ -181,16 +193,17 @@ void RenderDocument::relayout()
         m_style_cache.clear();
     }
     m_last_style_stats = {};
+    std::unordered_set<DomNode const*> restyled;
     m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet,
         m_last_visual_state ? &*m_last_visual_state : nullptr,
-        &m_style_cache, &dirty, &m_last_style_stats);
+        &m_style_cache, &dirty, &m_last_style_stats, &restyled);
 
     // The skip: no box can have moved, so reuse the geometry the last pass produced
     // and rebuild only the render tree. resolve_images still runs, because an image
     // swap is a paint change and a skipped layout that also skipped the paint is the
     // stale-frame bug this project has shipped twice.
     if (!text_or_structure && !m_geometry.empty() && m_layout_width == m_viewport_width
-        && !layout_keys_changed(*m_layout_root)) {
+        && !layout_keys_changed(*m_layout_root, restyled)) {
         restore_geometry(*m_layout_root);
         resolve_images(*m_layout_root);
         m_render_tree = RenderTree::from_layout(*m_layout_root);
@@ -343,12 +356,13 @@ bool RenderDocument::apply_visual_state(VisualInteractionState const& interactio
 
     m_last_visual_state = interaction_state;
     m_last_style_stats = {};
+    std::unordered_set<DomNode const*> restyled;
     m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet, &interaction_state,
-        &m_style_cache, identified ? &dirty : nullptr, &m_last_style_stats);
+        &m_style_cache, identified ? &dirty : nullptr, &m_last_style_stats, &restyled);
 
     // The same skip relayout() takes, for the same reason: a pseudo-class that only changes
     // a paint property must rebuild the render tree without moving any box.
-    if (!m_geometry.empty() && m_layout_width == viewport_width && !layout_keys_changed(*m_layout_root)) {
+    if (!m_geometry.empty() && m_layout_width == viewport_width && !layout_keys_changed(*m_layout_root, restyled)) {
         restore_geometry(*m_layout_root);
         resolve_images(*m_layout_root);
         m_render_tree = RenderTree::from_layout(*m_layout_root);

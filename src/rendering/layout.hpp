@@ -67,17 +67,23 @@ struct LayoutNode {
 
 class LayoutTreeBuilder {
 public:
+    // `restyled`, when given, receives every node whose style was resolved rather than reused.
+    // That set is exactly the nodes whose resolved style can differ from last time, so it is
+    // what the layout-key comparison has to look at - everything else kept the properties the
+    // last snapshot digested.
     std::unique_ptr<LayoutNode> build(DomNode const& document, CssStyleSheet const& sheet,
         VisualInteractionState const* interaction_state = nullptr,
         std::unordered_map<DomNode const*, StyleCacheEntry>* cache = nullptr,
         std::unordered_set<DomNode const*> const* dirty = nullptr,
-        StyleCacheStats* stats = nullptr) const;
+        StyleCacheStats* stats = nullptr,
+        std::unordered_set<DomNode const*>* restyled = nullptr) const;
 
 private:
     std::unique_ptr<LayoutNode> build_node(DomNode const& node, CssStyleSheet const& sheet, LayoutNode* parent,
         StyleProperties const* parent_style, VisualInteractionState const* interaction_state,
         std::unordered_map<DomNode const*, StyleCacheEntry>* cache,
-        std::unordered_set<DomNode const*> const* dirty, StyleCacheStats* stats) const;
+        std::unordered_set<DomNode const*> const* dirty, StyleCacheStats* stats,
+        std::unordered_set<DomNode const*>* restyled) const;
     static LayoutDisplay display_for(DomNode const& node, StyleProperties const& style);
 };
 

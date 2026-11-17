@@ -68,6 +68,10 @@ public:
     // from outside rather than taken on trust.
     std::size_t layout_passes() const { return m_layout_passes; }
 
+    // How many layout keys the last skip decision compared: the nodes whose style was
+    // re-resolved, not the nodes in the document.
+    std::size_t key_checks() const { return m_key_checks; }
+
     bool apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width);
     std::size_t visual_generation() const { return m_visual_generation; }
 
@@ -81,6 +85,9 @@ private:
     std::unordered_map<DomNode const*, std::string> m_layout_keys;
     std::unordered_map<DomNode const*, CachedGeometry> m_geometry;
     std::size_t m_layout_passes { 0 };
+    // How many layout keys the last skip decision compared. Reported as `key checks:` so the
+    // cost of the decision is visible, not inferred.
+    std::size_t m_key_checks { 0 };
     // The viewport width the recorded geometry was laid out at. Geometry is only
     // reusable at the width that produced it.
     float m_layout_width { 0 };
@@ -103,8 +110,11 @@ private:
     // The ~40 properties that can change geometry, joined into one comparable string.
     // Two equal keys mean this node's box cannot move because of style.
     static std::string layout_key(StyleProperties const&);
-    // True when any node's layout key differs from the one the last layout used.
-    bool layout_keys_changed(LayoutNode const& root) const;
+    // True when any node whose style was re-resolved has a layout key different from the one
+    // the last layout used. A node that reused its cached style kept the exact properties the
+    // last snapshot digested, so it cannot differ and is not compared: the walk is over
+    // `restyled`, not over the tree.
+    bool layout_keys_changed(LayoutNode const& root, std::unordered_set<DomNode const*> const& restyled);
     // Records the geometry a layout pass just produced, and the keys it was produced
     // from, so the next relayout can tell whether anything layout-affecting moved.
     void snapshot_layout(LayoutNode const& root);

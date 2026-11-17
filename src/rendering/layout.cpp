@@ -19,15 +19,17 @@ LayoutNode& LayoutNode::append_child(std::unique_ptr<LayoutNode> child)
 std::unique_ptr<LayoutNode> LayoutTreeBuilder::build(DomNode const& document, CssStyleSheet const& sheet,
     VisualInteractionState const* interaction_state,
     std::unordered_map<DomNode const*, StyleCacheEntry>* cache,
-    std::unordered_set<DomNode const*> const* dirty, StyleCacheStats* stats) const
+    std::unordered_set<DomNode const*> const* dirty, StyleCacheStats* stats,
+    std::unordered_set<DomNode const*>* restyled) const
 {
-    return build_node(document, sheet, nullptr, nullptr, interaction_state, cache, dirty, stats);
+    return build_node(document, sheet, nullptr, nullptr, interaction_state, cache, dirty, stats, restyled);
 }
 
 std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, CssStyleSheet const& sheet, LayoutNode* parent,
     StyleProperties const* parent_style, VisualInteractionState const* interaction_state,
     std::unordered_map<DomNode const*, StyleCacheEntry>* cache,
-    std::unordered_set<DomNode const*> const* dirty, StyleCacheStats* stats) const
+    std::unordered_set<DomNode const*> const* dirty, StyleCacheStats* stats,
+    std::unordered_set<DomNode const*>* restyled) const
 {
     auto layout_node = std::make_unique<LayoutNode>();
     layout_node->dom_node = &node;
@@ -52,6 +54,8 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
         layout_node->style = StyleResolver {}.resolve(node, sheet, parent_style, interaction_state);
         if (stats)
             ++stats->resolves;
+        if (restyled)
+            restyled->insert(&node);
     }
     if (cache)
         (*cache)[&node] = StyleCacheEntry { parent_fingerprint, layout_node->style };
@@ -65,7 +69,7 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
         return layout_node;
 
     for (auto const& child : node.children)
-        layout_node->append_child(build_node(*child, sheet, layout_node.get(), &layout_node->style, interaction_state, cache, dirty, stats));
+        layout_node->append_child(build_node(*child, sheet, layout_node.get(), &layout_node->style, interaction_state, cache, dirty, stats, restyled));
     return layout_node;
 }
 
