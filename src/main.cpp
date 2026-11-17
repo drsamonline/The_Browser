@@ -262,7 +262,7 @@ static std::string node_text(rendering::DomNode const& node)
 
 static void set_node_text(rendering::DomNode& node, std::string const& text)
 {
-    rendering::note_dom_mutation();
+    rendering::note_dom_mutation_at(&node);
     node.children.clear();
     node.append_child(std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", text));
 }
@@ -751,6 +751,7 @@ JSValue js_set_attribute(JSContext* context, JSValueConst this_value, int argc, 
     }
     const char* name = JS_ToCString(context, argv[0]);
     rendering::note_attribute_mutation(name ? name : "");
+    rendering::note_dom_mutation_at(node);
     const char* value = JS_ToCString(context, argv[1]);
     if (name && value)
         node->attributes[name] = value;
@@ -2294,7 +2295,10 @@ static int run_window(std::string const& url, int frames, std::string const& fra
               << static_cast<int>(document_height) << "px), backend: "
               << (ui::has_display_backend() ? "display" : "headless")
               << ", tabs: " << session.tab_count() << ", events handled: " << handled
-              << ", relayouts: " << relayouts << std::endl;
+              << ", relayouts: " << relayouts
+              << ", resolves: " << (cached_page ? cached_page->last_style_stats().resolves : 0)
+              << ", style hits: " << (cached_page ? cached_page->last_style_stats().hits : 0)
+              << std::endl;
     return 0;
 }
 

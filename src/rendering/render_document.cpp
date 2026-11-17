@@ -1,7 +1,10 @@
 #include "render_document.hpp"
+#include <functional>
+#include <unordered_set>
 
 #include "css_parser.hpp"
 #include "user_agent_stylesheet.hpp"
+#include "dom_mutation.hpp"
 #include "layout.hpp"
 #include "url.hpp"
 
@@ -14,6 +17,26 @@ RenderDocument::RenderDocument(Document document, std::unique_ptr<LayoutNode> la
     , m_stylesheet(std::move(sheet))
 {
 }
+
+namespace {
+
+// The nodes whose style can change because `mutated` changed: the node, everything
+// under it (a descendant selector may depend on it), and its ancestors (they inherit
+// from their own parents and may match on their children's state). Siblings are safe
+// for text and attribute writes - structural mutations clear the cache instead.
+void collect_dirty(rendering::DomNode const& mutated, std::unordered_set<rendering::DomNode const*>& dirty)
+{
+    std::function<void(rendering::DomNode const&)> add_subtree = [&](rendering::DomNode const& node) {
+        dirty.insert(&node);
+        for (auto const& child : node.children)
+            add_subtree(*child);
+    };
+    add_subtree(mutated);
+    for (auto const* ancestor = mutated.parent; ancestor; ancestor = ancestor->parent)
+        dirty.insert(ancestor);
+}
+
+} // namespace
 
 RenderDocument RenderDocument::create(std::string_view html, std::string_view css, float viewport_width, ResourceCache* resources, std::string_view source_url)
 {
@@ -49,8 +72,19 @@ void RenderDocument::relayout()
 {
     // Rebuild with the state the last apply_visual_state() used, or :hover and
     // :focus are silently discarded whenever anything calls relayout().
+    std::unordered_set<DomNode const*> dirty;
+    auto const* mutated = last_mutated_node();
+    if (mutated) {
+        collect_dirty(*mutated, dirty);
+    } else {
+        // A structural mutation: structure drives :first-child, :last-child and
+        // sibling selectors, so nothing in the cache can be trusted.
+        m_style_cache.clear();
+    }
+    m_last_style_stats = {};
     m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet,
-        m_last_visual_state ? &*m_last_visual_state : nullptr);
+        m_last_visual_state ? &*m_last_visual_state : nullptr,
+        &m_style_cache, &dirty, &m_last_style_stats);
     LayoutEngine {}.layout(*m_layout_root, m_viewport_width);
     resolve_images(*m_layout_root);
     m_render_tree = RenderTree::from_layout(*m_layout_root);
@@ -121,8 +155,12 @@ bool RenderDocument::apply_visual_state(VisualInteractionState const& interactio
         return false;
     }
 
+    // Interaction state changes touch pseudo-classes everywhere, so the style cache
+    // cannot be trusted: clear it rather than reason about which nodes are affected.
+    m_style_cache.clear();
     m_last_visual_state = interaction_state;
-    m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet, &interaction_state);
+    m_last_style_stats = {};
+    m_layout_root = LayoutTreeBuilder {}.build(m_document.root(), m_stylesheet, &interaction_state, nullptr, nullptr, nullptr);
     LayoutEngine {}.layout(*m_layout_root, viewport_width);
     resolve_images(*m_layout_root);
     m_render_tree = RenderTree::from_layout(*m_layout_root);

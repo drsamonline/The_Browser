@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <string_view>
 #include <vector>
 
@@ -46,6 +47,10 @@ public:
     // pseudo-class that changed - upstream's rule, cheaply applied.
     CssStyleSheet const& stylesheet() const { return m_stylesheet; }
 
+    // What the last relayout cost in selector matching: how many nodes were resolved
+    // and how many reused their cached style.
+    StyleCacheStats const& last_style_stats() const { return m_last_style_stats; }
+
     bool apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width);
     std::size_t visual_generation() const { return m_visual_generation; }
 
@@ -54,6 +59,8 @@ private:
     std::unique_ptr<LayoutNode> m_layout_root;
     RenderTree m_render_tree;
     CssStyleSheet m_stylesheet;
+    std::unordered_map<DomNode const*, StyleCacheEntry> m_style_cache;
+    StyleCacheStats m_last_style_stats;
     float m_viewport_width { 0 };
     std::size_t m_visual_generation { 0 };
     // The state the last apply_visual_state() used. relayout() rebuilds layout

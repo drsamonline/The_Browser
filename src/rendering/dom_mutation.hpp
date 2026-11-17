@@ -5,6 +5,8 @@
 
 namespace aetheris::rendering {
 
+struct DomNode;
+
 // A document-wide counter bumped at every point that mutates the DOM.
 //
 // Upstream marks individual nodes dirty (`Node::invalidate_style` walks ancestors
@@ -13,6 +15,14 @@ namespace aetheris::rendering {
 // The window used to fingerprint the document each frame instead, which is O(n) per
 // frame on any page with a timer.
 void note_dom_mutation();
+
+// A mutation of one node (text or attribute). Records the node so the renderer can
+// invalidate that subtree instead of everything; a structural mutation calls plain
+// `note_dom_mutation()` and clears it, which invalidates everything.
+void note_dom_mutation_at(DomNode const* node);
+
+// The node touched by the most recent mutation, null if it was structural or none.
+DomNode const* last_mutated_node();
 
 // A mutation that was an attribute write, so a host can ask whether anything could
 // observe it before rebuilding layout.

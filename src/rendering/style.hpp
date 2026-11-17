@@ -5,6 +5,7 @@
 #include "visual_state.hpp"
 
 #include <string>
+#include <string>
 #include <unordered_map>
 
 namespace aetheris::rendering {
@@ -16,9 +17,28 @@ public:
     bool contains(std::string const& property) const;
     void inherit_from(StyleProperties const& parent);
 
+    // A stable digest of every property, used to decide whether a child's cached
+    // style is still valid: if the parent's resolved style is unchanged, a clean
+    // child resolves to the same thing it did last time.
+    std::string fingerprint() const;
+
 private:
     std::unordered_map<std::string, std::string> m_properties;
 };
+
+// A node's resolved style, kept between relayouts so an unchanged subtree does not
+// re-run selector matching. Upstream keeps this as computed-style state on the node;
+// this is the same idea with an explicit cache.
+struct StyleCacheEntry {
+    std::string parent_fingerprint;
+    StyleProperties properties;
+};
+
+struct StyleCacheStats {
+    std::size_t resolves { 0 };
+    std::size_t hits { 0 };
+};
+
 
 class StyleResolver {
 public:

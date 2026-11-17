@@ -2,6 +2,9 @@
 
 #include "dom.hpp"
 #include "style.hpp"
+
+#include <unordered_map>
+#include <unordered_set>
 #include "visual_state.hpp"
 #include "image.hpp"
 
@@ -64,10 +67,17 @@ struct LayoutNode {
 
 class LayoutTreeBuilder {
 public:
-    std::unique_ptr<LayoutNode> build(DomNode const& document, CssStyleSheet const& sheet, VisualInteractionState const* interaction_state = nullptr) const;
+    std::unique_ptr<LayoutNode> build(DomNode const& document, CssStyleSheet const& sheet,
+        VisualInteractionState const* interaction_state = nullptr,
+        std::unordered_map<DomNode const*, StyleCacheEntry>* cache = nullptr,
+        std::unordered_set<DomNode const*> const* dirty = nullptr,
+        StyleCacheStats* stats = nullptr) const;
 
 private:
-    std::unique_ptr<LayoutNode> build_node(DomNode const& node, CssStyleSheet const& sheet, LayoutNode* parent, StyleProperties const* parent_style, VisualInteractionState const* interaction_state) const;
+    std::unique_ptr<LayoutNode> build_node(DomNode const& node, CssStyleSheet const& sheet, LayoutNode* parent,
+        StyleProperties const* parent_style, VisualInteractionState const* interaction_state,
+        std::unordered_map<DomNode const*, StyleCacheEntry>* cache,
+        std::unordered_set<DomNode const*> const* dirty, StyleCacheStats* stats) const;
     static LayoutDisplay display_for(DomNode const& node, StyleProperties const& style);
 };
 

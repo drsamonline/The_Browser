@@ -1,5 +1,7 @@
 #include "dom_mutation.hpp"
 
+#include "dom.hpp"
+
 namespace aetheris::rendering {
 
 namespace {
@@ -8,11 +10,24 @@ namespace {
 // threading bug rather than surface it.
 std::size_t g_serial { 0 };
 std::string g_last_attribute;
+DomNode const* g_last_node { nullptr };
 } // namespace
 
 void note_dom_mutation()
 {
+    g_last_node = nullptr;
     ++g_serial;
+}
+
+void note_dom_mutation_at(DomNode const* node)
+{
+    g_last_node = node;
+    ++g_serial;
+}
+
+DomNode const* last_mutated_node()
+{
+    return g_last_node;
 }
 
 void note_attribute_mutation(std::string const& name)

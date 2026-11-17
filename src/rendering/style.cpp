@@ -62,6 +62,22 @@ void StyleProperties::set(std::string property, std::string value)
     m_properties[std::move(property)] = std::move(value);
 }
 
+std::string StyleProperties::fingerprint() const
+{
+    std::vector<std::string> parts;
+    parts.reserve(m_properties.size());
+    for (auto const& entry : m_properties)
+        parts.push_back(entry.first + ":" + entry.second);
+    // The map is unordered, so sort before joining or two equal styles compare unequal.
+    std::sort(parts.begin(), parts.end());
+    std::string joined;
+    for (auto const& part : parts) {
+        joined += part;
+        joined.push_back('\x1f');
+    }
+    return joined;
+}
+
 std::string const* StyleProperties::get(std::string const& property) const
 {
     auto it = m_properties.find(property);

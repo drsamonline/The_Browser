@@ -515,6 +515,43 @@ int main(int argc, char* argv[])
         }
     }
 
+    // The style cache: a text write deep in a 200-node page must resolve only the
+    // affected branch, and a class write must still repaint - a cache that serves a
+    // stale style is the bug this has to not have.
+    {
+        std::string rows;
+        for (int index = 0; index < 200; ++index)
+            rows += "<div class='r'>row " + std::to_string(index) + "</div>";
+
+        auto many = run_window(binary,
+            "<html><head><style>body{margin:0}div{height:3px;background:#0000ff}</style></head><body>"
+            "<div id='target'>target</div>" + rows +
+            "<script>var n = 0; setInterval(function () { n++;"
+            "document.getElementById('target').textContent = 'target ' + n; }, 50);</script></body></html>",
+            "", 20);
+        require(many.status == 0, "the cache run exits cleanly");
+        auto resolves_at = many.output.find("resolves: ");
+        require(resolves_at != std::string::npos, "the summary reports resolves");
+        int resolved = std::atoi(many.output.c_str() + resolves_at + 10);
+        require(resolved > 0 && resolved < 40,
+            "a text write in a 200-node page resolves a handful of nodes, not all of them");
+        require(many.output.find("relayouts: 0") == std::string::npos,
+            "and it still relayouts, so the change is not dropped");
+
+        // Correctness: a class write that changes the background must repaint.
+        std::string directory = "/tmp/aetheris-cache-class-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto repaint = run_window(binary,
+            "<html><head><style>body{margin:0}div{width:400px;height:100px;background:#0000ff}"
+            ".hot{background:#ff00ff}</style></head><body><div id='a'>A</div>"
+            "<script>setTimeout(function () { document.getElementById('a').setAttribute('class', 'hot'); }, 5);"
+            "</script></body></html>", "", 20, directory);
+        require(repaint.status == 0, "the class repaint run exits cleanly");
+        int painted[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 50, painted), "the repaint pixel is readable");
+        require(is_magenta(painted), "a class change repaints through the cache");
+    }
+
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");
     return 0;
 }
