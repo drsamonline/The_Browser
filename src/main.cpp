@@ -2000,9 +2000,29 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     rendering::VisualInteractionState visual_state;
     // document.activeElement, answered from the interaction state the way
     // Document::active_element() is upstream. Null when nothing is focused.
-    page_js.active_element = [&page_dom, &focused]() -> JSValue {
-        if (focused && page_dom.handle_by_node.find(focused) != page_dom.handle_by_node.end())
-            return JS_DupValue(page_dom.context, page_dom.handle_by_node[focused]);
+    page_js.active_element = [&page_dom, &focused, &cached_page]() -> JSValue {
+        auto handle_for = [&page_dom](rendering::DomNode* node) -> JSValue {
+            if (node && page_dom.handle_by_node.find(node) != page_dom.handle_by_node.end())
+                return JS_DupValue(page_dom.context, page_dom.handle_by_node[node]);
+            return JS_UNDEFINED;
+        };
+        if (auto value = handle_for(focused); !JS_IsUndefined(value))
+            return value;
+        // Upstream's Document::active_element() falls back to body() when nothing
+        // is focused, so a page can assume activeElement is always an element.
+        if (cached_page) {
+            rendering::DomNode const* body = nullptr;
+            std::function<void(rendering::DomNode const&)> find_body = [&](rendering::DomNode const& node) {
+                if (body || node.name != "body")
+                    for (auto const& child : node.children)
+                        find_body(*child);
+                if (!body && node.name == "body")
+                    body = &node;
+            };
+            find_body(cached_page->document().root());
+            if (auto value = handle_for(const_cast<rendering::DomNode*>(body)); !JS_IsUndefined(value))
+                return value;
+        }
         return JS_UNDEFINED;
     };
     std::size_t relayouts = 0;
