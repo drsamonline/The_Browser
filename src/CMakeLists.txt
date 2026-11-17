@@ -25,6 +25,7 @@ add_library(AetherisRendering STATIC
     rendering/form_runtime.cpp
     rendering/visual_state.cpp
     rendering/viewport.cpp
+    rendering/dom_mutation.cpp
     rendering/scroll_bar.cpp
     rendering/document_interaction.cpp
     rendering/browser_session.cpp

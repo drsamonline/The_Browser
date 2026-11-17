@@ -26,6 +26,7 @@
 #include "js.hpp"
 #include "document_interaction.hpp"
 #include "viewport.hpp"
+#include "dom_mutation.hpp"
 #include "paint_executor.hpp"
 #include "scroll_bar.hpp"
 
@@ -261,6 +262,7 @@ static std::string node_text(rendering::DomNode const& node)
 
 static void set_node_text(rendering::DomNode& node, std::string const& text)
 {
+    rendering::note_dom_mutation();
     node.children.clear();
     node.append_child(std::make_unique<rendering::DomNode>(rendering::DomNodeType::Text, "", text));
 }
@@ -742,6 +744,7 @@ JSValue js_document_title_set(JSContext* context, JSValueConst, int argc, JSValu
 
 JSValue js_set_attribute(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
 {
+    rendering::note_dom_mutation();
     auto* node = node_of(context, this_value);
     if (!node || argc < 2)
         return JS_UNDEFINED;
@@ -1198,6 +1201,7 @@ void DomHost::collect(rendering::DomNode& node)
 
 void DomHost::register_subtree(rendering::DomNode& node)
 {
+    rendering::note_dom_mutation();
     for (auto& child : node.children) {
         parent_of[child.get()] = &node;
         if (child->type == rendering::DomNodeType::Element) {
@@ -1210,6 +1214,7 @@ void DomHost::register_subtree(rendering::DomNode& node)
 
 void DomHost::purge_subtree(rendering::DomNode& node)
 {
+    rendering::note_dom_mutation();
     for (auto& child : node.children) {
         auto it = handle_by_node.find(child.get());
         if (it != handle_by_node.end()) {
@@ -1231,6 +1236,7 @@ void DomHost::purge_subtree(rendering::DomNode& node)
 
 void DomHost::adopt(rendering::DomNode* parent, rendering::DomNode* child)
 {
+    rendering::note_dom_mutation();
     std::unique_ptr<rendering::DomNode> moved;
     auto pending_it = pending.find(child);
     if (pending_it != pending.end()) {
@@ -1660,25 +1666,6 @@ static rendering::RenderDocument create_scripted_document(
     aetheris::js::Interpreter& js, DomHost& dom,
     std::shared_ptr<std::array<double, 4>> viewport_state, double timer_budget_ms);
 
-// A cheap fingerprint of the document: node count, text, and attribute content.
-//
-// The window needs to know whether a timer that just ran actually changed
-// anything before it spends a layout and a repaint. This is a heuristic rather
-// than a revision counter - a change that leaves every string identical is
-// invisible to it - but it is exact for the cases that matter (a node added, text
-// replaced, an attribute written) and it costs one traversal per frame, and only
-// on pages that have timers at all.
-static std::size_t document_fingerprint(rendering::DomNode const& node)
-{
-    // Hash the strings, not their lengths: replacing "1" with "2" leaves the
-    // size identical, and that is exactly the change a counter is most often.
-    std::size_t total = std::hash<std::string> {}(node.name) ^ std::hash<std::string> {}(node.data);
-    for (auto const& entry : node.attributes)
-        total += std::hash<std::string> {}(entry.first) ^ std::hash<std::string> {}(entry.second);
-    for (auto const& child : node.children)
-        total += document_fingerprint(*child);
-    return total;
-}
 
 static rendering::DomNode* node_at(rendering::RenderDocument& rendered, DomHost& dom,
     rendering::Viewport const& viewport, float x, float y);
@@ -2053,9 +2040,9 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // may have mutated the DOM, and only then is the page laid out again: an
         // idle setInterval should not cost a layout and a repaint per frame.
         if (cached_page && page_js.has_timers()) {
-            auto const before = document_fingerprint(cached_page->document().root());
+            auto const before = rendering::dom_mutation_serial();
             if (page_js.run_timers(16.0)
-                && document_fingerprint(cached_page->document().root()) != before) {
+                && rendering::dom_mutation_serial() != before) {
                 cached_page->relayout();
                 ++relayouts;
                 need_render = true;
@@ -2090,11 +2077,11 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // A pointer move requested on the command line, once, after the page is up.
         if (!pending_move_done && move_x >= 0 && move_y >= 0 && cached_page) {
             pending_move_done = true;
-            auto const before = document_fingerprint(cached_page->document().root());
+            auto const before = rendering::dom_mutation_serial();
             bool const element_changed = hover_at(*cached_page, page_js, page_dom, viewport,
                 static_cast<float>(move_x), static_cast<float>(move_y - kChromeHeight), hovered);
             bool const restyled = apply_hover_visual_state(*cached_page, visual_state, hovered, static_cast<float>(kWidth));
-            if (element_changed && document_fingerprint(cached_page->document().root()) != before) {
+            if (element_changed && rendering::dom_mutation_serial() != before) {
                 cached_page->relayout();
                 ++relayouts;
                 need_render = true;
@@ -2125,7 +2112,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // A key requested on the command line fires once, after the page is up.
         if (!pending_key_done && !key_to_press.empty() && cached_page) {
             pending_key_done = true;
-            auto const before = document_fingerprint(cached_page->document().root());
+            auto const before = rendering::dom_mutation_serial();
             if (key_to_press == "tab") {
                 auto* next = next_focusable(*cached_page, focused);
                 visual_state.focus_trigger = rendering::FocusTrigger::Key;
@@ -2139,7 +2126,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             } else {
                 dispatch_key_to_focus(page_js, page_dom, focused, key_to_press);
             }
-            if (document_fingerprint(cached_page->document().root()) != before) {
+            if (rendering::dom_mutation_serial() != before) {
                 cached_page->relayout();
                 ++relayouts;
                 need_render = true;
@@ -2185,11 +2172,11 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                 break;
             case ui::InputAction::Kind::PageHover:
                 if (cached_page) {
-                    auto const before = document_fingerprint(cached_page->document().root());
+                    auto const before = rendering::dom_mutation_serial();
                     bool const element_changed = hover_at(*cached_page, page_js, page_dom, viewport,
                         static_cast<float>(action.x), static_cast<float>(action.y - kChromeHeight), hovered);
                     bool const restyled = apply_hover_visual_state(*cached_page, visual_state, hovered, static_cast<float>(kWidth));
-                    if (element_changed && document_fingerprint(cached_page->document().root()) != before) {
+                    if (element_changed && rendering::dom_mutation_serial() != before) {
                         cached_page->relayout();
                         ++relayouts;
                         need_render = true;
@@ -2212,9 +2199,9 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                 break;
             case ui::InputAction::Kind::Key:
                 if (cached_page) {
-                    auto const before = document_fingerprint(cached_page->document().root());
+                    auto const before = rendering::dom_mutation_serial();
                     dispatch_key_to_focus(page_js, page_dom, focused, action.text);
-                    if (document_fingerprint(cached_page->document().root()) != before) {
+                    if (rendering::dom_mutation_serial() != before) {
                         cached_page->relayout();
                         ++relayouts;
                         need_render = true;

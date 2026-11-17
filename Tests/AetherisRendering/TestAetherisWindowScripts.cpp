@@ -315,6 +315,19 @@ int main(int argc, char* argv[])
         require(after[0] > 200 && after[2] > 200, ":focus-visible paints after Tab (magenta)");
     }
 
+    // The mutation counter must see more than textContent: an attribute write is
+    // also a document change, and an under-counting counter produces a stale frame.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Attr</title></head><body><div id='n'>0</div>"
+            "<script>var n = 0; setInterval(function () { n++;"
+            "document.getElementById('n').setAttribute('data-n', String(n)); }, 50);</script></body></html>",
+            "", 20);
+        require(result.status == 0, "the attribute timer run exits cleanly");
+        require(result.output.find("relayouts: 0") == std::string::npos,
+            "an attribute write triggers a layout");
+    }
+
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");
     return 0;
 }
