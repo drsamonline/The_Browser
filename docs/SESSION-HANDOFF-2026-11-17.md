@@ -152,10 +152,46 @@ project has shipped twice is still not present.
    turns it into a build failure on the first translation unit. `-DCMAKE_CXX_FLAGS="-Wno-error=#warnings"`
    builds; fortify is inert at `-Og` either way. Worth knowing before blaming the tree.
 
+### Second item: cache across interaction-state changes — done
+
+`apply_visual_state()` no longer clears the cache and rebuilds every node. It invalidates the elements whose
+pseudo-class state actually moved, following upstream's `ancestor_traversal_for_pseudo_class()`, and takes the
+same geometry skip `relayout()` takes. The first pass now fills the cache too, so the first interaction has
+something to reuse.
+
+| Commit | What |
+| --- | --- |
+| `b2cc8a2f` | dirty set from the state move; cache and geometry kept; `:focus-within` subtree rule |
+| `88e01bbd` | six runs in `AetherisWindowScripts`, three of them controls |
+
+Measured, one interaction per run, 3 frames:
+
+| page | before (relayouts/layouts) | after |
+| --- | --- | --- |
+| hover, background only | 1 / 2 | 1 / **1**, 5 resolves |
+| hover, `width` (control) | 1 / 2 | 1 / 2 |
+| hover, one row of 200 | 1 / 2 | 1 / **1**, 5 resolves, 401 hits |
+| hover, `#card:hover .title` | 1 / 2 | 1 / **1** |
+| `:focus-within`, background | 1 / 2 | 1 / **1** |
+| `:focus-within`, `width` (control) | 1 / 2 | 1 / 2 |
+| `:focus-within`, descendant | 1 / 2 | 1 / **1** |
+
+The before column reported `resolves: 0` on every row because that path passed no stats to the builder — the
+instrument had no reading for it, which is worth remembering before quoting a `resolves:` number from an old
+run.
+
+Two things the dirty set deliberately does **not** narrow:
+
+- A **focus** move dirties the ancestor's whole subtree, because `#card:focus-within .title` matches a
+  sibling of the focused input. Upstream narrows this with selector analysis; without one, a focus move
+  re-resolves most of the page and gains only the layout skip. Hover and `:active` gain both.
+- **Siblings** are never dirtied: `style.cpp` splits selectors on descendant and child combinators only, so
+  `+` and `~` cannot reach a sibling. If they are ever matched, that is the place to fix it.
+
 ### Next, from here
 
-1. Cache across interaction-state changes: reuse the geometry snapshot in `apply_visual_state()` keyed on
-   the pseudo-class that changed, instead of rebuilding every node.
+1. Narrow the focus-move dirty set: the whole-subtree rule is correct but coarse. Selector analysis — does
+   any rule mention `:focus-within` on this ancestor — is what upstream uses instead.
 2. Extend `kLayoutProperties` when a property is added to `style.cpp` — a missing entry is a silent
    stale-geometry bug, not a slow path.
 3. `[a=v i]` case flag, if a page needs it.
