@@ -75,6 +75,20 @@ std::string const& last_attribute_mutation()
     return g_last_attribute;
 }
 
+void set_attribute(DomNode& node, std::string name, std::string value)
+{
+    note_dom_mutation_at(&node);
+    note_attribute_mutation(name);
+    node.attributes[std::move(name)] = std::move(value);
+}
+
+void remove_attribute(DomNode& node, std::string const& name)
+{
+    note_dom_mutation_at(&node);
+    note_attribute_mutation(name);
+    node.attributes.erase(name);
+}
+
 std::size_t dom_mutation_serial()
 {
     return g_serial;

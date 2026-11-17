@@ -353,7 +353,7 @@ static void apply_style_property(rendering::DomNode* node, std::string const& pr
             joined += "; ";
         joined += entry.first + ": " + entry.second;
     }
-    node->attributes["style"] = joined;
+    rendering::set_attribute(*node, "style", joined);
 }
 
 // ---- JavaScript DOM host -----------------------------------------------------
@@ -468,10 +468,10 @@ void set_control_value(rendering::DomNode* node, std::string const& value)
         return;
     }
     if (node_is(node, "option") || node_is(node, "select")) {
-        node->attributes["value"] = value;
+        rendering::set_attribute(*node, "value", value);
         return;
     }
-    node->attributes["value"] = value;
+    rendering::set_attribute(*node, "value", value);
 }
 
 JSValue js_value_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
@@ -505,9 +505,9 @@ JSValue js_checked_set(JSContext* context, JSValueConst this_value, int argc, JS
         return JS_UNDEFINED;
     bool checked = argc > 0 && JS_ToBool(context, argv[0]) > 0;
     if (checked)
-        node->attributes["checked"] = "";
+        rendering::set_attribute(*node, "checked", "");
     else
-        node->attributes.erase("checked");
+        rendering::remove_attribute(*node, "checked");
     return JS_UNDEFINED;
 }
 
@@ -614,7 +614,7 @@ JSValue js_dataset_set(JSContext* context, JSValueConst, int argc, JSValueConst*
         return JS_FALSE;
     std::string name = dataset_attribute_name(to_string_arg(context, argv[1]));
     const char* raw = JS_ToCString(context, argv[2]);
-    node->attributes[name] = raw ? raw : "";
+    rendering::set_attribute(*node, name, raw ? raw : "");
     if (raw)
         JS_FreeCString(context, raw);
     return JS_TRUE;
@@ -753,14 +753,9 @@ JSValue js_set_attribute(JSContext* context, JSValueConst this_value, int argc, 
         return JS_UNDEFINED;
     }
     const char* name = JS_ToCString(context, argv[0]);
-    // Order matters: the node-scoped note clears the recorded attribute name, so it
-    // must run first and the attribute note after it. Reversed, the write looks like a
-    // text edit and the attribute gate stops gating.
-    rendering::note_dom_mutation_at(node);
-    rendering::note_attribute_mutation(name ? name : "");
     const char* value = JS_ToCString(context, argv[1]);
     if (name && value)
-        node->attributes[name] = value;
+        rendering::set_attribute(*node, name, value);
     if (name)
         JS_FreeCString(context, name);
     if (value)
@@ -913,9 +908,7 @@ std::vector<std::string> read_classes(rendering::DomNode* node)
 // `#a.on{...}` and `classList.add('on')` stayed blue.
 void set_class_attribute(rendering::DomNode& node, std::string const& value)
 {
-    rendering::note_dom_mutation_at(&node);
-    rendering::note_attribute_mutation("class");
-    node.attributes["class"] = value;
+    rendering::set_attribute(node, "class", value);
 }
 
 void write_classes(rendering::DomNode* node, std::vector<std::string> const& classes)
@@ -1154,7 +1147,7 @@ JSValue js_style_set(JSContext* context, JSValueConst this_value, int argc, JSVa
         return JS_UNDEFINED;
     const char* raw = JS_ToCString(context, argv[0]);
     if (raw)
-        node->attributes["style"] = raw;
+        rendering::set_attribute(*node, "style", raw);
     if (raw)
         JS_FreeCString(context, raw);
     return JS_UNDEFINED;

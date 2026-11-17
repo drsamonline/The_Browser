@@ -56,6 +56,18 @@ void note_attribute_mutation(std::string const& name);
 // attribute write.
 std::string const& last_attribute_mutation();
 
+// The one way to write or remove an attribute on a live document: it writes and notes, in the
+// order js_set_attribute established (node-scoped first, because that clears the recorded
+// attribute name).
+//
+// Upstream has the same choke point through the type system - Element::m_attributes is private
+// and every write runs Element::set_attribute -> run_attribute_change_steps ->
+// invalidate_style_after_attribute_change. Here the map is public, so a caller that writes it
+// directly changes the DOM and tells the renderer nothing: classList, el.style.background and
+// el.style = '...' all did exactly that, and each was a silent no-op in the renderer.
+void set_attribute(DomNode& node, std::string name, std::string value);
+void remove_attribute(DomNode& node, std::string const& name);
+
 // Monotonic. Two equal readings mean nothing has been mutated in between.
 std::size_t dom_mutation_serial();
 
