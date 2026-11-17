@@ -226,6 +226,17 @@ bool StyleResolver::matches(DomNode const& node, std::string const& selector, Vi
     return true;
 }
 
+// Trims surrounding whitespace. The parser has its own; this one lives here so the
+// matcher does not depend on the parser's internals.
+static std::string trim_copy(std::string text)
+{
+    auto begin = text.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos)
+        return {};
+    auto end = text.find_last_not_of(" \t\r\n");
+    return text.substr(begin, end - begin + 1);
+}
+
 bool StyleResolver::matches_simple(DomNode const& node, std::string const& selector, VisualInteractionState const* interaction_state)
 {
     if (node.type != DomNodeType::Element)
@@ -241,15 +252,39 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
     std::string id;
     std::vector<std::string> classes;
     std::vector<std::string> pseudo_classes;
+    // Attribute selectors: `[name]` and `[name=value]`. Upstream supports operators,
+    // case-sensitivity flags and namespaces; these two forms are what a page uses.
+    std::vector<std::pair<std::string, std::string>> attributes;
     size_t i = 0;
 
-    while (i < text.size() && text[i] != '#' && text[i] != '.' && text[i] != ':')
+    auto is_marker = [](char c) { return c == '#' || c == '.' || c == ':' || c == '['; };
+
+    while (i < text.size() && !is_marker(text[i]))
         tag += text[i++];
 
     while (i < text.size()) {
         char marker = text[i++];
+        if (marker == '[') {
+            std::string inner;
+            while (i < text.size() && text[i] != ']')
+                inner += text[i++];
+            if (i < text.size())
+                ++i;
+            auto equals = inner.find('=');
+            if (equals == std::string::npos) {
+                if (!inner.empty())
+                    attributes.emplace_back(trim_copy(inner), std::string {});
+            } else {
+                std::string value = trim_copy(inner.substr(equals + 1));
+                if (value.size() >= 2 && (value.front() == '"' || value.front() == '\'')
+                    && value.back() == value.front())
+                    value = value.substr(1, value.size() - 2);
+                attributes.emplace_back(trim_copy(inner.substr(0, equals)), value);
+            }
+            continue;
+        }
         std::string value;
-        while (i < text.size() && text[i] != '#' && text[i] != '.' && text[i] != ':')
+        while (i < text.size() && !is_marker(text[i]))
             value += text[i++];
         if (marker == '#')
             id = value;
@@ -257,6 +292,14 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
             classes.push_back(value);
         else if (marker == ':' && !value.empty())
             pseudo_classes.push_back(value);
+    }
+
+    for (auto const& attribute : attributes) {
+        auto present = node.attribute(attribute.first);
+        if (!present)
+            return false;
+        if (!attribute.second.empty() && *present != attribute.second)
+            return false;
     }
 
     if (!tag.empty() && tag != "*" && node.name != tag)
@@ -341,6 +384,12 @@ int StyleResolver::specificity(std::string const& selector)
             ++classes;
             ++i;
             while (i < selector.size() && is_ident_char(selector[i]))
+                ++i;
+        } else if (c == '[') {
+            ++classes;
+            while (i < selector.size() && selector[i] != ']')
+                ++i;
+            if (i < selector.size())
                 ++i;
         } else if (c == ':') {
             ++classes;

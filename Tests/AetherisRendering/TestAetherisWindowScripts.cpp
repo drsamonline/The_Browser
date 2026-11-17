@@ -434,6 +434,41 @@ int main(int argc, char* argv[])
             "a class write does relayout");
     }
 
+    // Attribute selectors, both forms, and the gate that depends on them: a write to an
+    // attribute that IS observed must relayout, which is the case the gate alone would
+    // have skipped if uses_attribute had stayed a stub.
+    {
+        std::system("rm -rf /tmp/aetheris-attr-frames && mkdir -p /tmp/aetheris-attr-frames");
+        auto styled = run_window(binary,
+            "<html><head><style>body{margin:0}div{width:400px;height:100px;background:#0000ff}"
+            "[data-x]{background:#ff00ff}[data-y=one]{background:#00ff00}</style></head><body>"
+            "<div id='a' data-x='1'>a</div><div id='b'>b</div><div id='c' data-y='one'>c</div>"
+            "<div id='d' data-y='two'>d</div></body></html>", "", 2, "/tmp/aetheris-attr-frames");
+        require(styled.status == 0, "the attribute selector run exits cleanly");
+
+        int present[3] = { 0, 0, 0 };
+        int absent[3] = { 0, 0, 0 };
+        int equal[3] = { 0, 0, 0 };
+        int differs[3] = { 0, 0, 0 };
+        require(frame_pixel("/tmp/aetheris-attr-frames", 200, 34 + 50, present), "attr pixel 1");
+        require(frame_pixel("/tmp/aetheris-attr-frames", 200, 34 + 150, absent), "attr pixel 2");
+        require(frame_pixel("/tmp/aetheris-attr-frames", 200, 34 + 250, equal), "attr pixel 3");
+        require(frame_pixel("/tmp/aetheris-attr-frames", 200, 34 + 350, differs), "attr pixel 4");
+        require(is_magenta(present), "[data-x] matches an element that has it");
+        require(is_blue(absent), "[data-x] does not match an element without it");
+        require(is_green(equal), "[data-y=one] matches the value one");
+        require(is_blue(differs), "[data-y=one] does not match the value two");
+
+        auto observed = run_window(binary,
+            "<html><head><style>[data-x]{background:#ff00ff}</style></head><body>"
+            "<div id='n' data-x='0'>0</div><script>var n = 0;"
+            "setInterval(function () { n++; document.getElementById('n').setAttribute('data-x', String(n)); }, 50);"
+            "</script></body></html>", "", 20);
+        require(observed.status == 0, "the observed attribute run exits cleanly");
+        require(observed.output.find("relayouts: 0") == std::string::npos,
+            "a write to an attribute a selector mentions does relayout");
+    }
+
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");
     return 0;
 }
