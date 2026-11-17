@@ -388,6 +388,28 @@ the reuse had not fired. One temporary `fprintf` in `reuse_subtree` printed the 
 That is the pattern for all five: a number that did not match what the code plainly does, chased with a
 print rather than a theory.
 
+### Tenth item: a click is not a layout
+
+Not on the list. It came out of reading `dispatch_click_at()` while looking for the next item, and it was
+the largest single waste the session found: the function called `relayout()` unconditionally, and
+`relayout()` with no mutation on record treats the call as **structural** — it clears the style cache and
+lays the page out from scratch. Clicking anywhere on a page whose handler only logged cost 407 resolves and
+405 nodes laid out.
+
+| click handler | before | after |
+| --- | --- | --- |
+| logs only | layouts 2, 405 nodes | layouts 1 (no pass) |
+| writes an unobserved attribute | layouts 2, 405 nodes | layouts 1, 0 nodes |
+| changes a width (control) | layouts 2, 405 nodes | layouts 2, 5 nodes |
+
+It now relayouts only when the click mutated the DOM, gated the same way the timer and key paths already
+were. The control still reflows.
+
+**And an instrument fix it exposed:** both skip paths left `layout nodes:` reporting the *previous* pass, so a
+relayout that skipped read as if it had laid the page out. That is how `click_attr` reported 405 before the
+fix and 0 after — the second number is the true one. A counter that can be stale is worse than no counter,
+because it looks like evidence.
+
 ### Next, from here
 
 1. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
