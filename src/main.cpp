@@ -1683,6 +1683,63 @@ static std::size_t document_fingerprint(rendering::DomNode const& node)
 static rendering::DomNode* node_at(rendering::RenderDocument& rendered, DomHost& dom,
     rendering::Viewport const& viewport, float x, float y);
 
+// Sequentially focusable, as upstream's Element::is_focusable() defines it: an
+// element whose tabindex parses as an integer. Upstream also requires the
+// focusable-area rendering rules, and links and form controls have their own
+// clauses; neither exists here yet.
+static bool parse_integer(std::string const& text, int& out)
+{
+    if (text.empty())
+        return false;
+    std::size_t index = 0;
+    bool negative = false;
+    if (text[0] == '+' || text[0] == '-') {
+        negative = text[0] == '-';
+        index = 1;
+        if (text.size() == 1)
+            return false;
+    }
+    long value = 0;
+    for (; index < text.size(); ++index) {
+        if (text[index] < '0' || text[index] > '9')
+            return false;
+        value = value * 10 + (text[index] - '0');
+        if (value > 1000000)
+            return false;
+    }
+    out = static_cast<int>(negative ? -value : value);
+    return true;
+}
+
+static bool is_focusable(rendering::DomNode const& node)
+{
+    auto const* tabindex = node.attribute("tabindex");
+    int value = 0;
+    return tabindex && parse_integer(*tabindex, value);
+}
+
+static void collect_focusable(rendering::DomNode const& node, std::vector<rendering::DomNode*>& out)
+{
+    if (is_focusable(node))
+        out.push_back(const_cast<rendering::DomNode*>(&node));
+    for (auto const& child : node.children)
+        collect_focusable(*child, out);
+}
+
+static rendering::DomNode* next_focusable(rendering::RenderDocument& rendered, rendering::DomNode* current)
+{
+    std::vector<rendering::DomNode*> focusable;
+    collect_focusable(rendered.document().root(), focusable);
+    if (focusable.empty())
+        return nullptr;
+    if (!current)
+        return focusable.front();
+    for (std::size_t index = 0; index < focusable.size(); ++index)
+        if (focusable[index] == current)
+            return focusable[(index + 1) % focusable.size()];
+    return focusable.front();
+}
+
 // Moves focus, in the order Ladybird's Document::set_focused_area uses: the old
 // element loses focus, style is re-resolved for the change, then the new element
 // receives focus. Firing `blur` before the state changes and `focus` after is
@@ -2038,7 +2095,19 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         if (!pending_key_done && !key_to_press.empty() && cached_page) {
             pending_key_done = true;
             auto const before = document_fingerprint(cached_page->document().root());
-            dispatch_key_to_focus(page_js, page_dom, focused, key_to_press);
+            if (key_to_press == "tab") {
+                auto* next = next_focusable(*cached_page, focused);
+                visual_state.focus_trigger = rendering::FocusTrigger::Key;
+                focused = next;
+                if (set_focus(*cached_page, page_js, page_dom, visual_state, next, static_cast<float>(kWidth)))
+                    ++relayouts;
+                // Focus changes the cascade, not the DOM, so the fingerprint below
+                // stays equal: without this the frame is never redrawn and the focus
+                // ring never appears. Two sessions lost to this line.
+                need_render = true;
+            } else {
+                dispatch_key_to_focus(page_js, page_dom, focused, key_to_press);
+            }
             if (document_fingerprint(cached_page->document().root()) != before) {
                 cached_page->relayout();
                 ++relayouts;
@@ -2098,6 +2167,16 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                         ++relayouts;
                         need_render = true;
                     }
+                }
+                break;
+            case ui::InputAction::Kind::FocusNext:
+                if (cached_page) {
+                    auto* next = next_focusable(*cached_page, focused);
+                    visual_state.focus_trigger = rendering::FocusTrigger::Key;
+                    focused = next;
+                    if (set_focus(*cached_page, page_js, page_dom, visual_state, next, static_cast<float>(kWidth)))
+                        ++relayouts;
+                    need_render = true;
                 }
                 break;
             case ui::InputAction::Kind::Key:

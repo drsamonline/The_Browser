@@ -112,6 +112,9 @@ InputAction InputRouter::handle_key(WindowEvent const& event)
     if (key == "escape")
         return InputAction { InputAction::Kind::Quit };
 
+    if (key == "tab")
+        return InputAction { InputAction::Kind::FocusNext };
+
 
     // Only now does a key belong to the page. Placing this before the browser's
     // own claims swallowed Escape and the page never quit - the fallback has to

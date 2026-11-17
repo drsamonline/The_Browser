@@ -60,7 +60,7 @@ All credited in `CREDITS.md`.
 
 | Item | Detail |
 | --- | --- |
-| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; a click focuses and keys reach the focused element then bubble to document; repeating timers tick once per frame. `keyup`, `mouseleave`, tab order is still missing |
+| JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; a click focuses and keys reach the focused element then bubble to document; repeating timers tick once per frame. `keyup`, `mouseleave`, Tab order works |
 | Page load | One path: `create_scripted_document`. `--render` passes a negative timer budget to drain the queue; `--window` passes 0 and ticks per frame |
 | Window layout | **Correct as of 2026-11-17** — an earlier note in this file claimed the window laid block elements out inline and that the user-agent stylesheet was missing. Both were wrong. The frame shows two divs stacked, 400 px wide, their same-coloured backgrounds merging visually; the sheet probe showed `css=63 combined=1729` on both paths (UA sheet included). Corrected in the audit log, `2026-11-17-aetheris-retraction-window-layout.md`. |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
@@ -180,7 +180,12 @@ contents. Several releases went green with a broken or missing package.
    until each dispatch was followed by `js.dispatch_event(...)`. Upstream bubbles
    through the document and window as part of the same path. Anything that
    dispatches an event needs that second call.
-9. **CSS shorthands and units.** `margin: 5em auto` was ignored entirely (only
+9. **A focus change does not change the DOM.** `need_render` was only set when the
+   document fingerprint moved, so moving focus relaid out the page and never
+   redrew it: `:focus-visible` "did not work" for two sessions while the state and
+   the layout were both correct. Any state change that alters the cascade without
+   touching the DOM must set `need_render` itself.
+10. **CSS shorthands and units.** `margin: 5em auto` was ignored entirely (only
    longhands were read) and `2em` was parsed as 2 pixels. Both fixed — but this
    class of gap is common: assume a property is unimplemented until proven.
 7. **Sandbox recycles.** Uncommitted work is lost. Commit early. Re-clone and
