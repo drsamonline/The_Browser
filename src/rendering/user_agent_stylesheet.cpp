@@ -68,8 +68,23 @@ td, th { padding: 1px; }
 fieldset { margin: 0 2px; padding: 0.35em 0.75em 0.625em; border: 1px solid #999999; }
 legend { padding: 0 2px; }
 
-input, textarea, select, button { display: inline-block; }
-textarea { white-space: pre-wrap; }
+/* Form controls, following LibWeb's Default.css: a text field is a bordered box with
+ * a Field background, and a button is a bordered box with a ButtonFace background.
+ * The system colours and `inset` borders upstream uses are not supported here, so
+ * these are the nearest fixed values; the shape is upstream's, the palette is not. */
+input, textarea, select, button {
+    display: inline-block;
+    border: 1px solid #999999;
+    padding: 1px 3px;
+    background-color: #ffffff;
+    color: #000000;
+    min-width: 8em;
+    min-height: 1.2em;
+}
+button, select, input[type=submit], input[type=button], input[type=reset] {
+    background-color: #efefef;
+}
+textarea { white-space: pre-wrap; min-height: 3em; }
 )CSS";
 }
 
