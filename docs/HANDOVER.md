@@ -62,7 +62,7 @@ All credited in `CREDITS.md`.
 | --- | --- |
 | JS after load | Scripts run at load; clicks, keydown and hover dispatch into the DOM and re-lay out; CSS `:hover`, `:active` and `:focus` restyle the element; a click focuses and keys reach the focused element then bubble to document; repeating timers tick once per frame. `keyup`, `mouseleave`, tab order is still missing |
 | Page load | One path: `create_scripted_document`. `--render` passes a negative timer budget to drain the queue; `--window` passes 0 and ticks per frame |
-| Window layout | **The window lays block elements out inline.** `--render` is correct; `--window` is not. A fixture of two 400x100 divs renders side by side in the window (blue spans x 0-800 at one row, nothing below) and stacked in `--render`. Adding `display:block` to the author CSS fixes it, so the user-agent stylesheet is not in effect on that path even though `create_from_document` prepends it. Next probe: print the parsed rule count for the window's sheet. |
+| Window layout | **Correct as of 2026-11-17** — an earlier note in this file claimed the window laid block elements out inline and that the user-agent stylesheet was missing. Both were wrong. The frame shows two divs stacked, 400 px wide, their same-coloured backgrounds merging visually; the sheet probe showed `css=63 combined=1729` on both paths (UA sheet included). Corrected in the audit log, `2026-11-17-aetheris-retraction-window-layout.md`. |
 | Shaping | No Arabic/Indic/ligatures; kerning only |
 | `position: sticky` | No longer blocked: a scroll offset now exists, so this is ordinary layout work |
 | Scrollbar drag | A click on the track scrolls to that point; dragging the thumb is not implemented |
