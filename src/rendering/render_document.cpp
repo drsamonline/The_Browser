@@ -300,13 +300,19 @@ bool RenderDocument::collect_state_change_dirty(VisualInteractionState const& in
             continue;
         // `:focus-within` on an ancestor styles its *other* descendants - `.card:focus-within
         // .title` matches a sibling of the focused input, which is neither on the chain nor in
-        // the focused subtree - so only a rule of that shape makes the ancestor's whole subtree
-        // dirty. Ask the sheet first: without such a rule the chain above is the whole story,
-        // and a focus move stays cheap.
-        if (!m_stylesheet.uses_pseudo_class_before_combinator(":focus-within"))
-            continue;
+        // the focused subtree - so an ancestor whose subtree a rule can reach that way is dirty
+        // down to its leaves. Ask per ancestor, the way upstream does: the sheet-wide answer
+        // let one `.card:focus-within .title` rule make every focus move coarse.
+        //
+        // The state to match with is the one in which the pseudo-class holds for this chain: the
+        // new state for the element that gained focus, the old one for the element that lost it,
+        // or the compound `#card:focus-within` would not match the card that just lost it.
+        VisualInteractionState const* const state_for = node == after
+            ? &interaction_state
+            : (m_last_visual_state ? &*m_last_visual_state : nullptr);
         for (auto const* ancestor = node->parent; ancestor; ancestor = ancestor->parent)
-            collect_dirty(*ancestor, dirty, false);
+            if (StyleResolver::matches_ancestor_pseudo_class_rule(*ancestor, m_stylesheet, ":focus-within", state_for))
+                collect_dirty(*ancestor, dirty, false);
     }
     // Sibling combinators (`+`, `~`) are not matched by style.cpp, so a state change cannot
     // reach a sibling and none is dirtied. If they are ever added, this is the place.

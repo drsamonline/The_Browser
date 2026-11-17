@@ -253,6 +253,32 @@ static std::string trim_copy(std::string text)
     return text.substr(begin, end - begin + 1);
 }
 
+bool StyleResolver::matches_ancestor_pseudo_class_rule(DomNode const& node, CssStyleSheet const& sheet,
+    std::string_view pseudo, VisualInteractionState const* interaction_state)
+{
+    // The combinators this engine matches: descendant (whitespace) and child ('>'). '+' and
+    // '~' are not combinators here, so treating them as boundaries can only over-answer.
+    static constexpr std::string_view combinators { " >+~" };
+    for (auto const& rule : sheet.rules) {
+        for (auto const& selector : rule.selectors) {
+            for (auto at = selector.find(pseudo); at != std::string::npos;
+                at = selector.find(pseudo, at + pseudo.size())) {
+                // A combinator after the pseudo-class means its compound is an ancestor of the
+                // subject. Without one, the pseudo-class is on the subject itself and the
+                // element's own style is the only thing it changes.
+                auto const end = selector.find_first_of(combinators, at + pseudo.size());
+                if (end == std::string::npos)
+                    continue;
+                auto const previous = at == 0 ? std::string::npos : selector.find_last_of(combinators, at - 1);
+                auto const begin = previous == std::string::npos ? 0 : previous + 1;
+                if (matches_simple(node, selector.substr(begin, end - begin), interaction_state))
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool StyleResolver::matches_simple(DomNode const& node, std::string const& selector, VisualInteractionState const* interaction_state)
 {
     if (node.type != DomNodeType::Element)

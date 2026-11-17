@@ -6,6 +6,7 @@
 
 #include <string>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace aetheris::rendering {
@@ -43,6 +44,15 @@ struct StyleCacheStats {
 class StyleResolver {
 public:
     StyleProperties resolve(DomNode const& node, CssStyleSheet const& sheet, StyleProperties const* parent_style = nullptr, VisualInteractionState const* interaction_state = nullptr) const;
+
+    // Whether a rule puts `pseudo` on a compound that `node` matches and that is not the
+    // last one - `.card:focus-within .title`. That is the only shape in which an element's
+    // style can depend on an *ancestor* holding the pseudo-class, so it is the question to
+    // ask before invalidating an ancestor's subtree. `interaction_state` must be the state in
+    // which the pseudo-class holds for this element (the new one for an element gaining it,
+    // the old one for an element losing it), or the compound will not match.
+    static bool matches_ancestor_pseudo_class_rule(DomNode const& node, CssStyleSheet const& sheet,
+        std::string_view pseudo, VisualInteractionState const* interaction_state);
 
 private:
     static bool matches(DomNode const& node, std::string const& selector, VisualInteractionState const* interaction_state);
