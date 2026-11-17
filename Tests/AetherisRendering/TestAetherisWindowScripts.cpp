@@ -779,6 +779,102 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // Sibling combinators, the attribute case flag and the form states. Upstream matches `+` by
+    // stepping to tree.previous_sibling() and `~` by walking back over earlier siblings
+    // (Rust/src/css/style/component_matching.rs); the attribute flag threads through every match
+    // type as `equals(value, literal, insensitive)`.
+    //
+    // The form fixtures set `border:0;margin:0;padding:0`: an input's user-agent border made a fixed
+    // 20 px probe step land on the previous input, which read as a matcher bug twice before the
+    // geometry was checked.
+    {
+        std::string const directory = "aetheris-batch-a-frames";
+        auto stripe = [](std::string const& rule) {
+            std::string rows;
+            for (int index = 0; index < 4; ++index)
+                rows += "<div class='r' id='r" + std::to_string(index) + "'>r</div>";
+            return "<html><head><title>Batch A</title><style>body{margin:0}"
+                   ".r{width:400px;height:10px;background:#00ff00}" + rule +
+                   "</style></head><body>" + rows + "</body></html>";
+        };
+        struct StripeCase {
+            char const* what;
+            std::string html;
+            int expected[4][3];
+        };
+        std::vector<StripeCase> const stripe_cases {
+            { "a + b matches only the element after b",
+                stripe("#r1 + .r{background:#ff00ff}"),
+                { { 0, 255, 0 }, { 0, 255, 0 }, { 255, 0, 255 }, { 0, 255, 0 } } },
+            { "a ~ b matches every following sibling",
+                stripe("#r1 ~ .r{background:#ff00ff}"),
+                { { 0, 255, 0 }, { 0, 255, 0 }, { 255, 0, 255 }, { 255, 0, 255 } } },
+        };
+        for (auto const& stripe_case : stripe_cases) {
+            std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+            auto result = run_window(binary, stripe_case.html, "", 2, directory);
+            std::string const message = std::string("the sibling run for ") + stripe_case.what + " exits cleanly";
+            require(result.status == 0, message.c_str());
+            for (int row = 0; row < 4; ++row) {
+                int rgb[3] = { 0, 0, 0 };
+                require(frame_pixel(directory, 200, 34 + row * 10 + 5, rgb), "a sibling pixel is readable");
+                require(rgb[0] == stripe_case.expected[row][0] && rgb[1] == stripe_case.expected[row][1]
+                        && rgb[2] == stripe_case.expected[row][2],
+                    stripe_case.what);
+            }
+        }
+
+        // The attribute case flag, both directions, and the default staying case-sensitive. The space
+        // inside `[a=v i]` also proved the scanners need brackets as well as parentheses.
+        struct AttrCase {
+            char const* what;
+            std::string rule;
+            bool first_matches;
+            bool second_matches;
+        };
+        std::vector<AttrCase> const attr_cases {
+            { "[data-mode=LIST i] matches 'list' and not 'grid'", "div[data-mode=LIST i]{background:#ff00ff}", true, false },
+            // Without the flag, LIST and list are different values: this must not match either div.
+            { "[data-mode=LIST] stays case-sensitive", "div[data-mode=LIST]{background:#ff00ff}", false, false },
+        };
+        for (auto const& attr_case : attr_cases) {
+            std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+            std::string const html = "<html><head><title>Attr</title><style>body{margin:0}"
+                "div{width:400px;height:10px;background:#00ff00}" + attr_case.rule +
+                "</style></head><body><div data-mode='list'>a</div><div data-mode='grid'>b</div></body></html>";
+            auto result = run_window(binary, html, "", 2, directory);
+            std::string const message = std::string("the attribute run for ") + attr_case.what + " exits cleanly";
+            require(result.status == 0, message.c_str());
+            int first[3] = { 0, 0, 0 };
+            int second[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 200, 34 + 5, first), "the attribute pixel is readable");
+            require(frame_pixel(directory, 200, 34 + 15, second), "the second attribute pixel is readable");
+            require(attr_case.first_matches ? is_magenta(first) : is_green(first), attr_case.what);
+            require(attr_case.second_matches ? is_magenta(second) : is_green(second), attr_case.what);
+        }
+
+        // Form states: three controls, one of each state, borderless so the probe steps land on them.
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto forms = run_window(binary,
+            "<html><head><title>Forms</title><style>body{margin:0}"
+            "input{display:block;margin:0;padding:0;border:0;width:100px;height:20px;background:#00ff00}"
+            "input:checked{background:#ff00ff}input:disabled{background:#0000ff}"
+            "input:placeholder-shown{background:#00ffff}"
+            "</style></head><body>"
+            "<input checked><input disabled><input placeholder='x' value=''><input placeholder='x' value='f'>"
+            "</body></html>", "", 2, directory);
+        require(forms.status == 0, "the form-state run exits cleanly");
+        int const form_expected[4][3] { { 255, 0, 255 }, { 0, 0, 255 }, { 0, 255, 255 }, { 0, 255, 0 } };
+        for (int row = 0; row < 4; ++row) {
+            int rgb[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 50, 34 + row * 20 + 5, rgb), "a form pixel is readable");
+            require(rgb[0] == form_expected[row][0] && rgb[1] == form_expected[row][1]
+                    && rgb[2] == form_expected[row][2],
+                ":checked, :disabled and :placeholder-shown each style their own control");
+        }
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // Custom properties and var(). Upstream resolves them at style-resolution time against an
     // inherited store with cycle tracking (Rust/src/css/custom_properties.rs, resolve_vars); here the
     // store is the same property map, the inheritance is a prefix copy, and the cycle guard is a
