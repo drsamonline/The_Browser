@@ -394,8 +394,10 @@ rendering::RenderDocument const* g_current_page { nullptr };
 // document, interpreter and interaction state are not in scope. They record a request here and the loop
 // performs it with set_focus(), the same helper the keyboard uses - so a scripted focus fires the same
 // blur/focus events and re-resolves style the same way.
-rendering::DomNode* g_focus_request { nullptr };
-bool g_focus_request_pending { false };
+// A queue, not a slot. run_timers() runs every timer due in one frame's budget, so a script that calls
+// focus() and then blur() inside that window used to have the first request overwritten before the loop
+// performed it - the focus state moved for neither, and no focus event fired. Measured 2026-11-18.
+std::vector<rendering::DomNode*> g_focus_requests;
 
 struct DomHost {
     JSContext* context { nullptr };
@@ -960,10 +962,8 @@ void write_classes(rendering::DomNode* node, std::vector<std::string> const& cla
 // Recorded in docs/CHECKLIST.md; the state is what the test asserts.
 JSValue js_focus(JSContext* context, JSValueConst this_value, int, JSValueConst*)
 {
-    if (auto* node = node_of(context, this_value)) {
-        g_focus_request = node;
-        g_focus_request_pending = true;
-    }
+    if (auto* node = node_of(context, this_value))
+        g_focus_requests.push_back(node);
     return JS_UNDEFINED;
 }
 
@@ -974,8 +974,7 @@ JSValue js_blur(JSContext* context, JSValueConst this_value, int, JSValueConst*)
     auto* node = node_of(context, this_value);
     if (!node)
         return JS_UNDEFINED;
-    g_focus_request = nullptr;
-    g_focus_request_pending = true;
+    g_focus_requests.push_back(nullptr);
     return JS_UNDEFINED;
 }
 
@@ -2332,11 +2331,14 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // A script asked for focus with element.focus() or element.blur(). It is performed here, where
         // the page, the interpreter and the interaction state are all in scope, so it goes through the
         // same path as a click or a Tab key.
-        if (g_focus_request_pending && cached_page) {
-            g_focus_request_pending = false;
-            if (set_focus(*cached_page, page_js, page_dom, visual_state, g_focus_request,
-                    static_cast<float>(kWidth)))
-                ++relayouts;
+        if (!g_focus_requests.empty() && cached_page) {
+            // In order: focus then blur leaves nothing focused, and both events fire on the way.
+            for (auto* requested : g_focus_requests) {
+                if (set_focus(*cached_page, page_js, page_dom, visual_state, requested,
+                        static_cast<float>(kWidth)))
+                    ++relayouts;
+            }
+            g_focus_requests.clear();
             need_render = true;
         }
 
