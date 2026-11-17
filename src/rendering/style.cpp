@@ -252,9 +252,14 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
     std::string id;
     std::vector<std::string> classes;
     std::vector<std::string> pseudo_classes;
-    // Attribute selectors: `[name]` and `[name=value]`. Upstream supports operators,
-    // case-sensitivity flags and namespaces; these two forms are what a page uses.
-    std::vector<std::pair<std::string, std::string>> attributes;
+    // Attribute selectors. Upstream also supports a case-sensitivity flag and
+    // namespaces; the operators below are the rest of what a page actually uses.
+    struct AttributeRequirement {
+        enum class Operator { Present, Equals, Includes, DashMatch, Prefix, Suffix, Substring } op;
+        std::string name;
+        std::string value;
+    };
+    std::vector<AttributeRequirement> attributes;
     size_t i = 0;
 
     auto is_marker = [](char c) { return c == '#' || c == '.' || c == ':' || c == '['; };
@@ -272,14 +277,30 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
                 ++i;
             auto equals = inner.find('=');
             if (equals == std::string::npos) {
-                if (!inner.empty())
-                    attributes.emplace_back(trim_copy(inner), std::string {});
+                if (!inner.empty()) {
+                    auto name = trim_copy(inner);
+                    if (!name.empty())
+                        attributes.push_back({ AttributeRequirement::Operator::Present, name, {} });
+                }
             } else {
+                // The operator is whatever sits before '=': nothing, '~', '|', '^', '$' or '*'.
+                auto name = trim_copy(inner.substr(0, equals));
+                char op_char = name.empty() ? 0 : name.back();
+                auto op = AttributeRequirement::Operator::Equals;
+                if (op_char == '~' || op_char == '|' || op_char == '^' || op_char == '$' || op_char == '*') {
+                    name.pop_back();
+                    name = trim_copy(name);
+                    op = op_char == '~' ? AttributeRequirement::Operator::Includes
+                        : op_char == '|' ? AttributeRequirement::Operator::DashMatch
+                        : op_char == '^' ? AttributeRequirement::Operator::Prefix
+                        : op_char == '$' ? AttributeRequirement::Operator::Suffix
+                                         : AttributeRequirement::Operator::Substring;
+                }
                 std::string value = trim_copy(inner.substr(equals + 1));
                 if (value.size() >= 2 && (value.front() == '"' || value.front() == '\'')
                     && value.back() == value.front())
                     value = value.substr(1, value.size() - 2);
-                attributes.emplace_back(trim_copy(inner.substr(0, equals)), value);
+                attributes.push_back({ op, name, value });
             }
             continue;
         }
@@ -294,12 +315,54 @@ bool StyleResolver::matches_simple(DomNode const& node, std::string const& selec
             pseudo_classes.push_back(value);
     }
 
-    for (auto const& attribute : attributes) {
-        auto present = node.attribute(attribute.first);
+    for (auto const& requirement : attributes) {
+        auto present = node.attribute(requirement.name);
         if (!present)
             return false;
-        if (!attribute.second.empty() && *present != attribute.second)
-            return false;
+        auto const& actual = *present;
+        auto const& expected = requirement.value;
+        switch (requirement.op) {
+        case AttributeRequirement::Operator::Present:
+            break;
+        case AttributeRequirement::Operator::Equals:
+            if (actual != expected)
+                return false;
+            break;
+        case AttributeRequirement::Operator::Includes: {
+            // `[class~=note]` - a whitespace-separated word matches.
+            std::istringstream stream(actual);
+            std::string word;
+            bool found = false;
+            while (stream >> word)
+                if (word == expected) {
+                    found = true;
+                    break;
+                }
+            if (!found)
+                return false;
+            break;
+        }
+        case AttributeRequirement::Operator::DashMatch:
+            // `[lang|=en]` - equals, or starts with the value followed by '-'.
+            if (actual != expected
+                && !(actual.size() > expected.size() && actual.compare(0, expected.size(), expected) == 0
+                    && actual[expected.size()] == '-'))
+                return false;
+            break;
+        case AttributeRequirement::Operator::Prefix:
+            if (actual.size() < expected.size() || actual.compare(0, expected.size(), expected) != 0)
+                return false;
+            break;
+        case AttributeRequirement::Operator::Suffix:
+            if (actual.size() < expected.size()
+                || actual.compare(actual.size() - expected.size(), expected.size(), expected) != 0)
+                return false;
+            break;
+        case AttributeRequirement::Operator::Substring:
+            if (actual.find(expected) == std::string::npos)
+                return false;
+            break;
+        }
     }
 
     if (!tag.empty() && tag != "*" && node.name != tag)

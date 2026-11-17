@@ -469,6 +469,52 @@ int main(int argc, char* argv[])
             "a write to an attribute a selector mentions does relayout");
     }
 
+    // The five attribute operators, each asserted in both directions. A single page,
+    // one row per operator: magenta where it should match, blue where it should not.
+    {
+        std::string directory = "/tmp/aetheris-attr-ops-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto result = run_window(binary,
+            "<html><head><style>body{margin:0}div{width:400px;height:60px;background:#0000ff}"
+            "[class~=note]{background:#ff00ff}[lang|=en]{background:#ff00ff}"
+            "[href^=https]{background:#ff00ff}[href$=.png]{background:#ff00ff}"
+            "[href*=mid]{background:#ff00ff}</style></head><body>"
+            "<div id='a' class='x note y'>1</div>"
+            "<div id='b' class='x noted y'>2</div>"
+            "<div id='c' lang='en-GB'>3</div>"
+            "<div id='d' lang='eng'>4</div>"
+            "<div id='e' href='https://a'>5</div>"
+            "<div id='f' href='http://a'>6</div>"
+            "<div id='g' href='/a.png'>7</div>"
+            "<div id='h' href='/a.pngz'>8</div>"
+            "<div id='i' href='/a-mid-b'>9</div>"
+            "<div id='j' href='/a-b'>10</div>"
+            "</body></html>", "", 2, directory);
+        require(result.status == 0, "the attribute operator run exits cleanly");
+
+        struct Row { int y; bool should_match; char const* what; };
+        Row const rows[] = {
+            { 0, true, "[class~=note] matches a word" },
+            { 60, false, "[class~=note] does not match a prefix" },
+            { 120, true, "[lang|=en] matches en-GB" },
+            { 180, false, "[lang|=en] does not match eng" },
+            { 240, true, "[href^=https] matches" },
+            { 300, false, "[href^=https] does not match http" },
+            { 360, true, "[href$=.png] matches" },
+            { 420, false, "[href$=.png] does not match .pngz" },
+            { 480, true, "[href*=mid] matches" },
+            { 540, false, "[href*=mid] does not match" },
+        };
+        for (auto const& row : rows) {
+            int rgb[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 200, 34 + row.y + 30, rgb), "operator row readable");
+            if (row.should_match)
+                require(is_magenta(rgb), row.what);
+            else
+                require(is_blue(rgb), row.what);
+        }
+    }
+
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");
     return 0;
 }
