@@ -37,6 +37,73 @@ bool element_position(DomNode const& node, int& index, int& count, int& type_ind
     return index > 0;
 }
 
+// Substitutes `var(--name[, fallback])` in a declaration value. Upstream does this at resolve time
+// against an inherited store, with a substitution context that detects a property referring back to
+// itself (Rust/src/css/custom_properties.rs, resolve_vars); this walks the same three cases with a
+// depth limit instead of a context.
+//
+// A reference that cannot be resolved is left as written, so the declaration is dropped by the parser
+// rather than silently taking a wrong value - the same failure mode as an unparsed selector.
+std::string substitute_vars(std::string const& value, StyleProperties const& available, int depth)
+{
+    if (depth > 8 || value.find("var(") == std::string::npos)
+        return value;
+
+    std::string out;
+    std::size_t i = 0;
+    while (i < value.size()) {
+        auto const at = value.find("var(", i);
+        if (at == std::string::npos) {
+            out += value.substr(i);
+            break;
+        }
+        out += value.substr(i, at - i);
+
+        // Find the matching ')' so a fallback can itself contain var().
+        std::size_t j = at + 4;
+        int nest = 1;
+        while (j < value.size() && nest > 0) {
+            if (value[j] == '(')
+                ++nest;
+            else if (value[j] == ')')
+                --nest;
+            ++j;
+        }
+        if (nest > 0)
+            return value; // unbalanced: leave the whole value alone
+
+        std::string inner = value.substr(at + 4, j - 5);
+        std::string name = inner;
+        std::string fallback;
+        bool have_fallback = false;
+        auto comma = inner.find(',');
+        if (comma != std::string::npos) {
+            name = inner.substr(0, comma);
+            fallback = inner.substr(comma + 1);
+            have_fallback = true;
+        }
+        auto trim = [](std::string& text) {
+            auto b = text.find_first_not_of(" \t\r\n");
+            auto e = text.find_last_not_of(" \t\r\n");
+            text = b == std::string::npos ? std::string() : text.substr(b, e - b + 1);
+        };
+        trim(name);
+        trim(fallback);
+
+        std::string replacement;
+        if (auto const* found = available.get(name)) {
+            replacement = *found;
+        } else if (have_fallback) {
+            replacement = fallback;
+        } else {
+            replacement = "var(" + inner + ")"; // unresolvable, left as written
+        }
+        out += substitute_vars(replacement, available, depth + 1);
+        i = j;
+    }
+    return out;
+}
+
 // Splits a selector list on top-level commas, so `:is(.a, .b:not(.c, .d))` keeps its nesting.
 std::vector<std::string> split_selector_list(std::string const& list)
 {
@@ -227,6 +294,12 @@ std::string StyleProperties::fingerprint() const
     return digest_excluding({});
 }
 
+void StyleProperties::for_each_property(std::function<void(std::string const&, std::string const&)> const& visit) const
+{
+    for (auto const& entry : m_properties)
+        visit(entry.first, entry.second);
+}
+
 std::string StyleProperties::digest_excluding(std::span<std::string_view const> excluded) const
 {
     std::vector<std::string> parts;
@@ -272,11 +345,30 @@ void StyleProperties::inherit_from(StyleProperties const& parent)
                 set(property, *value);
         }
     }
+    // Custom properties inherit, which is the whole point of putting them on `:root`. Upstream keeps
+    // them in a separate inheritance store for this (Rust/src/css/custom_properties.rs); here they are
+    // ordinary entries in the same map, so they are copied by prefix.
+    inherit_custom_properties(parent);
+}
+
+void StyleProperties::inherit_custom_properties(StyleProperties const& parent)
+{
+    parent.for_each_property([&](std::string const& name, std::string const& value) {
+        if (name.rfind("--", 0) == 0 && !contains(name))
+            set(name, value);
+    });
 }
 
 StyleProperties StyleResolver::resolve(DomNode const& node, CssStyleSheet const& sheet, StyleProperties const* parent_style, VisualInteractionState const* interaction_state) const
 {
     StyleProperties properties;
+
+    // Inherited custom properties arrive before the cascade, because a declaration in this node's
+    // rules may substitute one of them: `:root{--c:...}` is on an ancestor, and `div{background:
+    // var(--c)}` is substituted while this node's declarations are applied. Full inheritance still
+    // runs at the end, and finds these already set.
+    if (parent_style)
+        properties.inherit_custom_properties(*parent_style);
 
     struct Match {
         int specificity;
@@ -300,8 +392,24 @@ StyleProperties StyleResolver::resolve(DomNode const& node, CssStyleSheet const&
         return a.source_order < b.source_order;
     });
 
+    // Custom properties are collected first, in their own pass. Upstream does the same, and the
+    // reason is specificity: `:root{--c:...}` outranks `div{background:var(--c)}`, so in one pass the
+    // div would be substituted before the variable it reads had been set.
     for (auto const& match : matching_declarations)
-        apply_declaration(properties, *match.declaration);
+        if (match.declaration->property.rfind("--", 0) == 0)
+            apply_declaration(properties, *match.declaration);
+
+    for (auto const& match : matching_declarations) {
+        if (match.declaration->property.rfind("--", 0) == 0)
+            continue;
+        if (match.declaration->value.find("var(") != std::string::npos) {
+            CssDeclaration substituted { match.declaration->property,
+                substitute_vars(match.declaration->value, properties, 0) };
+            apply_declaration(properties, substituted);
+        } else {
+            apply_declaration(properties, *match.declaration);
+        }
+    }
 
     // The inline `style` attribute is applied last, so it wins over the
     // stylesheet (as an author-origin declaration with highest priority).
@@ -325,7 +433,12 @@ StyleProperties StyleResolver::resolve(DomNode const& node, CssStyleSheet const&
                 if (property.empty() || value.empty())
                     continue;
                 CssDeclaration parsed { property, value };
-                apply_declaration(properties, parsed);
+                if (parsed.property.rfind("--", 0) == 0 || parsed.value.find("var(") == std::string::npos) {
+                    apply_declaration(properties, parsed);
+                } else {
+                    CssDeclaration substituted { parsed.property, substitute_vars(parsed.value, properties, 0) };
+                    apply_declaration(properties, substituted);
+                }
             }
         }
     }

@@ -4,6 +4,7 @@
 #include "dom.hpp"
 #include "visual_state.hpp"
 
+#include <functional>
 #include <span>
 #include <string>
 #include <string>
@@ -18,6 +19,10 @@ public:
     std::string const* get(std::string const& property) const;
     bool contains(std::string const& property) const;
     void inherit_from(StyleProperties const& parent);
+    // Custom properties only. Separate from inherit_from() because the inline `style` attribute is
+    // substituted before full inheritance runs, and a `style="background:var(--c)"` has to see the
+    // `--c` it inherits.
+    void inherit_custom_properties(StyleProperties const& parent);
 
     // A stable digest of every property, used to decide whether a child's cached
     // style is still valid: if the parent's resolved style is unchanged, a clean
@@ -28,6 +33,10 @@ public:
     // these" say so with the exceptions rather than with an allow-list of their own: a
     // property nobody named is then included, which is the safe way to be wrong.
     std::string digest_excluding(std::span<std::string_view const> excluded) const;
+
+    // Every resolved property. Needed for the custom properties, which inherit by prefix and cannot
+    // be named in advance the way `color` and `font-size` can.
+    void for_each_property(std::function<void(std::string const&, std::string const&)> const&) const;
 
 private:
     std::unordered_map<std::string, std::string> m_properties;
