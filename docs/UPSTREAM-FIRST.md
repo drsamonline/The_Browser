@@ -60,3 +60,18 @@ One day on this repo:
 - Every feature ported from LibWeb — `:focus-within`, `document.activeElement`, the
   focus transition order, keys bubbling from the focused element — landed first
   time with a pixel-level test.
+
+## Check the instrument before the subject
+
+Reading upstream first is half of it. The other half is not blaming the engine for a measurement that is
+wrong. On 2026-11-17, three investigations in Aetheris blamed the browser and were wrong three times — a
+pixel sample read as a picture, a verdict string a script computed backwards, an assertion whose colour
+test also matched white. The engine was correct throughout.
+
+Before concluding anything from a measurement:
+
+1. Print the raw value, never a derived verdict (`print(pixel)`, not `print("SIDE-BY-SIDE")`).
+2. Test a colour as that colour, never as "not the other one" — white matches most careless tests.
+3. Look at the rendered frame before reasoning from coordinates.
+4. A control case must be able to come out the other way; if it cannot, it proves nothing.
+

@@ -88,6 +88,14 @@ static RunResult run_window(std::string const& binary, std::string const& page,
     return result;
 }
 
+// Colour tests, written as what they mean. White is (255,255,255), so a check like
+// `r > 200 && b > 200` matches white as well as magenta and quietly stops asserting
+// anything - which cost a session on 2026-11-17.
+static bool is_magenta(int const (&rgb)[3]) { return rgb[0] > 200 && rgb[1] < 100 && rgb[2] > 200; }
+static bool is_red(int const (&rgb)[3]) { return rgb[0] > 200 && rgb[1] < 100 && rgb[2] < 100; }
+static bool is_green(int const (&rgb)[3]) { return rgb[0] < 100 && rgb[1] > 120 && rgb[2] < 100; }
+static bool is_blue(int const (&rgb)[3]) { return rgb[0] < 100 && rgb[1] < 100 && rgb[2] > 200; }
+
 // Reads one pixel out of the last frame the window wrote. Returns false when the
 // frame is missing or malformed, so a broken writer fails loudly.
 static bool frame_pixel(std::string const& directory, int x, int y, int (&rgb)[3])
@@ -312,7 +320,7 @@ int main(int argc, char* argv[])
         // point: the state can be correct while the frame is stale.
         int after[3] = { 0, 0, 0 };
         require(frame_pixel(directory, 200, 34 + 50, after), "the frame after Tab is readable");
-        require(after[0] > 200 && after[2] > 200, ":focus-visible paints after Tab (magenta)");
+        require(is_magenta(after), ":focus-visible paints after Tab (magenta)");
     }
 
     // The mutation counter must see more than textContent: an attribute write is
@@ -348,8 +356,8 @@ int main(int argc, char* argv[])
         // 300,150 is inside #outer but outside #inner; 100,50 is inside #inner.
         require(frame_pixel(directory, 300, 34 + 150, outer), "the outer pixel is readable");
         require(frame_pixel(directory, 100, 34 + 50, inner), "the inner pixel is readable");
-        require(outer[0] > 200 && outer[1] < 60, ":focus-within paints the ancestor after Tab");
-        require(inner[1] > 120 && inner[0] < 60, "the focused child keeps its own background");
+        require(is_red(outer), ":focus-within paints the ancestor after Tab");
+        require(is_green(inner), "the focused child keeps its own background");
     }
 
     // :focus-visible's text-entry clause: a control indicates focus even when the
@@ -362,10 +370,6 @@ int main(int argc, char* argv[])
             "<html><head><title>TE</title><style>body{margin:0}"
             "#i:focus-visible{background:#ff00ff}"
             "</style></head><body><input id='i' value='hello'></body></html>";
-
-        auto is_magenta = [](int const (&rgb)[3]) {
-            return rgb[0] > 200 && rgb[1] < 100 && rgb[2] > 200;
-        };
 
         std::string directory = "/tmp/aetheris-text-entry-frames";
         std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
@@ -382,6 +386,32 @@ int main(int argc, char* argv[])
         int off_field[3] = { 0, 0, 0 };
         require(frame_pixel(directory, 60, 34 + 8, off_field), "the control pixel is readable");
         require(!is_magenta(off_field), "a pointer focus elsewhere does not match :focus-visible");
+    }
+
+    // The pseudo-class gate: a state change that no rule can observe must not relayout.
+    // Without a :hover rule, moving the pointer over the page costs nothing.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Gate</title><style>body{margin:0}"
+            "div{width:400px;height:100px;background:#0000ff}"
+            "</style></head><body><div id='a'>A</div></body></html>",
+            "--move 200 80", 3);
+        require(result.status == 0, "the gate run exits cleanly");
+        require(result.output.find("relayouts: 0") != std::string::npos,
+            "a hover with no :hover rule costs no relayout");
+    }
+
+    // ...and with a rule that can see it, it does relayout.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Gate</title><style>body{margin:0}"
+            "div{width:400px;height:100px;background:#0000ff}"
+            "#a:hover{background:#ff00ff}"
+            "</style></head><body><div id='a'>A</div></body></html>",
+            "--move 200 80", 3);
+        require(result.status == 0, "the gate run with a rule exits cleanly");
+        require(result.output.find("relayouts: 0") == std::string::npos,
+            "a hover with a :hover rule does relayout");
     }
 
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");

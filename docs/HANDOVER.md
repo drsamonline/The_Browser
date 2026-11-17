@@ -212,6 +212,17 @@ contents. Several releases went green with a broken or missing package.
 
 ---
 
+## Check the instrument before the subject
+
+Three investigations on 2026-11-17 blamed the engine and were wrong three times: a pixel sample read as a
+picture, a verdict string a script computed backwards, and an assertion whose colour test also matched
+white. The engine was correct throughout.
+
+1. Print the raw value, never a derived verdict (`print(pixel)`, not `print("SIDE-BY-SIDE")`).
+2. Test a colour as that colour, never as "not the other one".
+3. Look at the frame before reasoning from coordinates.
+4. A control case must be able to come out the other way.
+
 ## 6. Where things live
 
 | Area | Files |
