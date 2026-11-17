@@ -740,6 +740,21 @@ int main(int argc, char* argv[])
         require(is_magenta(sibling_pixel),
             "a descendant of the :focus-within ancestor restyled, so its subtree is too");
 
+        // `:active` is a separate branch of the same switch and must take the same path.
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto pressed = run_window(binary,
+            "<html><head><title>State active</title><style>body{margin:0}"
+            "#a{width:400px;height:100px;background:#0000ff}#a:active{background:#ff00ff}"
+            "</style></head><body><div id='a'>A</div></body></html>",
+            "--press 200 80", 3, directory);
+        require(pressed.status == 0, "the :active run exits cleanly");
+        require(summary_count(pressed.output, ", relayouts: ") == 1, ":active relayouts once");
+        require(summary_count(pressed.output, ", layouts: ") == 1,
+            "an :active that only changes paint does not run the layout engine");
+        int pressed_pixel[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 50, pressed_pixel), "the :active pixel is readable");
+        require(is_magenta(pressed_pixel), ":active restyled the pressed element");
+
         // The control: `:focus-within` changing width must run the engine.
         auto within_width = run_window(binary,
             "<html><head><title>State focus-within width</title><style>body{margin:0}"
