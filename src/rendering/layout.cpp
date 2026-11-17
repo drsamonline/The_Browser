@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <functional>
 
 namespace aetheris::rendering {
 
@@ -111,7 +112,42 @@ bool LayoutEngine::is_positioned(LayoutNode const& node)
     return position && (*position == "absolute" || *position == "fixed");
 }
 
-void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float available_width)
+// Copies the geometry a previous pass recorded for this node and everything under it. The
+// subtree is only entered when the node is clean and sits where it sat, so the recorded
+// geometry is the geometry this pass would produce.
+bool LayoutEngine::reuse_subtree(LayoutNode& node, float x, float y, float available_width) const
+{
+    if (!m_reuse || !m_reuse->geometry || !m_reuse->dirty)
+        return false;
+    if (!node.dom_node || m_reuse->dirty->count(node.dom_node))
+        return false;
+    auto const found = m_reuse->geometry->find(node.dom_node);
+    if (found == m_reuse->geometry->end())
+        return false;
+    auto const& cached = found->second;
+    if (cached.x != x || cached.y != y || cached.available_width != available_width)
+        return false;
+
+    std::function<void(LayoutNode&)> restore = [&](LayoutNode& current) {
+        if (current.dom_node) {
+            auto const entry = m_reuse->geometry->find(current.dom_node);
+            if (entry != m_reuse->geometry->end()) {
+                current.rect = entry->second.rect;
+                current.box = entry->second.box;
+                current.text_fragments = entry->second.fragments;
+                current.layout_x = entry->second.x;
+                current.layout_y = entry->second.y;
+                current.layout_available_width = entry->second.available_width;
+            }
+        }
+        for (auto& child : current.children)
+            restore(*child);
+    };
+    restore(node);
+    return true;
+}
+
+void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float available_width) const
 {
     if (node.display == LayoutDisplay::None) {
         node.rect = {};
@@ -119,6 +155,18 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
         node.text_fragments.clear();
         return;
     }
+
+    // The whole subtree can be taken from the last pass when nothing restyled inside it and it
+    // is being laid out where it was. This is the per-node half of incremental layout: before
+    // it, one changed box reflowed the document.
+    if (reuse_subtree(node, x, y, available_width))
+        return;
+
+    if (m_reuse && m_reuse->laid_out)
+        ++*m_reuse->laid_out;
+    node.layout_x = x;
+    node.layout_y = y;
+    node.layout_available_width = available_width;
 
     node.box.margin = resolve_edges(node.style, "margin", available_width);
     node.box.padding = resolve_edges(node.style, "padding", available_width);
@@ -258,7 +306,7 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
     }
 }
 
-void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, float available_width, float& cursor_y)
+void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, float available_width, float& cursor_y) const
 {
     float cursor_x = x;
     float line_height = TextLayout::line_height(node.style);
@@ -304,7 +352,7 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
     cursor_y = std::max(max_bottom, cursor_y + line_height);
 }
 
-void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width, float& cursor_y)
+void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width, float& cursor_y) const
 {
     std::vector<LayoutNode*> items;
     for (auto& child : node.children) {
@@ -370,7 +418,7 @@ void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width,
     cursor_y = node.box.content.y + max_height;
 }
 
-void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width, float& cursor_y)
+void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width, float& cursor_y) const
 {
     std::vector<LayoutNode*> items;
     for (auto& child : node.children)
@@ -415,7 +463,7 @@ void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width,
     cursor_y = node.box.content.y + total;
 }
 
-void LayoutEngine::layout_absolute_children(LayoutNode& node, float available_width)
+void LayoutEngine::layout_absolute_children(LayoutNode& node, float available_width) const
 {
     for (auto& child : node.children) {
         auto position = child->style.get("position");

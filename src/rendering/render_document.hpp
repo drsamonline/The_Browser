@@ -19,15 +19,6 @@
 
 namespace aetheris::rendering {
 
-// The geometry one layout pass produced for one DOM node. Kept so a relayout that
-// cannot change geometry can copy it instead of laying out again. Upstream keeps the
-// same state on the layout box and marks boxes dirty; this is the per-node snapshot.
-struct CachedGeometry {
-    LayoutRect rect;
-    BoxModel box;
-    std::vector<TextFragment> fragments;
-};
-
 class RenderDocument {
 public:
     static RenderDocument create(std::string_view html, std::string_view css, float viewport_width, ResourceCache* resources = nullptr, std::string_view source_url = {});
@@ -72,6 +63,10 @@ public:
     // re-resolved, not the nodes in the document.
     std::size_t key_checks() const { return m_key_checks; }
 
+    // How many nodes the layout engine actually laid out in the last pass. The rest of the
+    // tree came from the geometry cache, so this is the cost of a pass rather than its size.
+    std::size_t laid_out_nodes() const { return m_laid_out; }
+
     bool apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width);
     std::size_t visual_generation() const { return m_visual_generation; }
 
@@ -88,6 +83,7 @@ private:
     // How many layout keys the last skip decision compared. Reported as `key checks:` so the
     // cost of the decision is visible, not inferred.
     std::size_t m_key_checks { 0 };
+    std::size_t m_laid_out { 0 };
     // The viewport width the recorded geometry was laid out at. Geometry is only
     // reusable at the width that produced it.
     float m_layout_width { 0 };

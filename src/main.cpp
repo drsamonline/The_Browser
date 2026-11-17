@@ -2303,6 +2303,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
               << ", relayouts: " << relayouts
               << ", layouts: " << (cached_page ? cached_page->layout_passes() : 0)
               << ", key checks: " << (cached_page ? cached_page->key_checks() : 0)
+              << ", layout nodes: " << (cached_page ? cached_page->laid_out_nodes() : 0)
               << ", resolves: " << (cached_page ? cached_page->last_style_stats().resolves : 0)
               << ", style hits: " << (cached_page ? cached_page->last_style_stats().hits : 0)
               << std::endl;

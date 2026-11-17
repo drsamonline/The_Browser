@@ -107,6 +107,9 @@ void RenderDocument::snapshot_layout(LayoutNode const& root)
             geometry.rect = node.rect;
             geometry.box = node.box;
             geometry.fragments = node.text_fragments;
+            geometry.x = node.layout_x;
+            geometry.y = node.layout_y;
+            geometry.available_width = node.layout_available_width;
             m_geometry[node.dom_node] = std::move(geometry);
         }
         for (auto const& child : node.children)
@@ -211,7 +214,18 @@ void RenderDocument::relayout()
     }
 
     ++m_layout_passes;
-    LayoutEngine {}.layout(*m_layout_root, m_viewport_width);
+    // Per-node reuse: a node whose subtree nothing restyled and which sits where it sat takes
+    // its geometry from the last pass. The dirty set is every restyled node and everything
+    // above it - an ancestor's height can depend on a descendant's - so a clean node outside
+    // it is untouched by this pass.
+    std::unordered_set<DomNode const*> layout_dirty;
+    for (auto const* node : restyled)
+        for (auto const* current = node; current; current = current->parent)
+            layout_dirty.insert(current);
+    LayoutReuse const reuse { &m_geometry, &layout_dirty, &m_laid_out };
+    m_laid_out = 0;
+    LayoutEngine engine { &reuse };
+    engine.layout(*m_layout_root, m_viewport_width);
     resolve_images(*m_layout_root);
     m_render_tree = RenderTree::from_layout(*m_layout_root);
     snapshot_layout(*m_layout_root);
@@ -371,7 +385,14 @@ bool RenderDocument::apply_visual_state(VisualInteractionState const& interactio
     }
 
     ++m_layout_passes;
-    LayoutEngine {}.layout(*m_layout_root, viewport_width);
+    std::unordered_set<DomNode const*> layout_dirty;
+    for (auto const* node : restyled)
+        for (auto const* current = node; current; current = current->parent)
+            layout_dirty.insert(current);
+    LayoutReuse const reuse { &m_geometry, &layout_dirty, &m_laid_out };
+    m_laid_out = 0;
+    LayoutEngine engine { &reuse };
+    engine.layout(*m_layout_root, viewport_width);
     resolve_images(*m_layout_root);
     m_render_tree = RenderTree::from_layout(*m_layout_root);
     snapshot_layout(*m_layout_root);
