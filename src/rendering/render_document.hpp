@@ -44,6 +44,8 @@ public:
     // Rebuilds layout and the render tree for a new interaction state. Returns
     // false when the rebuild was skipped because no rule in the sheet mentions the
     // pseudo-class that changed - upstream's rule, cheaply applied.
+    CssStyleSheet const& stylesheet() const { return m_stylesheet; }
+
     bool apply_visual_state(VisualInteractionState const& interaction_state, float viewport_width);
     std::size_t visual_generation() const { return m_visual_generation; }
 

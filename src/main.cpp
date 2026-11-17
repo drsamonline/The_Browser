@@ -744,11 +744,13 @@ JSValue js_document_title_set(JSContext* context, JSValueConst, int argc, JSValu
 
 JSValue js_set_attribute(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
 {
-    rendering::note_dom_mutation();
     auto* node = node_of(context, this_value);
-    if (!node || argc < 2)
+    if (!node || argc < 2) {
+        rendering::note_dom_mutation();
         return JS_UNDEFINED;
+    }
     const char* name = JS_ToCString(context, argv[0]);
+    rendering::note_attribute_mutation(name ? name : "");
     const char* value = JS_ToCString(context, argv[1]);
     if (name && value)
         node->attributes[name] = value;
@@ -1670,6 +1672,31 @@ static rendering::RenderDocument create_scripted_document(
 static rendering::DomNode* node_at(rendering::RenderDocument& rendered, DomHost& dom,
     rendering::Viewport const& viewport, float x, float y);
 
+// Attributes the engine reads outside the cascade: changing one can change layout or
+// paint even when no selector mentions it.
+static bool attribute_is_rendering_relevant(std::string const& name)
+{
+    static char const* const relevant[] = { "style", "class", "id", "src", "href", "width",
+        "height", "type", "value", "checked", "disabled", "hidden", "colspan", "rowspan", "alt" };
+    for (auto const* candidate : relevant)
+        if (name == candidate)
+            return true;
+    return false;
+}
+
+// Upstream invalidates only what a rule can observe. Applied to attribute writes: a
+// `data-` style attribute that no selector mentions cannot change style, layout or
+// paint, so the rebuild is wasted work.
+static bool attribute_mutation_needs_relayout(rendering::RenderDocument const& page)
+{
+    auto const& name = rendering::last_attribute_mutation();
+    if (name.empty())
+        return true;
+    if (attribute_is_rendering_relevant(name))
+        return true;
+    return page.stylesheet().uses_attribute(name);
+}
+
 // Sequentially focusable, as upstream's Element::is_focusable() defines it: an
 // element whose tabindex parses as an integer. Upstream also requires the
 // focusable-area rendering rules, and links and form controls have their own
@@ -2042,7 +2069,8 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         if (cached_page && page_js.has_timers()) {
             auto const before = rendering::dom_mutation_serial();
             if (page_js.run_timers(16.0)
-                && rendering::dom_mutation_serial() != before) {
+                && rendering::dom_mutation_serial() != before
+                && attribute_mutation_needs_relayout(*cached_page)) {
                 cached_page->relayout();
                 ++relayouts;
                 need_render = true;
@@ -2081,7 +2109,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             bool const element_changed = hover_at(*cached_page, page_js, page_dom, viewport,
                 static_cast<float>(move_x), static_cast<float>(move_y - kChromeHeight), hovered);
             bool const restyled = apply_hover_visual_state(*cached_page, visual_state, hovered, static_cast<float>(kWidth));
-            if (element_changed && rendering::dom_mutation_serial() != before) {
+            if (element_changed && rendering::dom_mutation_serial() != before && attribute_mutation_needs_relayout(*cached_page)) {
                 cached_page->relayout();
                 ++relayouts;
                 need_render = true;
@@ -2126,7 +2154,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             } else {
                 dispatch_key_to_focus(page_js, page_dom, focused, key_to_press);
             }
-            if (rendering::dom_mutation_serial() != before) {
+            if (rendering::dom_mutation_serial() != before && attribute_mutation_needs_relayout(*cached_page)) {
                 cached_page->relayout();
                 ++relayouts;
                 need_render = true;
@@ -2176,7 +2204,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                     bool const element_changed = hover_at(*cached_page, page_js, page_dom, viewport,
                         static_cast<float>(action.x), static_cast<float>(action.y - kChromeHeight), hovered);
                     bool const restyled = apply_hover_visual_state(*cached_page, visual_state, hovered, static_cast<float>(kWidth));
-                    if (element_changed && rendering::dom_mutation_serial() != before) {
+                    if (element_changed && rendering::dom_mutation_serial() != before && attribute_mutation_needs_relayout(*cached_page)) {
                         cached_page->relayout();
                         ++relayouts;
                         need_render = true;
@@ -2201,7 +2229,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                 if (cached_page) {
                     auto const before = rendering::dom_mutation_serial();
                     dispatch_key_to_focus(page_js, page_dom, focused, action.text);
-                    if (rendering::dom_mutation_serial() != before) {
+                    if (rendering::dom_mutation_serial() != before && attribute_mutation_needs_relayout(*cached_page)) {
                         cached_page->relayout();
                         ++relayouts;
                         need_render = true;

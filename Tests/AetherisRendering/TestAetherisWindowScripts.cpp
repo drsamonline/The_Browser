@@ -329,11 +329,11 @@ int main(int argc, char* argv[])
         auto result = run_window(binary,
             "<html><head><title>Attr</title></head><body><div id='n'>0</div>"
             "<script>var n = 0; setInterval(function () { n++;"
-            "document.getElementById('n').setAttribute('data-n', String(n)); }, 50);</script></body></html>",
+            "document.getElementById('n').setAttribute('class', 'c' + n); }, 50);</script></body></html>",
             "", 20);
         require(result.status == 0, "the attribute timer run exits cleanly");
         require(result.output.find("relayouts: 0") == std::string::npos,
-            "an attribute write triggers a layout");
+            "a class write triggers a layout");
     }
 
     // :focus-within matches an ancestor of the focused element, including when the
@@ -412,6 +412,26 @@ int main(int argc, char* argv[])
         require(result.status == 0, "the gate run with a rule exits cleanly");
         require(result.output.find("relayouts: 0") == std::string::npos,
             "a hover with a :hover rule does relayout");
+    }
+
+    // Attribute writes are gated the same way: an attribute no selector mentions and
+    // the engine does not read cannot change layout or paint.
+    {
+        auto data_attr = run_window(binary,
+            "<html><body><div id='n'>0</div><script>var n = 0;"
+            "setInterval(function () { n++; document.getElementById('n').setAttribute('data-n', String(n)); }, 50);"
+            "</script></body></html>", "", 20);
+        require(data_attr.status == 0, "the data-attribute run exits cleanly");
+        require(data_attr.output.find("relayouts: 0") != std::string::npos,
+            "an unobserved attribute write costs no relayout");
+
+        auto class_attr = run_window(binary,
+            "<html><body><div id='n'>0</div><script>var n = 0;"
+            "setInterval(function () { n++; document.getElementById('n').setAttribute('class', 'c' + n); }, 50);"
+            "</script></body></html>", "", 20);
+        require(class_attr.status == 0, "the class-attribute run exits cleanly");
+        require(class_attr.output.find("relayouts: 0") == std::string::npos,
+            "a class write does relayout");
     }
 
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");

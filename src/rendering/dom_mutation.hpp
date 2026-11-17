@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <string>
 
 namespace aetheris::rendering {
 
@@ -12,6 +13,14 @@ namespace aetheris::rendering {
 // The window used to fingerprint the document each frame instead, which is O(n) per
 // frame on any page with a timer.
 void note_dom_mutation();
+
+// A mutation that was an attribute write, so a host can ask whether anything could
+// observe it before rebuilding layout.
+void note_attribute_mutation(std::string const& name);
+
+// The attribute written by the most recent mutation, empty if the last one was not an
+// attribute write.
+std::string const& last_attribute_mutation();
 
 // Monotonic. Two equal readings mean nothing has been mutated in between.
 std::size_t dom_mutation_serial();
