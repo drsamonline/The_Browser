@@ -1203,7 +1203,75 @@ int main(int argc, char* argv[])
             }
         }
 
-        // `:has(<relative selector list>)`. Upstream matches it with matches_relative(list, anchor,
+        // The sibling forms of :has(), and the invalidation they need. A sibling combinator inside
+    // parentheses is still a sibling dependency, so uses_sibling_sequence() scans at any depth, and an
+    // attribute change now dirties the changed node's siblings as well as its ancestors.
+    {
+        std::string const directory = "aetheris-has-sibling-frames";
+        struct HasSiblingCase {
+            char const* what;
+            std::string rule;
+            std::string body;
+            int expected[4][3];
+        };
+        auto rows = [](std::string const& extra_at) {
+            std::string out;
+            for (int index = 0; index < 4; ++index) {
+                std::string classes = "r";
+                if (index == 1 && extra_at == "second") classes += " x";
+                if (index == 2 && extra_at == "third") classes += " x";
+                out += "<div class='" + classes + "' id='r" + std::to_string(index) + "'></div>";
+            }
+            return out;
+        };
+        std::vector<HasSiblingCase> const cases {
+            // The `.x` row is 10px wide, so at x=200 it is the page background, not its own colour.
+            { ":has(+ .x) styles the row immediately before it",
+                ".r:has(+ .x){background:#ff00ff}", rows("second"),
+                { { 255, 0, 255 }, { 255, 255, 255 }, { 0, 255, 0 }, { 0, 255, 0 } } },
+            { ":has(~ .x) styles every row before it",
+                ".r:has(~ .x){background:#ff00ff}", rows("third"),
+                { { 255, 0, 255 }, { 255, 0, 255 }, { 255, 255, 255 }, { 0, 255, 0 } } },
+            { ":has(+ .nope) matches nothing",
+                ".r:has(+ .nope){background:#ff00ff}", rows("none"),
+                { { 0, 255, 0 }, { 0, 255, 0 }, { 0, 255, 0 }, { 0, 255, 0 } } },
+        };
+        for (auto const& has_case : cases) {
+            std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+            std::string const html = "<html><head><title>Has sibling</title><style>body{margin:0}"
+                ".r{width:400px;height:10px;background:#00ff00}.x{width:10px;height:10px;background:#0000ff}"
+                + has_case.rule + "</style></head><body>" + has_case.body + "</body></html>";
+            auto result = run_window(binary, html, "", 2, directory);
+            std::string const message = std::string("the :has sibling run for ") + has_case.what + " exits cleanly";
+            require(result.status == 0, message.c_str());
+            for (int row = 0; row < 4; ++row) {
+                int rgb[3] = { 0, 0, 0 };
+                require(frame_pixel(directory, 200, 34 + row * 10 + 5, rgb), "a :has sibling pixel is readable");
+                require(rgb[0] == has_case.expected[row][0] && rgb[1] == has_case.expected[row][1]
+                        && rgb[2] == has_case.expected[row][2],
+                    has_case.what);
+            }
+        }
+
+        // The invalidation: a following sibling gaining the class must restyle the row before it.
+        // Without the sibling dirty this stayed green, which is the stale style the row exists for.
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto mutated = run_window(binary,
+            "<html><head><title>Has sibling mutation</title><style>body{margin:0}"
+            ".r{width:400px;height:10px;background:#00ff00}.x{width:10px;height:10px;background:#0000ff}"
+            ".r:has(+ .x){background:#ff00ff}"
+            "</style></head><body>"
+            "<div class='r' id='r0'></div><div class='r' id='r1'></div><div class='r' id='r2'></div>"
+            "<script>setTimeout(function () { document.getElementById('r1').classList.add('x'); }, 5);"
+            "</script></body></html>", "", 3, directory);
+        require(mutated.status == 0, "the :has sibling mutation run exits cleanly");
+        int restyled[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 200, 34 + 5, restyled), "the restyled row is readable");
+        require(is_magenta(restyled), "a sibling gaining a class restyles the row before it");
+        std::system(("rm -rf " + directory).c_str());
+    }
+
+    // `:has(<relative selector list>)`. Upstream matches it with matches_relative(list, anchor,
         // anchor, context): a combinator plus a selector, descendant unless written. The sibling
         // combinators are not matched anywhere here, so `:has(+ .x)` answers false.
         auto has_page = [](std::string const& rule) {
