@@ -888,6 +888,39 @@ int main(int argc, char* argv[])
             "and lays out the chain, not the page");
     }
 
+    // The CSSStyleDeclaration surface upstream's IDL declares - cssText, getPropertyValue,
+    // setProperty, removeProperty, length, item - read back by the page rather than inferred.
+    // `el.style.background = v` is *not* in that IDL (it has no named-property accessor), so it is
+    // not tested and not claimed.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>CSSOM</title><style>body{margin:0}"
+            ".box{width:400px;height:100px;background:#0000ff}</style></head>"
+            "<body><div id='a' class='box'>A</div><script>"
+            "var a = document.getElementById('a');"
+            "a.style.setProperty('background', '#ff00ff');"
+            "console.log('MARK cssText ' + a.style.cssText);"
+            "console.log('MARK get ' + a.style.getPropertyValue('background'));"
+            "console.log('MARK length ' + a.style.length);"
+            "console.log('MARK item ' + a.style.item(0));"
+            "console.log('MARK removed ' + a.style.removeProperty('background'));"
+            "console.log('MARK after ' + a.style.length);"
+            "</script></body></html>", "", 2);
+        require(result.status == 0, "the CSSOM run exits cleanly");
+        require(result.output.find("MARK cssText background: #ff00ff") != std::string::npos,
+            "cssText reads the declarations back");
+        require(result.output.find("MARK get #ff00ff") != std::string::npos,
+            "getPropertyValue returns the declared value");
+        require(result.output.find("MARK length 1") != std::string::npos,
+            "length counts the declarations");
+        require(result.output.find("MARK item background") != std::string::npos,
+            "item(0) is the first property name");
+        require(result.output.find("MARK removed #ff00ff") != std::string::npos,
+            "removeProperty returns what it removed");
+        require(result.output.find("MARK after 0") != std::string::npos,
+            "and the declaration is gone");
+    }
+
     // Reftests, in upstream's shape: Tests/LibWeb/Ref pairs an input with a reference document
     // (`<link rel="match">`) and requires them to render identically. Here the input is a page
     // mutated at runtime into a state and the reference is that same state loaded fresh - the only
