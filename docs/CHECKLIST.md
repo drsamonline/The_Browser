@@ -31,7 +31,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1b | Sibling combinators `+` `~`, with sibling invalidation | `[x]` | `dd310ca3`; 2 stripe pages + `uses_sibling_sequence()` |
 | 1c | `[a=v i]` case flag | `[x]` | `dd310ca3`; both directions and the case-sensitive default |
 | 1d | `:checked`, `:disabled`, `:placeholder-shown` | `[x]` | `dd310ca3`; 4 borderless controls, one per state |
-| 1e | `localStorage` / `sessionStorage` | `[ ]` | — |
+| 1e | `localStorage` (six members) | `[x]` | `+` the commit before this one; one page asserts all six |
+| 1e2 | `localStorage` across a page load | `[ ]` | by construction (store on the interpreter) but unproved: the harness cannot navigate |
+| 1e3 | `sessionStorage` | `[ ]` | same interface, scoped to the tab |
 | 1f | `getBoundingClientRect()` | `[x]` | `+` the commit before this one; page asserts its own numbers |
 | 1f2 | `focus()`, `blur()` — state | `[x]` | `+` the commit before this one; two runs, pixels |
 | 1f3 | `focus`/`blur` **events** reach `addEventListener` | `[x]` | root cause: one request slot, overwritten inside a single `run_timers()` window. Queue now |
