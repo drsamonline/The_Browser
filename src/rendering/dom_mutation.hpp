@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 namespace aetheris::rendering {
 
@@ -15,6 +16,18 @@ struct DomNode;
 // The window used to fingerprint the document each frame instead, which is O(n) per
 // frame on any page with a timer.
 void note_dom_mutation();
+
+// A child list of `parent` changed: something was appended, removed, inserted or replaced.
+// Records the parent, so the renderer can invalidate that parent's subtree - positional
+// selectors and `:empty` are about the siblings - instead of the whole document. Upstream
+// records a tree delta for the sequence the node left or joined; this is the same set.
+//
+// Several child-list changes between two relayouts accumulate, which is why this one does not
+// clear the list. Every other note does.
+void note_child_list_mutation_at(DomNode const* parent);
+
+// The parents whose child lists changed since the last note of another kind.
+std::vector<DomNode const*> const& last_child_list_mutations();
 
 // A mutation of one node (text or attribute). Records the node so the renderer can
 // invalidate that subtree instead of everything; a structural mutation calls plain

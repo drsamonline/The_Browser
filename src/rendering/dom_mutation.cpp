@@ -2,6 +2,8 @@
 
 #include "dom.hpp"
 
+#include <vector>
+
 namespace aetheris::rendering {
 
 namespace {
@@ -11,19 +13,40 @@ namespace {
 std::size_t g_serial { 0 };
 std::string g_last_attribute;
 DomNode const* g_last_node { nullptr };
+// Parents whose child lists changed since the last note of another kind. Accumulates, because a
+// frame can append twice and both parents need invalidating.
+std::vector<DomNode const*> g_child_list_parents;
 } // namespace
 
 void note_dom_mutation()
 {
     g_last_node = nullptr;
     g_last_attribute.clear();
+    g_child_list_parents.clear();
     ++g_serial;
+}
+
+void note_child_list_mutation_at(DomNode const* parent)
+{
+    // A child-list change is structural, so the node-scoped pointer stays null and the attribute
+    // name goes: the renderer reads the parents instead.
+    g_last_node = nullptr;
+    g_last_attribute.clear();
+    if (parent)
+        g_child_list_parents.push_back(parent);
+    ++g_serial;
+}
+
+std::vector<DomNode const*> const& last_child_list_mutations()
+{
+    return g_child_list_parents;
 }
 
 void note_dom_mutation_at(DomNode const* node)
 {
     g_last_node = node;
     g_last_attribute.clear();
+    g_child_list_parents.clear();
     ++g_serial;
 }
 
@@ -43,6 +66,7 @@ DomNode const* last_mutated_node()
 void note_attribute_mutation(std::string const& name)
 {
     g_last_attribute = name;
+    g_child_list_parents.clear();
     ++g_serial;
 }
 

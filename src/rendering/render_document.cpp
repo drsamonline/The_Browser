@@ -188,15 +188,40 @@ void RenderDocument::relayout()
     // :focus are silently discarded whenever anything calls relayout().
     std::unordered_set<DomNode const*> dirty;
     auto const* mutated = last_mutated_node();
+    auto const& child_lists = last_child_list_mutations();
     // A text write or a structural change can reflow, so the pass is never skipped for
     // one. An attribute write may only repaint; whether it did is decided below, by the
     // layout keys, not by the attribute's name.
     bool const text_or_structure = mutated == nullptr || last_attribute_mutation().empty();
-    if (mutated) {
+    if (!child_lists.empty()) {
+        // A child list changed. The parent's subtree is what can see it - :first-child,
+        // :last-child, :nth-child and :empty are all about the sibling sequence - and the chain
+        // above it is what can inherit. Upstream records a tree delta for the departed or
+        // arrived sequence and invalidates that; before this, any structural change cleared the
+        // whole cache, so appending one span inside one row re-resolved the page.
+        //
+        // A positional selector is the only way one child's presence can restyle another. When the
+        // sheet has none - the user-agent sheet has none, and most pages have none - only the
+        // parent can change (`:empty`), and the new children resolve themselves because they have
+        // no cache entry. That is the difference between appending a row to a 200-row page
+        // re-resolving 406 nodes and re-resolving 4.
+        bool const positional = m_stylesheet.uses_pseudo_class(":first-child")
+            || m_stylesheet.uses_pseudo_class(":last-child")
+            || m_stylesheet.uses_pseudo_class(":only-child")
+            || m_stylesheet.uses_pseudo_class(":nth-child");
+        for (auto const* parent : child_lists) {
+            if (positional) {
+                collect_dirty(*parent, dirty);
+            } else {
+                dirty.insert(parent);
+                for (auto const* ancestor = parent->parent; ancestor; ancestor = ancestor->parent)
+                    dirty.insert(ancestor);
+            }
+        }
+    } else if (mutated) {
         collect_dirty(*mutated, dirty);
     } else {
-        // A structural mutation: structure drives :first-child, :last-child and
-        // sibling selectors, so nothing in the cache can be trusted.
+        // A structural mutation with no parent recorded: nothing in the cache can be trusted.
         m_style_cache.clear();
     }
     m_last_style_stats = {};

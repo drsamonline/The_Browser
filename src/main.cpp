@@ -659,6 +659,7 @@ JSValue js_element_remove(JSContext* context, JSValueConst this_value, int, JSVa
         return JS_UNDEFINED;
     g_dom_host->purge_subtree(*node);
     auto detached = detach_child(*parent->second, node);
+    rendering::note_child_list_mutation_at(parent->second);
     g_dom_host->parent_of.erase(node);
     return JS_UNDEFINED;
 }
@@ -1060,6 +1061,7 @@ JSValue js_inner_html_set(JSContext* context, JSValueConst this_value, int argc,
         for (auto& child : fragment.root().children)
             node->children.push_back(std::move(child));
     }
+    rendering::note_child_list_mutation_at(node);
     if (g_dom_host)
         g_dom_host->register_subtree(*node);
     return JS_UNDEFINED;
@@ -1209,7 +1211,8 @@ void DomHost::collect(rendering::DomNode& node)
 
 void DomHost::register_subtree(rendering::DomNode& node)
 {
-    rendering::note_dom_mutation();
+    // No mutation is noted here: this walks the tree to hand out JS handles, and the caller
+    // records which child list changed.
     for (auto& child : node.children) {
         parent_of[child.get()] = &node;
         if (child->type == rendering::DomNodeType::Element) {
@@ -1222,7 +1225,7 @@ void DomHost::register_subtree(rendering::DomNode& node)
 
 void DomHost::purge_subtree(rendering::DomNode& node)
 {
-    rendering::note_dom_mutation();
+    // As in register_subtree: handles only. The caller records the child-list change.
     for (auto& child : node.children) {
         auto it = handle_by_node.find(child.get());
         if (it != handle_by_node.end()) {
@@ -1244,7 +1247,6 @@ void DomHost::purge_subtree(rendering::DomNode& node)
 
 void DomHost::adopt(rendering::DomNode* parent, rendering::DomNode* child)
 {
-    rendering::note_dom_mutation();
     std::unique_ptr<rendering::DomNode> moved;
     auto pending_it = pending.find(child);
     if (pending_it != pending.end()) {
@@ -1252,12 +1254,16 @@ void DomHost::adopt(rendering::DomNode* parent, rendering::DomNode* child)
         pending.erase(pending_it);
     } else {
         auto parent_it = parent_of.find(child);
-        if (parent_it != parent_of.end())
+        if (parent_it != parent_of.end()) {
             moved = detach_child(*parent_it->second, child);
+            // The sequence it left changed too, and so did every sibling's position in it.
+            rendering::note_child_list_mutation_at(parent_it->second);
+        }
         if (!moved)
             return;
     }
     parent->append_child(std::move(moved));
+    rendering::note_child_list_mutation_at(parent);
     parent_of[child] = parent;
 }
 
