@@ -332,8 +332,8 @@ never enters it.
 
 | 405-node page, one edit, 2 frames | layout nodes |
 | --- | --- |
-| text edit in row 100 of 200 | **4** |
-| first row grows 3 px → 60 px (control) | 204 |
+| text edit in row 100 of 200 | **5** |
+| first row grows 3 px → 60 px (control) | 405 |
 
 The control matters: every row below the grown one moved, so none of them can be reused where it used to be,
 and the pass lays them out. Pixels read off the frame: content y 1 blue (inside the grown row), content y 70
@@ -350,9 +350,46 @@ A node's subtree geometry is a function of (its resolved style, x, y, available_
 - Anything that makes geometry depend on something outside that tuple breaks the invariant. `float` is not
   implemented, and flex items get their width from the parent, so nothing in the current engine does.
 
+### Ninth item: the instrument, and a reference to check the reuse against
+
+Two things, one of them the more useful.
+
+**`layout nodes:` was under-reporting.** A text run is laid out by `layout_inline_children()` directly, not
+through `layout_node`, so it was never counted — on a text-heavy page the number was about half the truth.
+Text runs are counted now, and the first pass is counted too, which is what makes a mutated run and a fresh
+one comparable at all.
+
+| case | before | after |
+| --- | --- | --- |
+| text edit in row 100 of 200 | 4 | 5 |
+| first row grows 3 px → 60 px | 204 | 405 |
+
+**A differential test for the reuse path.** Every other test in the suite asserts what I expect. This one
+compares two runs: a page mutated into a state, and the same page loaded in that state. Below the chrome they
+must be byte-identical.
+
+| run | layout nodes |
+| --- | --- |
+| mutated at runtime | 5 |
+| loaded in that state | 405 |
+
+Same pixels, 80× less layout work. The chrome is excluded because it carries the URL and the runs are served
+on different ports — which is also how the first version of the comparison failed, and why the exclusion is in
+the helper's name rather than in a comment.
+
+### Fifth fixture error, and what caught it
+
+The differential's first fixture dropped `.r` when it set `class='r hit'` — it set `class='hit'`. The row lost
+its `height: 3px`, grew to a line, and pushed 200 rows down. The frame comparison was the wrong instrument to
+catch that (both runs happened to agree on the shape); `layout nodes: 203` was the right one, because it said
+the reuse had not fired. One temporary `fprintf` in `reuse_subtree` printed the origin mismatch —
+`cached y=3 now y=19.2` — and the 16.2 px was a line height, which pointed straight at the missing rule.
+
+That is the pattern for all five: a number that did not match what the code plainly does, chased with a
+print rather than a theory.
+
 ### Next, from here
 
 1. `[a=v i]` and `+`/`~` remain unbuilt by evidence; revisit only when a page needs them.
-2. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
-3. The window summary now carries four counters (`relayouts`, `layouts`, `key checks`, `layout nodes`) —
-   enough that a fifth should replace one rather than be added.
+2. Partial reuse inside inline flow: a dirty inline container re-lays out all of its text runs.
+3. Family P0 builds on a machine with dev packages; record versions in each `SOURCES.md`.
