@@ -386,6 +386,10 @@ aetheris::js::Interpreter* g_js { nullptr };
 struct DomHost;
 DomHost* g_dom_host { nullptr };
 
+// The page the window loop is currently driving. `getBoundingClientRect()` needs the layout tree and
+// has nothing but a handle to work from, so the loop publishes this the way it publishes the DOM host.
+rendering::RenderDocument const* g_current_page { nullptr };
+
 struct DomHost {
     JSContext* context { nullptr };
     std::map<rendering::DomNode*, JSValue> handle_by_node; // owned references
@@ -940,6 +944,49 @@ void write_classes(rendering::DomNode* node, std::vector<std::string> const& cla
 
 // Upstream's DOM/Element.idl has `[Reflect=class] attribute DOMString className`, so this is the
 // `class` content attribute read and written, nothing more: absent reads as the empty string.
+// Upstream: Element::get_bounding_client_rect() returns the layout node's border box through the
+// viewport mapping (DOM/Element.cpp, Painting::bounding_client_rect). Here the layout node's rect is
+// the border box in document coordinates and the window has no scroll offset in this path, so the
+// two coincide. All eight DOMRect members are published, because pages read whichever they like.
+JSValue js_get_bounding_client_rect(JSContext* context, JSValueConst this_value, int, JSValueConst*)
+{
+    auto* node = node_of(context, this_value);
+    // Before the first layout there is no page to measure, and upstream returns an empty rect in the
+    // same situation (bounding_client_rect_assuming_layout_clean returns {}). A script that runs at
+    // load therefore reads zeros - there is no forced layout read here, which is the one place this
+    // differs from upstream's ForcedReadScope.
+    if (!node || !g_current_page) {
+        JSValue empty = JS_NewObject(context);
+        for (auto const* key : { "x", "y", "width", "height", "left", "top", "right", "bottom" })
+            JS_SetPropertyStr(context, empty, key, JS_NewFloat64(context, 0));
+        return empty;
+    }
+
+    rendering::LayoutRect rect {};
+    std::function<rendering::LayoutNode const*(rendering::LayoutNode const&)> find
+        = [&](rendering::LayoutNode const& candidate) -> rendering::LayoutNode const* {
+        if (candidate.dom_node == node)
+            return &candidate;
+        for (auto const& child : candidate.children)
+            if (auto const* found = find(*child))
+                return found;
+        return nullptr;
+    };
+    if (auto const* layout = find(g_current_page->layout_root()))
+        rect = layout->rect;
+
+    JSValue out = JS_NewObject(context);
+    JS_SetPropertyStr(context, out, "x", JS_NewFloat64(context, rect.x));
+    JS_SetPropertyStr(context, out, "y", JS_NewFloat64(context, rect.y));
+    JS_SetPropertyStr(context, out, "width", JS_NewFloat64(context, rect.width));
+    JS_SetPropertyStr(context, out, "height", JS_NewFloat64(context, rect.height));
+    JS_SetPropertyStr(context, out, "left", JS_NewFloat64(context, rect.x));
+    JS_SetPropertyStr(context, out, "top", JS_NewFloat64(context, rect.y));
+    JS_SetPropertyStr(context, out, "right", JS_NewFloat64(context, rect.x + rect.width));
+    JS_SetPropertyStr(context, out, "bottom", JS_NewFloat64(context, rect.y + rect.height));
+    return out;
+}
+
 JSValue js_class_name_get(JSContext* context, JSValueConst this_value, int, JSValueConst*)
 {
     auto* node = node_of(context, this_value);
@@ -1293,6 +1340,8 @@ JSValue DomHost::handle_for(rendering::DomNode* node)
     define_accessor("textContent", js_text_content_get, js_text_content_set);
     define_accessor("innerHTML", js_inner_html_get, js_inner_html_set);
     define_accessor("className", js_class_name_get, js_class_name_set);
+    JS_SetPropertyStr(context, handle, "getBoundingClientRect",
+        JS_NewCFunction(context, js_get_bounding_client_rect, "getBoundingClientRect", 0));
     define_accessor("style", js_style_get, js_style_set);
 
     auto define_getter = [&](char const* name, JSCFunction* getter) {
@@ -2104,6 +2153,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             // renders in the window instead of coming up blank.
             cached_page.emplace(create_scripted_document(body, style.css, session.current_url(), nullptr,
                 page_js, page_dom, page_viewport_state, 0.0));
+            g_current_page = &*cached_page;
             session.set_page_title(document_title(cached_page->document().root()));
             session.set_loading(false);
 
