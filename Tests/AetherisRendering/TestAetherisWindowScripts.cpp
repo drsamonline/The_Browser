@@ -638,6 +638,12 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // The frame dumps above total ~58 MB and this sandbox's /tmp is a 64 MB tmpfs, so a
+    // second run in the same sandbox used to start with /tmp full and fail elsewhere for
+    // a reason that had nothing to do with the engine - AetherisDomHost's "render exits 0"
+    // was a full disk, not a bad render. Clear them on the way out.
+    std::system("rm -rf /tmp/aetheris-*-frames");
+
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");
     return 0;
 }
