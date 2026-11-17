@@ -328,6 +328,30 @@ int main(int argc, char* argv[])
             "an attribute write triggers a layout");
     }
 
+    // :focus-within matches an ancestor of the focused element, including when the
+    // focus arrived by Tab rather than a click - the two paths set the state through
+    // different helpers.
+    {
+        std::string directory = "/tmp/aetheris-focus-within-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto result = run_window(binary,
+            "<html><head><title>FW</title><style>body{margin:0}"
+            "#outer{width:400px;height:200px;background:#0000ff}"
+            "#inner{width:200px;height:100px;background:#00aa00}"
+            "#outer:focus-within{background:#ff0000}"
+            "</style></head><body><div id='outer'><div id='inner' tabindex='0'>in</div></div></body></html>",
+            "--key tab", 3, directory);
+        require(result.status == 0, "the focus-within run exits cleanly");
+
+        int outer[3] = { 0, 0, 0 };
+        int inner[3] = { 0, 0, 0 };
+        // 300,150 is inside #outer but outside #inner; 100,50 is inside #inner.
+        require(frame_pixel(directory, 300, 34 + 150, outer), "the outer pixel is readable");
+        require(frame_pixel(directory, 100, 34 + 50, inner), "the inner pixel is readable");
+        require(outer[0] > 200 && outer[1] < 60, ":focus-within paints the ancestor after Tab");
+        require(inner[1] > 120 && inner[0] < 60, "the focused child keeps its own background");
+    }
+
     std::printf("window scripts: ran, clicked, keyed, hovered, pressed, ticked, laid out, exited cleanly\n");
     return 0;
 }
