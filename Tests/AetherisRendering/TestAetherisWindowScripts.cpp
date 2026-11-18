@@ -824,6 +824,51 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // Inline wrapping at the container edge. Upstream decides a break on a soft-wrap opportunity
+    // (Rust/src/layout/line_box.rs, `has_soft_wrap_opportunity_after`); this engine's flow path has a
+    // simpler rule - an inline item that does not fit starts a new line - and that rule only became
+    // reachable once inline boxes were content-sized.
+    {
+        std::string spans;
+        for (int index = 0; index < 8; ++index) {
+            auto const two_digits = std::string(index < 10 ? "0" : "") + std::to_string(index);
+            spans += "<span id='w" + std::to_string(index) + "'>" + two_digits + "</span>";
+        }
+        auto result = run_window(binary,
+            "<html><head><title>Inline wrap</title><style>body{margin:0;font-size:16px}"
+            "#box{width:100px}</style></head><body><div id='box'>" + spans + "</div><script>"
+            "setTimeout(function () { var ys = [];"
+            "for (var i = 0; i < 8; ++i) ys.push(document.getElementById('w' + i).getBoundingClientRect().y);"
+            "console.log('MARK ys ' + ys.join(','));"
+            "}, 5);</script></body></html>", "", 3);
+        require(result.status == 0, "the inline wrap run exits cleanly");
+        auto const at = result.output.find("MARK ys ");
+        require(at != std::string::npos, "the wrap run reports its line positions");
+        // Two distinct y values, non-decreasing: the spans wrapped once and did not stack one per line.
+        std::string const values = result.output.substr(at + 8, result.output.find('\n', at) - (at + 8));
+        std::vector<float> ys;
+        std::string current;
+        for (char const c : values) {
+            if (c == ',') {
+                if (!current.empty())
+                    ys.push_back(std::stof(current));
+                current.clear();
+            } else {
+                current += c;
+            }
+        }
+        if (!current.empty())
+            ys.push_back(std::stof(current));
+        require(ys.size() == 8, "every span reports a position");
+        std::vector<float> distinct;
+        for (float const y : ys)
+            if (distinct.empty() || std::abs(distinct.back() - y) > 0.5f)
+                distinct.push_back(y);
+        require(distinct.size() == 2, "eight spans in a 100px box wrap onto two lines");
+        for (std::size_t index = 1; index < ys.size(); ++index)
+            require(ys[index] >= ys[index - 1], "line positions never go backwards");
+    }
+
     // Inline siblings flow onto one line, and an inline box is as wide as its content. Three spans
     // used to be three full-width lines at x = 0, because a text run's box was given the whole
     // remaining line width - which poisoned every inline ancestor's shrink-to-fit.
