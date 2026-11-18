@@ -41,6 +41,18 @@ pre {
     white-space: pre;
 }
 
+/* Phrasing content is inline by default. Without this every <span>, <a> and <em> was a block: it took
+ * the whole content width and the next sibling wrapped, so three spans in a row became three
+ * full-width lines at x = 0.
+ *
+ * The list is the HTML spec's phrasing content set. Upstream's default display is derived from the
+ * element tables rather than written here as CSS; that table is not in the sparse checkout this was
+ * written from, so this follows the spec instead of claiming to follow a file it did not read. */
+a, abbr, b, bdi, bdo, big, br, cite, code, data, dfn, em, i, kbd, label, mark, nobr, output, q, rp,
+rt, ruby, s, samp, small, span, strike, strong, sub, sup, time, tt, u, var, wbr {
+    display: inline;
+}
+
 b, strong { font-weight: bold; }
 i, em { font-style: italic; }
 u { text-decoration: underline; }
