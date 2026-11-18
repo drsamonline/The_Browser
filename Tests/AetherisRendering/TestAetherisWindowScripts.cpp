@@ -1074,6 +1074,25 @@ int main(int argc, char* argv[])
             "origin is the scheme and host, without the path");
     }
 
+    // sessionStorage: the same six members over a second store. Upstream keeps a session bottle map
+    // per origin and tab, separate from the local one (HTML/Window.cpp, session_storage).
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Session storage</title><style>body{margin:0}</style></head><body><script>"
+            "localStorage.setItem('l', 'local');"
+            "sessionStorage.setItem('s', 'session');"
+            "console.log('MARK both ' + localStorage.getItem('l') + ' ' + sessionStorage.getItem('s'));"
+            "console.log('MARK lens ' + localStorage.length + ' ' + sessionStorage.length);"
+            "console.log('MARK separate ' + sessionStorage.getItem('l') + ' ' + localStorage.getItem('s'));"
+            "</script></body></html>", "", 2);
+        require(result.status == 0, "the session storage run exits cleanly");
+        require(result.output.find("MARK both local session") != std::string::npos,
+            "each store keeps its own value");
+        require(result.output.find("MARK lens 1 1") != std::string::npos, "each store has one key");
+        require(result.output.find("MARK separate null null") != std::string::npos,
+            "the two stores cannot see each other");
+    }
+
     // `location`'s component setters. Upstream copies the URL, replaces one component and navigates
     // (HTML/Location.cpp), and the hash setter returns early when the fragment is unchanged.
     //
