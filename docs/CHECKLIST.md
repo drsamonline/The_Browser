@@ -69,7 +69,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 2a2 | UTF-8 decoding in measure, measure_text and draw | `[x]` | `utf8_next()`; 5 decode cases + 2 measurement assertions in `AetherisTextLayout` |
 | 2b | Wire `glyph_rasterizer` into paint | `[ ]` | — |
 | 2c | Kerning | `[ ]` | — |
-| 2d | Text shaping | `[ ]` | **proven, not yet integrated**: HarfBuzz 15.0.0 builds here (70 TUs, `-O0 -j2`, three resumable commands) and shapes correctly — `fi` gives 1 glyph with `liga` on and 2 with it off, Arabic 4 code points give 3 glyphs. `tools/run-shaping-smoke.sh` reproduces it. Remaining: the engine's text path still sums one advance per code point |
+| 2d | Text shaping | `[x]` | `15c6496e`; `shape_run()` returns glyphs, clusters and advances from the font tables, and `AetherisShaping` pins the contract (fi -> one glyph, clusters as byte offsets) |
+| 2d2 | Use the shaper in `TextLayout` | `[ ]` | next: `TextLayout` still sums one advance per code point. Wiring it changes every width, so the pixel fixtures need re-baselining in the same pass |
+| 2d3 | Cache the face per font | `[ ]` | `shape_run` builds a face per call; a cache needs the font's identity, not its buffer address |
 
 ## Tier 3 — layout completeness
 
