@@ -77,7 +77,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 3a2 | Generate the box when `content` is neither `normal` nor `none` | `[x]` | `51d7b016`; the box appears in the tree and `::before` paints its text |
 | 3a5 | `::after` shares the line with `::before` | `[x]` | `e62c9529`; it painted all along, one line lower, because generated boxes took the block path. Both now content-sized on one line, asserted by pixel order |
 | 3a2-old | (superseded) **attempted and reverted.** The box is created (the page reports one more layout node per `::before`/`::after`) but its text does not paint: a 24 px magenta `::before` on a white paragraph leaves the pixel white. Next step is to find which of the two paths drops it — `layout_inline_children`'s text branch requires `dom_node`, and `RenderTree::emit` may too — before writing the box again |
-| 3a4 | `content: ''` generates an empty box | `[ ]` | **divergence**: the parser stores a string value without its quotes, so an empty string is indistinguishable from no `content` property, and ours generates nothing where upstream generates an empty box |
+| 3a4 | `content: ''` generates an empty box | `[x]` | `f8ddd0f9`; magenta box at (20,55) against white at (20,95) for `content: none`. Needed a real `is_generated` flag: `generated_text.empty()` is false for exactly this case |
+| 3a6 | `content` as a real list type, with alt text (`content: "x" / "alt"`) | `[ ]` | upstream holds a `StyleValueList` plus an optional alt-text list; the quoting in the parser stands in for the item type until this exists |
 | 3a3 | Paint the generated box | `[ ]` | needs a synthetic text node whose `dom_node` is null, which several paths dereference |
 | 3b | `position: sticky` | `[ ]` | — |
 | 3c | Complete flex and grid (`flex-shrink`, `basis`, grid areas) | `[ ]` | — |
