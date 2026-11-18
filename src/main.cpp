@@ -982,6 +982,40 @@ void write_classes(rendering::DomNode* node, std::vector<std::string> const& cla
 
 // Upstream's DOM/Element.idl has `[Reflect=class] attribute DOMString className`, so this is the
 // `class` content attribute read and written, nothing more: absent reads as the empty string.
+// Whether an element can take focus, ported from upstream's three-level answer:
+//
+//   Element::is_focusable()          tabindex parses as an integer (DOM/Element.cpp:6992)
+//   HTMLAnchorElement::is_focusable  Base::is_focusable() || has_attribute(href)
+//   HTMLInputElement::is_focusable   m_type != Hidden && enabled()  (and select, textarea, button: enabled())
+//
+// Upstream's base rule is only tabindex; the element kinds add themselves. Upstream also requires
+// meets_focusable_area_rendering_requirements() - a layout box - which this does not check, so an element
+// with display:none can be focused here. Recorded in docs/CHECKLIST.md.
+static bool is_focusable_node(rendering::DomNode const& node)
+{
+    if (node.type != rendering::DomNodeType::Element)
+        return false;
+
+    // The generic rule, which every element gets.
+    if (auto const* tabindex = node.attribute("tabindex")) {
+        char* end = nullptr;
+        std::strtol(tabindex->c_str(), &end, 10);
+        if (end && *end == '\0' && !tabindex->empty())
+            return true;
+    }
+
+    if (node.name == "a")
+        return node.attribute("href") != nullptr;
+    if (node.name == "button" || node.name == "select" || node.name == "textarea")
+        return node.attribute("disabled") == nullptr;
+    if (node.name == "input") {
+        auto const* type = node.attribute("type");
+        bool const hidden = type && *type == "hidden";
+        return !hidden && node.attribute("disabled") == nullptr;
+    }
+    return false;
+}
+
 // Upstream's focusing steps are HTML/Focus.cpp, run_focusing_steps(new_focus_target, fallback_target,
 // focus_trigger, scroll_into_view, focus_visible); set_focus() here does the same in the loop, which is
 // why this only records the request.
@@ -995,8 +1029,13 @@ void write_classes(rendering::DomNode* node, std::vector<std::string> const& cla
 // fit code already in place rather than one that sent me to the file.
 JSValue js_focus(JSContext* context, JSValueConst this_value, int, JSValueConst*)
 {
-    if (auto* node = node_of(context, this_value))
-        g_focus_requests.push_back(node);
+    // Upstream runs the focusing steps, whose first move is to map a non-focusable target through
+    // get_focusable_area() and return if nothing focusable comes back (HTML/Focus.cpp:749). So
+    // `focus()` on a div with no tabindex does nothing, which is what this does.
+    if (auto* node = node_of(context, this_value)) {
+        if (is_focusable_node(*node))
+            g_focus_requests.push_back(node);
+    }
     return JS_UNDEFINED;
 }
 
