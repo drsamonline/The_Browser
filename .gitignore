@@ -17,3 +17,6 @@ Testing/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Fetched by tools/fetch-harfbuzz.sh; 26 MB of third-party source is not committed.
+third_party/harfbuzz/
