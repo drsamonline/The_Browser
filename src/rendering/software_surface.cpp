@@ -1,6 +1,7 @@
 #include "software_surface.hpp"
 
 #include "font.hpp"
+#include "shaper.hpp"
 #include "font_library.hpp"
 #include "glyph_rasterizer.hpp"
 #include "bitmap_font.hpp"
@@ -196,13 +197,30 @@ void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, f
         uint16_t previous_glyph = 0;
         // Code points, so a non-ASCII character is one glyph rather than its UTF-8 bytes drawn as
         // Latin-1. The bitmap fallback below stays byte-wise: it is ASCII art and has no other cells.
-        for (std::size_t index = 0; index < text.size();) {
-            auto const character = utf8_next(text, index);
-            auto glyph = font->glyph_index(character);
-            if (have_previous)
-                pen_x += static_cast<float>(kerning_adjustment(*font, previous_glyph, glyph)) * scale;
-            previous_glyph = glyph;
-            have_previous = true;
+        // Shaped when possible: the pen must advance by what measure() measured, or ligature text is
+        // measured as one glyph and drawn as two, which overlaps. Same fallback as measure().
+        std::vector<ShapedGlyph> shaped;
+        if (shaping_available())
+            shaped = shape_run(font->data(), text, font_size);
+        std::vector<std::pair<uint16_t, float>> to_draw;
+        if (!shaped.empty()) {
+            for (auto const& glyph : shaped)
+                to_draw.emplace_back(static_cast<uint16_t>(glyph.glyph), glyph.advance);
+        } else {
+            for (std::size_t index = 0; index < text.size();) {
+                auto const character = utf8_next(text, index);
+                auto glyph = font->glyph_index(character);
+                float advance = static_cast<float>(font->advance_width(glyph)) * scale;
+                if (have_previous) {
+                    float const kern = static_cast<float>(kerning_adjustment(*font, previous_glyph, glyph)) * scale;
+                    advance += kern;
+                }
+                previous_glyph = glyph;
+                have_previous = true;
+                to_draw.emplace_back(glyph, advance);
+            }
+        }
+        for (auto const& [glyph, advance] : to_draw) {
             auto const& bitmap = cached_glyph(*font, glyph, font_size);
             for (int y = 0; y < bitmap.height; ++y) {
                 for (int x = 0; x < bitmap.width; ++x) {
@@ -218,7 +236,7 @@ void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, f
                     blend_pixel(pixel_x, pixel_y, shaded);
                 }
             }
-            pen_x += static_cast<float>(font->advance_width(glyph)) * scale;
+            pen_x += advance;
         }
         return;
     }
