@@ -1003,9 +1003,8 @@ static bool is_focusable_node(rendering::DomNode const& node)
     //
     //   no layout node  -> allowed. Before the first layout nothing has a box, and a page that calls
     //                      focus() at load must not be refused. Upstream does not require a box either.
-    //   display: none   -> refused, which is the case this row exists for.
-    //
-    // visibility:hidden is not checked because this engine does not implement the property at all.
+    //   display: none   -> refused.
+    //   visibility:hidden or collapse -> refused, the third clause of upstream's check.
     if (g_current_page) {
         std::function<rendering::LayoutNode const*(rendering::LayoutNode const&)> find
             = [&](rendering::LayoutNode const& candidate) -> rendering::LayoutNode const* {
@@ -1016,9 +1015,15 @@ static bool is_focusable_node(rendering::DomNode const& node)
                     return found;
             return nullptr;
         };
-        if (auto const* layout = find(g_current_page->layout_root()))
+        if (auto const* layout = find(g_current_page->layout_root())) {
             if (layout->display == rendering::LayoutDisplay::None)
                 return false;
+            // The third clause: visibility must be visible (upstream reads it from the inherited
+            // style; the layout node carries the resolved style here).
+            if (auto const* visibility = layout->style.get("visibility"))
+                if (*visibility == "hidden" || *visibility == "collapse")
+                    return false;
+        }
     }
 
     // The generic rule, which every element gets.

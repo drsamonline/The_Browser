@@ -339,7 +339,9 @@ bool StyleProperties::contains(std::string const& property) const
 
 void StyleProperties::inherit_from(StyleProperties const& parent)
 {
-    for (auto const* property : { "color", "font-family", "font-size", "font-weight", "line-height", "text-align", "text-decoration", "white-space", "letter-spacing", "word-spacing" }) {
+    // `visibility` is inherited (CSS/Properties.json: "inherited": true), which is what lets a child
+    // re-set `visible` inside a hidden ancestor.
+    for (auto const* property : { "color", "font-family", "font-size", "font-weight", "line-height", "text-align", "text-decoration", "white-space", "letter-spacing", "word-spacing", "visibility" }) {
         if (!contains(property)) {
             if (auto value = parent.get(property))
                 set(property, *value);

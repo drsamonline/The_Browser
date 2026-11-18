@@ -118,6 +118,22 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
     if (node.display == LayoutDisplay::None)
         return;
 
+    // `visibility` is inherited and checked per box, which is upstream's rule
+    // (Painting/BoxViews.cpp:189: a box is painted when visibility == Visible && opacity != 0). The
+    // difference from display:none is the whole point: the box still occupies space, and a descendant
+    // that sets `visibility: visible` is painted inside a hidden ancestor. So this skips the node's own
+    // commands and still walks the children.
+    bool const visible = [&] {
+        auto const* value = node.style.get("visibility");
+        return !value || (*value != "hidden" && *value != "collapse");
+    }();
+    if (!visible) {
+        float const opacity = std::clamp(inherited_opacity * number(node.style.get("opacity"), 1.0f), 0.0f, 1.0f);
+        for (auto const& child : node.children)
+            emit(*child, commands, opacity, inherited);
+        return;
+    }
+
     // Compose this node's transform with the inherited one. A point is mapped
     // by the local transform first, then by the ancestor's.
     PaintTransform local = parse_transform(node.style.get("transform"));
