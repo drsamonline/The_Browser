@@ -824,6 +824,30 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // Soft-wrap opportunities: an inline item breaks only where whitespace precedes it. Upstream:
+    // inline_formatting_context.rs, text_item_wrap_opportunity() - a non-whitespace item may break only
+    // when the line ends in whitespace or the item allows a break before it.
+    //
+    // Two fixtures that differ in one character: the space between the spans.
+    {
+        auto probe_pair = [&](std::string const& between, char const* what, bool expect_break) {
+            auto result = run_window(binary,
+                "<html><head><title>Wrap opportunity</title><style>body{margin:0;font-size:16px}"
+                "div{width:100px}</style></head><body><div>"
+                "<span id='s1'>aaaaaa</span>" + between + "<span id='s2'>bbbbbb</span></div><script>"
+                "setTimeout(function () {"
+                "var a = document.getElementById('s1').getBoundingClientRect();"
+                "var b = document.getElementById('s2').getBoundingClientRect();"
+                "console.log('MARK same-line ' + (a.y === b.y));"
+                "}, 5);</script></body></html>", "", 3);
+            require(result.status == 0, what);
+            std::string const expected = expect_break ? "MARK same-line false" : "MARK same-line true";
+            require(result.output.find(expected) != std::string::npos, what);
+        };
+        probe_pair(" ", "a space between two inline items lets the second wrap", true);
+        probe_pair("", "no space between two inline items keeps them together", false);
+    }
+
     // Inline wrapping at the container edge. Upstream decides a break on a soft-wrap opportunity
     // (Rust/src/layout/line_box.rs, `has_soft_wrap_opportunity_after`); this engine's flow path has a
     // simpler rule - an inline item that does not fit starts a new line - and that rule only became
