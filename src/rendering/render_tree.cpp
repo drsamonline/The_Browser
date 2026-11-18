@@ -1,4 +1,6 @@
 #include "render_tree.hpp"
+#include <cstdio>
+#include <cstdlib>
 
 #include "css_units.hpp"
 
@@ -153,6 +155,11 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
     // generated for `::before`/`::after` has no DOM node and still paints. Upstream's generated node
     // carries its text and its generator element, not a text node (Layout/Node.h,
     // `pseudo_element_generator`).
+    if (std::getenv("AETHERIS_TRACE_GENERATED") && !node.generated_text.empty())
+        std::fprintf(stderr, "PAINT gen=[%s] frags=%zu rect=(%.1f,%.1f %.1fx%.1f) color=[%s]\n",
+            node.generated_text.c_str(), node.text_fragments.size(),
+            node.rect.x, node.rect.y, node.rect.width, node.rect.height,
+            node.style.get("color") ? node.style.get("color")->c_str() : "<none>");
     if (!node.text_fragments.empty()) {
         for (auto const& fragment : node.text_fragments) {
             PaintCommand command;

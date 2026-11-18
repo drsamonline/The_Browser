@@ -1074,6 +1074,46 @@ int main(int argc, char* argv[])
             "origin is the scheme and host, without the path");
     }
 
+    // A generated box paints its text. Upstream's generated node carries its text and its generator
+    // element, not a text node (Layout/Node.h, `pseudo_element_generator`), and `RenderTree::emit`
+    // required a DOM text node - so a `::before` produced fragments that were never emitted.
+    //
+    // The assertion is pixels, sampled where the measured frame has ink: the generated "MMMM" is
+    // magenta at y 55 (the paragraph starts below the 34 px chrome and the glyphs sit near the
+    // baseline), and magenta appears at no other y in that row.
+    //
+    // `::after` is NOT asserted: it is generated and laid out but does not paint, which is row 3a5.
+    {
+        std::string const directory = "aetheris-generated-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto result = run_window(binary,
+            "<html><head><title>Generated content</title><style>body{margin:0;font-size:24px}"
+            "p{width:400px;height:30px;background:#ffffff}"
+            "p::before{content:'MMMM';color:#ff00ff}"
+            "p::after{content:'YYYY';color:#ffff00}"
+            "</style></head><body><p></p></body></html>", "", 2, directory);
+        require(result.status == 0, "the generated-content run exits cleanly");
+
+        // Both runs are on one line and in order: `::before` starts at the left edge, `::after`
+        // immediately after it. Each is content-sized, which is what makes them share the line -
+        // taking the block path put each on a line of its own and looked like `::after` not painting.
+        int magenta_first = -1;
+        int yellow_first = -1;
+        for (int x = 0; x < 400; ++x) {
+            int rgb[3] {};
+            if (!frame_pixel(directory, x, 55, rgb))
+                break;
+            if (magenta_first < 0 && is_magenta(rgb))
+                magenta_first = x;
+            if (yellow_first < 0 && rgb[0] > 200 && rgb[1] > 200 && rgb[2] < 100)
+                yellow_first = x;
+        }
+        std::system(("rm -rf " + directory).c_str());
+        require(magenta_first >= 0, "::before paints its text");
+        require(yellow_first >= 0, "::after paints its text");
+        require(magenta_first < yellow_first, "::before paints before ::after on the same line");
+    }
+
     // sessionStorage: the same six members over a second store. Upstream keeps a session bottle map
     // per origin and tab, separate from the local one (HTML/Window.cpp, session_storage).
     {

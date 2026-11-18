@@ -100,9 +100,10 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
         layout_node->append_child(std::move(after_box));
     if (std::getenv("AETHERIS_TRACE_GENERATED")) {
         for (auto const& child : layout_node->children)
-            std::fprintf(stderr, "GEN child gen=[%s] dom=%p display=%d\n",
-                child->generated_text.c_str(), static_cast<void const*>(child->dom_node),
-                static_cast<int>(child->display));
+            std::fprintf(stderr, "GEN child gen=[%s] display=%d frags=%zu rect=(%.1f,%.1f %.1fx%.1f)\n",
+                child->generated_text.c_str(), static_cast<int>(child->display),
+                child->text_fragments.size(), child->rect.x, child->rect.y,
+                child->rect.width, child->rect.height);
     }
 
     return layout_node;
@@ -387,7 +388,12 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
                 child->dom_node ? (child->dom_node->type == DomNodeType::Text ? "text" : "element") : "none",
                 data.substr(0, 12).c_str(), cursor_x, child->rect.width, available_width);
         }
-        if (child->display == LayoutDisplay::Inline && child->dom_node && child->dom_node->type == DomNodeType::Text) {
+        // A generated box flows like a text run: it is inline-level content, not a block that takes
+        // the line. Both `::before` and `::after` used to take the block path, which put each on its
+        // own line - which looked like `::after` not painting at all.
+        bool const child_is_generated_text = !child->generated_text.empty();
+        if (child->display == LayoutDisplay::Inline
+            && (child_is_generated_text || (child->dom_node && child->dom_node->type == DomNodeType::Text))) {
             // A text run is laid out here rather than through layout_node, so it has to be counted
             // here too or `layout nodes:` under-reports what the pass did. It is not reusable:
             // every path that changes text replaces the text node with a new one, which has no
@@ -397,7 +403,9 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
             child->box.content.x = cursor_x;
             child->box.content.y = cursor_y;
             child->box.content.width = std::max(0.0f, x + available_width - cursor_x);
-            child->text_fragments = TextLayout::layout(child->dom_node->data, cursor_x, cursor_y, std::max(0.0f, x + available_width - cursor_x), child->style);
+            child->text_fragments = TextLayout::layout(
+                child_is_generated_text ? child->generated_text : child->dom_node->data,
+                cursor_x, cursor_y, std::max(0.0f, x + available_width - cursor_x), child->style);
             if (!child->text_fragments.empty()) {
                 for (auto const& fragment : child->text_fragments) {
                     if (fragment.rect.x < cursor_x && cursor_x > x)
@@ -416,8 +424,9 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
                 child->box.content.width = std::max(0.0f, text_extent - child->box.content.x);
                 child->rect = { child->box.content.x, child->box.content.y, child->box.content.width, child->box.content.height };
             }
-            line_ends_in_whitespace = !child->dom_node->data.empty()
-                && std::isspace(static_cast<unsigned char>(child->dom_node->data.back()));
+            std::string const& text_source = child_is_generated_text ? child->generated_text : child->dom_node->data;
+            line_ends_in_whitespace = !text_source.empty()
+                && std::isspace(static_cast<unsigned char>(text_source.back()));
             continue;
         }
 
