@@ -149,7 +149,11 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
 
     bool clips_children = node.style.get("overflow") && (*node.style.get("overflow") == "hidden" || *node.style.get("overflow") == "clip");
 
-    if (node.dom_node && node.dom_node->type == DomNodeType::Text) {
+    // A node with text fragments is a text run, whether or not a DOM node produced it: a box
+    // generated for `::before`/`::after` has no DOM node and still paints. Upstream's generated node
+    // carries its text and its generator element, not a text node (Layout/Node.h,
+    // `pseudo_element_generator`).
+    if (!node.text_fragments.empty()) {
         for (auto const& fragment : node.text_fragments) {
             PaintCommand command;
             command.type = PaintCommand::Type::DrawText;

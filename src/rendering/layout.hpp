@@ -69,6 +69,10 @@ struct LayoutNode {
     LayoutRect rect;
     BoxModel box;
     std::vector<TextFragment> text_fragments;
+
+    // Set on a box generated for `::before` or `::after`, which has no DOM node of its own.
+    std::string generated_text;
+
     std::shared_ptr<Image const> image;
     std::shared_ptr<Image const> background_image;
     std::vector<std::unique_ptr<LayoutNode>> children;

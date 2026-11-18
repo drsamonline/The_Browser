@@ -70,8 +70,41 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
     if (layout_node->display == LayoutDisplay::None)
         return layout_node;
 
+    // `::before` and `::after` generate a box only when `content` is a string: upstream's
+    // PseudoElementDecision rule returns None for `normal` and `none`
+    // (Rust/src/layout/tree_builder.rs). The box is a layout-tree child of the element, first or last,
+    // and has no DOM node.
+    auto make_generated_box = [&](char const* pseudo_element) -> std::unique_ptr<LayoutNode> {
+        if (!sheet.uses_generated_content() || node.type != DomNodeType::Element)
+            return nullptr;
+        auto pseudo_style = StyleResolver {}.resolve_pseudo_element(node, sheet, pseudo_element,
+            &layout_node->style, interaction_state);
+        auto const* content = pseudo_style.get("content");
+        if (!content || content->empty() || *content == "none" || *content == "normal")
+            return nullptr;
+        auto generated = std::make_unique<LayoutNode>();
+        generated->parent = layout_node.get();
+        generated->style = pseudo_style;
+        generated->display = LayoutDisplay::Inline;
+        generated->generated_text = *content;
+        return generated;
+    };
+
+    if (auto before_box = make_generated_box("before"))
+        layout_node->append_child(std::move(before_box));
+
     for (auto const& child : node.children)
         layout_node->append_child(build_node(*child, sheet, layout_node.get(), &layout_node->style, interaction_state, cache, dirty, stats, restyled));
+
+    if (auto after_box = make_generated_box("after"))
+        layout_node->append_child(std::move(after_box));
+    if (std::getenv("AETHERIS_TRACE_GENERATED")) {
+        for (auto const& child : layout_node->children)
+            std::fprintf(stderr, "GEN child gen=[%s] dom=%p display=%d\n",
+                child->generated_text.c_str(), static_cast<void const*>(child->dom_node),
+                static_cast<int>(child->display));
+    }
+
     return layout_node;
 }
 
@@ -246,8 +279,9 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
         float ratio = intrinsic_width > 0 && intrinsic_height > 0 ? intrinsic_height / intrinsic_width : 0.75f;
         float specified_height = parse_length(node.style.get("height"), -1, content_width);
         node.box.content.height = specified_height >= 0 ? specified_height : (intrinsic_height > 0 ? intrinsic_height : content_width * ratio);
-    } else if (node.dom_node && node.dom_node->type == DomNodeType::Text) {
-        node.text_fragments = TextLayout::layout(node.dom_node->data, node.box.content.x, node.box.content.y, content_width, node.style);
+    } else if (!node.generated_text.empty() || (node.dom_node && node.dom_node->type == DomNodeType::Text)) {
+        std::string const& source = node.generated_text.empty() ? node.dom_node->data : node.generated_text;
+        node.text_fragments = TextLayout::layout(source, node.box.content.x, node.box.content.y, content_width, node.style);
         float line_height = TextLayout::line_height(node.style);
         node.box.content.height = node.text_fragments.empty() ? 0
             : node.text_fragments.back().rect.y + line_height - node.box.content.y;
