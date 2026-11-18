@@ -56,6 +56,11 @@ public:
 
     // One origin's key/value pairs. In memory only: upstream persists per profile, this does not.
     std::map<std::string, std::string>& storage_for_origin() { return m_storage[m_storage_origin]; }
+
+    // sessionStorage: the same interface over a second store. Upstream keeps a session bottle map per
+    // origin and top-level browsing context (HTML/Window.cpp, session_storage), separate from the local
+    // one, and it ends with the tab. This interpreter is one window, so it ends with the process.
+    std::map<std::string, std::string>& session_storage_for_origin() { return m_session_storage[m_storage_origin]; }
     std::map<std::string, std::string> const* storage_for_origin() const
     {
         auto found = m_storage.find(m_storage_origin);
@@ -155,6 +160,7 @@ private:
     bool m_last_event_prevented { false };
     std::string m_storage_origin;
     std::map<std::string, std::map<std::string, std::string>> m_storage;
+    std::map<std::string, std::map<std::string, std::string>> m_session_storage;
     std::string m_error;
     std::vector<Timer> m_timers;
     int m_next_timer_id { 1 };

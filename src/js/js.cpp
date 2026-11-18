@@ -615,6 +615,69 @@ void set_navigation_hooks(std::function<std::string()> current_url,
     g_history_go = std::move(history_go);
 }
 
+// The session store's six members. Same shape as the local ones, a different map.
+static std::map<std::string, std::string>* session_store()
+{
+    auto* interpreter = active_interpreter();
+    return interpreter ? &interpreter->session_storage_for_origin() : nullptr;
+}
+
+static JSValue js_session_storage_get_item(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* store = session_store();
+    if (!store || argc < 1)
+        return JS_NULL;
+    auto found = store->find(to_string(context, argv[0]));
+    if (found == store->end())
+        return JS_NULL;
+    return JS_NewString(context, found->second.c_str());
+}
+
+static JSValue js_session_storage_set_item(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* store = session_store();
+    if (!store || argc < 2)
+        return JS_UNDEFINED;
+    (*store)[to_string(context, argv[0])] = to_string(context, argv[1]);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_session_storage_remove_item(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* store = session_store();
+    if (!store || argc < 1)
+        return JS_UNDEFINED;
+    store->erase(to_string(context, argv[0]));
+    return JS_UNDEFINED;
+}
+
+static JSValue js_session_storage_clear(JSContext*, JSValueConst, int, JSValueConst*)
+{
+    if (auto* store = session_store())
+        store->clear();
+    return JS_UNDEFINED;
+}
+
+static JSValue js_session_storage_key(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    auto* store = session_store();
+    if (!store || argc < 1)
+        return JS_NULL;
+    int32_t index = 0;
+    JS_ToInt32(context, &index, argv[0]);
+    if (index < 0 || static_cast<std::size_t>(index) >= store->size())
+        return JS_NULL;
+    auto it = store->begin();
+    std::advance(it, index);
+    return JS_NewString(context, it->first.c_str());
+}
+
+static JSValue js_session_storage_length(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    auto* store = session_store();
+    return JS_NewInt32(context, store ? static_cast<int32_t>(store->size()) : 0);
+}
+
 // `location`. Upstream's Location (HTML/Location.idl) is a full URL record: href as a stringifier
 // attribute, plus origin, protocol, host, hostname, port, pathname, search, hash, assign, replace and
 // reload. This is href, assign and reload - what a page or a harness needs to move between documents, and
@@ -839,6 +902,19 @@ void Interpreter::setup_globals()
     define_function(m_context, storage, "removeItem", js_storage_remove_item);
     define_function(m_context, storage, "clear", js_storage_clear);
     define_function(m_context, storage, "key", js_storage_key);
+    // The same six over the session store. Upstream's Storage takes its type at construction
+    // (Storage::Type::Local or Session) and everything else is identical.
+    JSValue session_storage = JS_NewObject(m_context);
+    define_function(m_context, session_storage, "getItem", js_session_storage_get_item);
+    define_function(m_context, session_storage, "setItem", js_session_storage_set_item);
+    define_function(m_context, session_storage, "removeItem", js_session_storage_remove_item);
+    define_function(m_context, session_storage, "clear", js_session_storage_clear);
+    define_function(m_context, session_storage, "key", js_session_storage_key);
+    JSAtom session_length_atom = JS_NewAtom(m_context, "length");
+    JS_DefinePropertyGetSet(m_context, session_storage, session_length_atom,
+        JS_NewCFunction(m_context, js_session_storage_length, "length", 0), JS_UNDEFINED, 0);
+    JS_FreeAtom(m_context, session_length_atom);
+    JS_SetPropertyStr(m_context, global, "sessionStorage", session_storage);
     // `length` is an attribute in the IDL, not a function: a page reads `localStorage.length`.
     JSAtom length_atom = JS_NewAtom(m_context, "length");
     JSValue getter = JS_NewCFunction(m_context, [](JSContext* context, JSValueConst, int, JSValueConst*) -> JSValue {
