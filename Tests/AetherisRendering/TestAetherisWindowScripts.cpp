@@ -824,6 +824,43 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // A click focuses the nearest focusable ancestor, and moves nothing if there is none. Upstream's
+    // focus_candidate_for_position() (Page/EventHandler.cpp:3543) walks up while the node is not
+    // focusable and then runs the focusing steps with a null fallback, which returns without touching
+    // focus. A plain div is therefore not a focus target, and a span inside a button focuses the button.
+    {
+        std::string const directory = "aetheris-click-focus-frames";
+        struct ClickCase {
+            char const* what;
+            std::string body;
+            bool focused;
+        };
+        std::vector<ClickCase> const cases {
+            { "a click on a plain div focuses nothing", "<div id='t'>x</div>", false },
+            { "a click on an input focuses it", "<input id='t'>", true },
+            { "a click on a span inside a button focuses the button",
+                "<button><span id='t'>x</span></button>", true },
+            { "a click on a span inside a plain div focuses nothing",
+                "<div><span id='t'>x</span></div>", false },
+            { "a click on a div with tabindex focuses it", "<div id='t' tabindex='0'>x</div>", true },
+            { "a click on a disabled button focuses nothing", "<button id='t' disabled>x</button>", false },
+        };
+        for (auto const& click_case : cases) {
+            std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+            std::string const html = "<html><head><title>Click focus</title><style>body{margin:0}"
+                "div,input,button,a{display:block;margin:0;padding:0;border:0;width:400px;height:20px;"
+                "background:#00ff00}:focus{background:#ff00ff}"
+                "</style></head><body>" + click_case.body + "</body></html>";
+            auto result = run_window(binary, html, "--click 200,44", 3, directory);
+            std::string const message = std::string("the click-focus run for ") + click_case.what + " exits cleanly";
+            require(result.status == 0, message.c_str());
+            int rgb[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 200, 44, rgb), "the click-focus pixel is readable");
+            require(click_case.focused ? is_magenta(rgb) : !is_magenta(rgb), click_case.what);
+        }
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // focus() refuses a target that is not focusable, which is upstream's first move in the focusing
     // steps (HTML/Focus.cpp:749 -> get_focusable_area). The rules, read from three levels:
     //   Element::is_focusable()          tabindex parses as an integer
