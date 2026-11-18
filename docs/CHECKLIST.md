@@ -69,7 +69,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 2a2 | UTF-8 decoding in measure, measure_text and draw | `[x]` | `utf8_next()`; 5 decode cases + 2 measurement assertions in `AetherisTextLayout` |
 | 2b | Wire `glyph_rasterizer` into paint | `[ ]` | — |
 | 2c | Kerning | `[ ]` | — |
-| 2d | Text shaping | `[ ]` | **unblocked and measured**: HarfBuzz 15.0.0 builds here via upstream CMake, 70 TUs at -O0 -j2 in three resumable commands, `hb_shape` present in `libharfbuzz.a`. `tools/fetch-harfbuzz.sh` fetches it. Remaining: link the engine, then a fixture proving a ligature collapses two code points into one glyph |
+| 2d | Text shaping | `[ ]` | **proven, not yet integrated**: HarfBuzz 15.0.0 builds here (70 TUs, `-O0 -j2`, three resumable commands) and shapes correctly — `fi` gives 1 glyph with `liga` on and 2 with it off, Arabic 4 code points give 3 glyphs. `tools/run-shaping-smoke.sh` reproduces it. Remaining: the engine's text path still sums one advance per code point |
 
 ## Tier 3 — layout completeness
 
