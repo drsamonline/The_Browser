@@ -50,7 +50,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 
 | Row | Item | Status | Proof / blocker |
 | --- | --- | --- | --- |
-| 2a | Font API: glyph ids and per-glyph advances; `measure_text` uses them | `[ ]` | — |
+| 2a | Font API: glyph ids and per-glyph advances | `[x]` | **was already there** — `advance()` asked the TTF; the gap was byte iteration, fixed `+` the commit before this |
+| 2a2 | UTF-8 decoding in measure, measure_text and draw | `[x]` | `utf8_next()`; 5 decode cases + 2 measurement assertions in `AetherisTextLayout` |
 | 2b | Wire `glyph_rasterizer` into paint | `[ ]` | — |
 | 2c | Kerning | `[ ]` | — |
 | 2d | Shaping — Arabic and Indic last | `[ ]` | — |
