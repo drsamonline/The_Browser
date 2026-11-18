@@ -71,7 +71,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 2c | Kerning | `[ ]` | — |
 | 2d | Text shaping | `[x]` | `15c6496e`; `shape_run()` returns glyphs, clusters and advances from the font tables, and `AetherisShaping` pins the contract (fi -> one glyph, clusters as byte offsets) |
 | 2d2 | Use the shaper in the text path | `[x]` | `6d8ca43c`; `measure` and the drawing pen both use shaped advances, `measure("fi")` 10.0938 -> 10.0781 |
-| 2d3 | Cache the face per font | `[ ]` | `shape_run` builds a face per call; a cache needs the font's identity, not its buffer address |
+| 2d3 | Cache the face per font | `[x]` | `perf` commit; keyed by a hash of the font data, not the buffer address. Worth ~7%: 0.075 ms of 1.043 ms per shaped run |
+| 2d4 | Shaping costs 1.043 ms per 24-character run at -O0 | `[ ]` | measure in a release build before optimising; if it stays high, cache shaped runs by (text, size) |
 
 ## Tier 3 — layout completeness
 
