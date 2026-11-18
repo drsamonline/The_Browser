@@ -1,70 +1,86 @@
-# Session handoff — 2026-11-18
+# Session handover — 2026-11-18
 
-Continues `SESSION-HANDOFF-2026-11-17.md` (items 1–21). This file covers the second session: batch A and B of
-the reviewed plan, plus the five focus rows that came out of reading upstream.
+78 commits. Tip `0f7ca488`. Suite **64 tests, 64/64, twice**, 151-157 s at `-j2`.
 
-**Read with**: `CHECKLIST.md` (live state), `HANDOVER.md` (mechanisms and gotchas), `PHASES.md` (order),
-`COVERAGE.md` (what exists). This file is the narrative; those are the state.
+This is the second handover for this date; the earlier one covered batches A and B of the selector work. This one
+covers what came after: pseudo-elements, `content`, fragment navigation, shaping, and the test split.
 
-## What shipped, in order
+---
 
-| # | Item | Commits | Measured |
-| 22 | Sibling combinators `+` `~`, `[a=v i]`, `:checked`/`:disabled`/`:placeholder-shown` | `dd310ca3`, `43b7ff4a` | 2 stripe pages, 4 controls, both flag directions |
-| 23 | `getBoundingClientRect()` | `f654adbf`, `8e90f626` | the page asserts its own numbers: `x 0, y 0, 200×50`, `right 200, bottom 50` |
-| 24 | `element.focus()` / `blur()` state | `c1ec9b62`, `b73427e6` | two controls, focus then blur |
-| 25 | focus/blur **events**, and the ordering bug behind them | `cffba72c`, `2323679e` | F,B in order; F,B,F ends focused |
-| 26 | `localStorage` (six members) | `e142b937`, `5dbd9d37` | length 2→1→0, missing key `null`, `key(9)` `null` |
-| 27 | Navigation: `location`, a click follows a link | `0f506632`, `58eff7ed` | page B loads at `/b`, reads what A stored |
-| 28 | `:has(+ .x)`, `:has(~ .x)` | `9a912b7d`, `061eda79` | 3 load cases + a mutation that restyles backwards |
-| 29 | `focus()` refuses a non-focusable target | `43338a63`, `1c5b95c2` | 10 cases, 7 in the suite |
-| 30 | `display:none` is not focusable | `c7c00f02`, `db90789b` | 3 cases incl. `focus()` at load |
-| 31 | A click focuses the nearest focusable ancestor | `919b2874`, `17e09604` | 6 cases |
-| 32 | `visibility` — inherited, per-box paint, focusability | `d5662307`, `859f31b2` | 4 cases |
+## 1. What shipped, in order
 
-Suite 59/59 twice after every item. Tip at the end of the session: `7ce8034d`.
+| commit | what |
+| `e62c9529` | a generated `::after` box flows inline, so it shares the line instead of starting a new one |
+| `f8ddd0f9` | `content: ''` generates an empty box; `LayoutNode::is_generated` exists because `generated_text.empty()` is false for exactly that case |
+| `760b882c` | a fragment change does not re-fetch: `navigate_in_place`, and a scroll to the indicated part |
+| `8d567d82` | `tools/fetch-harfbuzz.sh` + the measurement that chose upstream CMake over the amalgamation |
+| `16af7373` | `tools/run-shaping-smoke.sh`: `fi` is 1 glyph with `liga` on, 2 with it off, Arabic 4 code points give 3 glyphs |
+| `15c6496e` | `shape_run()`, `TtfFont::data()`, HarfBuzz as an optional CMake target, `AetherisShaping` in the suite |
+| `6d8ca43c` | `measure` and the drawing pen both use shaped advances |
+| `18eb91c8` | the face cache, keyed by a hash of the font data |
+| `60dfd68b` | the window test split into four, running at `-j2` |
 
-## The five things reading upstream changed
+## 2. Numbers that were measured, not assumed
 
-Every focus row came from comparing our code to `HTML/Focus.cpp`, not from a bug report. None of them would have
-been caught by the suite, because the suite encoded what the engine did.
-
-| Row | Upstream | Ours was |
+| measurement | value | how |
 | --- | --- | --- |
-| 1f4 | `run_focusing_steps` maps a non-focusable target through `get_focusable_area()` and returns | focusing whatever it was handed |
-| 1f5 | also requires connected, not `display:none`, `visibility:visible` | no rendering check at all |
-| 1f6 | `focus_candidate_for_position()` walks up to the nearest focusable ancestor, null fallback | focusing the hit node |
-| 1f7 | `visibility` inherited, checked per box in paint | property absent |
-| 1f3 | — | a single request slot, overwritten inside one `run_timers()` window |
+| HarfBuzz build | 70 TUs, `-O0 -j2`, three resumable commands | `ninja -C build harfbuzz`, killed at 280 s each time, resumed |
+| `libharfbuzz.a` | 131 MB Debug, `hb_shape` present | `nm` |
+| shaping correctness | `fi` 1 glyph with `liga` on, **2 with it off**, Arabic 4 cps -> 3 glyphs | `tools/run-shaping-smoke.sh` |
+| engine width with the ligature | `measure("fi")` 10.0938 -> **10.0781** | `AetherisShaping` |
+| shaping cost | **1.043 ms** per 24-char run at `-O0`; face creation is 0.075 ms of it | a 5000-iteration benchmark |
+| cores on this box | **2** | `nproc` |
+| window tests after the split | Core 47 s, Style 60 s, Layout and Geometry two at a time | `ctest -R Window -j2` |
 
-## Errors made, so the next session does not repeat them
+## 3. The errors, and what each cost
 
-| Error | Cost | Rule it earns |
+| first reading | what was true | what settled it |
 | --- | --- | --- |
-| Cited `DOM/Element.cpp` for the focusing steps without reading it | one wrong comment, caught when asked | a citation is a record of a read |
-| `:has(> .x)` matched nothing: functional-pseudo capture stopped at a marker | 3 probes | a nested construct must not be scanned flat |
-| `[data-mode=LIST i]` split on the space inside brackets | 1 probe | brackets are nested constructs too — the fourth scanner with this bug |
-| Probe read the wrong input twice (UA border) | 3 measurements | say what the fixture puts at that coordinate |
-| Probe asserted green for a `display:none` element | 1 test cycle | "not focusable" is "not magenta", not "green" |
-| All eight `focus()` calls in one timer, only the last visible | 1 probe | one candidate per page |
-| Click on a link used as a focus probe, after navigation shipped | 1 probe | ask what else the case triggers |
-| `--click-x`/`--click-y` instead of `--click X,Y` | 2 silent probes | check the flag before the theory |
+| "`::after` does not paint" | it painted on the next line; a generated box took the block path | `AETHERIS_TRACE_GENERATED` |
+| "`content: ''` needs quotes kept and nothing else" | the box was invisible: `generated_text.empty()` was the marker | a pixel that stayed white |
+| "the hash setter does nothing" | the probe ran against a binary **73 minutes old** | the binary's mtime |
+| "`location.hash` does not read back synchronously" | it does; the assertion was right the first time | a current binary |
+| "the build succeeded" (three times) | `cmake --build \| grep error:` printed nothing when the build was killed at 300 s | the binary's mtime |
+| "the four-way split has a hidden dependency" | **2 cores**; `-j4` ran eight processes on two | `nproc`, then `ctest -j2` |
+| "the suite got slower after shaping" | noise; it swings 111-143 s on two cores | a direct benchmark |
+| "the shaper does not shape" | the test never loaded a font (`active_font()` is loaded once from `AETHERIS_FONT`) | the numbers: 10.0781 vs 10.0938 |
 
-## Open, in the order the plan takes them
+**Eight corrections, every one a measurement away from the truth, every wrong reading plausible enough to act on.**
+The single most expensive habit: trusting the absence of an error message instead of checking an artefact.
 
-1. **Tier 2: the font API** — glyph ids and per-glyph advances, before any rasteriser wiring. Largest item on the
-   plan; `FontMetrics::advance(char)` is the blocker.
-2. Row 1g3: `history`, `location.replace()`, `location.pathname`/`search`/`hash`, dot-segment URL resolution.
-3. Row 1g2: realm isolation on navigation — the interpreter surviving is what makes `localStorage` work, and also
-   why the old page's globals and listeners survive.
-4. Row 1e3 `sessionStorage`; row 3a `::before`/`::after`; row 3b `position: sticky`.
-5. Tier 0 corpus — blocked here, no open internet.
+## 4. Build facts a new session needs
 
-## State at the end of the session
+- Toolchain does not survive a pod: `pip install cmake ninja ziglang`, then rewrite `toolchain/zigcc` and `zigcxx` as
+  `exec .../ziglang/zig cc "$@"`.
+- HarfBuzz is **fetched, not committed**: `sh tools/fetch-harfbuzz.sh`. It writes its work directory next to the repo
+  because `/tmp` is a 64 MB tmpfs and the sdist is 38.9 MB.
+- The engine compiles with `-Werror -Wcast-qual` and `-fstrict-flex-arrays=2`. The vendored HarfBuzz target needs
+  `-w -fstrict-flex-arrays=0`; without the second, HarfBuzz **panics on a valid font** because its OpenType tables end
+  in `[1]` trailing arrays. Clang rejects the GCC spelling `-fno-strict-flex-arrays`.
+- `ctest -j2`, never `-j4`: two cores.
+- A killed build prints no error. Check `ls -la build/bin/aetheris`.
 
-| Thing | Value |
-| --- | --- |
-| `main` tip | `7ce8034d` |
-| Suite | 59/59, twice, ~103 s (`AetherisWindowScripts` is ~90 s of it) |
-| Audit entry | `log/2026-11/2026-11-18-aetheris-batch-a-selectors.md`, 25624 bytes |
-| Checklist | rows 1a–1h, 1f2–1f7 closed; 1e2/1e3/1g2/1g3 open |
-| Sandbox | recycled three times during the session; the build recipe in `START-PROMPT.md` restored it each time |
+## 5. Open work, in the order I would take it
+
+| row | item | why here |
+| --- | --- | --- |
+| 2d4 | measure shaping cost in a release build | 1.043 ms per run at `-O0` may be mostly the build type; measure before optimising |
+| 3a6 | `content` as a real list type with alt text | the parser's quoting is a stand-in; `content: "x" / "alt"` cannot be expressed |
+| 1g4b | `pushState`/`replaceState`/`history.state` | needs a decision on JS value serialisation first |
+| 3i | overflow instead of wrapping at an exactly-full line | recorded divergence, small |
+| 3c, 3d | flex/grid completeness, `@font-face`, transitions | large; one at a time |
+| 0.1 | tier-0 coverage corpus | **blocked**: no open internet |
+
+Not open, but worth knowing: bidi is still absent. HarfBuzz does none, so runs must be split by direction, and the
+line-break pass still uses whitespace rather than `HB_GLYPH_FLAG_UNSAFE_TO_BREAK`.
+
+## 6. What this session would do differently
+
+1. Check an artefact's timestamp before drawing any conclusion from a run. Five separate wrong conclusions came from
+   a stale binary or a killed build.
+2. Measure the machine before theorising about parallelism. `nproc` would have saved two reverted splits.
+3. When a test fails, ask first whether the fixture set up its precondition - the `active_font()` case looked exactly
+   like an engine bug.
+4. Ask other models with a prompt that demands a control, not just an answer. The one reply that changed the outcome
+   (upstream CMake resumable per-file) came with a reason I could check; the one that was wrong ("you must write
+   `hb_font_funcs_t` callbacks") was marked certain.
