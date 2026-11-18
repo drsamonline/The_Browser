@@ -64,7 +64,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 3b | `position: sticky` | `[ ]` | — |
 | 3c | Complete flex and grid (`flex-shrink`, `basis`, grid areas) | `[ ]` | — |
 | 3e | Inline siblings flow onto one line | `[x]` | `+` the commit before this; three spans at x 0/19.6/39.9 on one line. Cause: the text run's box was given the whole line width |
-| 3g | Inline wrapping at the container edge | `[ ]` | the flow path wraps, but not measured since the fix |
+| 3g | Inline wrapping at the container edge | `[x]` | `+` the commit before this; 8 spans in 100px → 5 + 3, two distinct y values |
+| 3h | Soft-wrap opportunities (`can_break_before`, whitespace rules) | `[ ]` | upstream breaks on opportunities, not only on overflow |
 | 3f | Phrasing content is inline in the UA sheet | `[x]` | `+` the commit before this; spec-correct, but 3e shows it is not sufficient |
 | 3d | `@font-face`, transitions, animations | `[ ]` | — |
 
