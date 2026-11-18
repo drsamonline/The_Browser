@@ -1114,6 +1114,34 @@ int main(int argc, char* argv[])
         require(magenta_first < yellow_first, "::before paints before ::after on the same line");
     }
 
+    // `content: ''` generates an empty box, and `content: none` generates nothing. Upstream models
+    // content as a list of items (CSS/StyleValues/ContentStyleValue.h) and asks the tree builder for
+    // one of three kinds (ComputedContentType::Normal, None, List) - so an empty string is a List
+    // holding one empty item, not the absence of a declaration.
+    //
+    // Two rows, one character of CSS apart: a magenta inline-block box in the first, nothing in the
+    // second. The box is 60x20 at document y 16, which is window y 50-70 below the 34 px chrome.
+    {
+        std::string const directory = "aetheris-empty-content-frames";
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto result = run_window(binary,
+            "<html><head><title>Empty content</title><style>body{margin:0;font-size:24px}"
+            "p{width:400px;height:40px;background:#ffffff}"
+            "p::before{content:'';display:inline-block;width:60px;height:20px;background:#ff00ff}"
+            "p.none::before{content:none;display:inline-block;width:60px;height:20px;background:#ff00ff}"
+            "</style></head><body><p></p><p class='none'></p></body></html>", "", 2, directory);
+        require(result.status == 0, "the empty-content run exits cleanly");
+
+        int generated[3] {};
+        require(frame_pixel(directory, 20, 55, generated), "the generated-content frame is readable");
+        int absent[3] {};
+        require(frame_pixel(directory, 20, 95, absent), "the second row is readable");
+        std::system(("rm -rf " + directory).c_str());
+
+        require(is_magenta(generated), "content: '' generates a box");
+        require(!is_magenta(absent), "content: none generates nothing");
+    }
+
     // sessionStorage: the same six members over a second store. Upstream keeps a session bottle map
     // per origin and tab, separate from the local one (HTML/Window.cpp, session_storage).
     {

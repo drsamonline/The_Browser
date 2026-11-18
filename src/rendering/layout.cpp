@@ -82,11 +82,31 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
         auto const* content = pseudo_style.get("content");
         if (!content || content->empty() || *content == "none" || *content == "normal")
             return nullptr;
+        // A quoted value is a string item, which generates a box even when the string is empty.
+        std::string text = *content;
+        if (text.size() >= 2 && text.front() == '\'' && text.back() == '\'')
+            text = text.substr(1, text.size() - 2);
         auto generated = std::make_unique<LayoutNode>();
         generated->parent = layout_node.get();
         generated->style = pseudo_style;
+        // The box's display comes from its own style, not a hardcoded inline: a `::before` with
+        // `display: inline-block; width: 60px` is a box of that size, and forcing Inline made every
+        // generated box zero-width when its content was empty.
         generated->display = LayoutDisplay::Inline;
-        generated->generated_text = *content;
+        if (auto const* display = pseudo_style.get("display")) {
+            if (*display == "none")
+                return nullptr;
+            if (*display == "block")
+                generated->display = LayoutDisplay::Block;
+            else if (*display == "inline-block")
+                generated->display = LayoutDisplay::InlineBlock;
+            else if (*display == "flex" || *display == "inline-flex")
+                generated->display = LayoutDisplay::Flex;
+            else if (*display == "grid" || *display == "inline-grid")
+                generated->display = LayoutDisplay::Grid;
+        }
+        generated->is_generated = true;
+        generated->generated_text = std::move(text);
         return generated;
     };
 
@@ -391,7 +411,7 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
         // A generated box flows like a text run: it is inline-level content, not a block that takes
         // the line. Both `::before` and `::after` used to take the block path, which put each on its
         // own line - which looked like `::after` not painting at all.
-        bool const child_is_generated_text = !child->generated_text.empty();
+        bool const child_is_generated_text = child->is_generated;
         if (child->display == LayoutDisplay::Inline
             && (child_is_generated_text || (child->dom_node && child->dom_node->type == DomNodeType::Text))) {
             // A text run is laid out here rather than through layout_node, so it has to be counted

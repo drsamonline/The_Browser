@@ -42,14 +42,14 @@ int main()
 
         auto before = resolver.resolve_pseudo_element(*paragraph, pseudo_sheet, "before", &element_style);
         // The CSS parser stores a string value without its quotes, so `content: 'C'` reads back as C.
-        require(before.get("content") && *before.get("content") == "C", "the more specific ::before wins");
+        require(before.get("content") && *before.get("content") == "'C'", "the more specific ::before wins");
         require(before.get("font-weight") && *before.get("font-weight") == "bold", "its other declarations apply");
         // Colour comes from the *less* specific rule, which also sets it: specificity decides conflicts,
         // not which rules apply.
         require(before.get("color") && *before.get("color") == "#ff00ff", "a declaration the other rule does not set still applies");
 
         auto after = resolver.resolve_pseudo_element(*paragraph, pseudo_sheet, "after", &element_style);
-        require(after.get("content") && *after.get("content") == "B", "::after resolves separately");
+        require(after.get("content") && *after.get("content") == "'B'", "::after resolves separately");
 
         // ::after has no colour of its own, so it inherits the element's.
         require(after.get("color") && *after.get("color") == "#00ff00", "::after inherits from the element");

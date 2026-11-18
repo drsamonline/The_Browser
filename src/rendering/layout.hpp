@@ -71,6 +71,9 @@ struct LayoutNode {
     std::vector<TextFragment> text_fragments;
 
     // Set on a box generated for `::before` or `::after`, which has no DOM node of its own.
+    // `is_generated` is separate from the text being non-empty: `content: ''` generates a box with no
+    // text, and using the text as the marker made that box invisible.
+    bool is_generated { false };
     std::string generated_text;
 
     std::shared_ptr<Image const> image;

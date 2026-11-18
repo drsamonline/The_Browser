@@ -207,6 +207,20 @@ void CssParser::parse_block(std::vector<CssToken> const& tokens, size_t& positio
                 ++position;
 
             auto value = trim(join_value(tokens, value_begin, position));
+            // `content` keeps its quotes. Upstream models content as a list of items
+            // (CSS/StyleValues/ContentStyleValue.h: a StyleValueList, plus an optional alt-text list)
+            // and asks the tree builder for one of three kinds - ComputedContentType::Normal, None or
+            // List (Rust/src/layout/tree_builder.rs). `content: ''` is a List holding one empty string
+            // and generates a box; a bare value loses the distinction, because `''` and "no
+            // declaration" both arrive here as the empty string.
+            if (property == "content") {
+                for (size_t i = value_begin; i < position; ++i) {
+                    if (tokens[i].type == CssTokenType::String) {
+                        value = "'" + value + "'";
+                        break;
+                    }
+                }
+            }
             if (!property.empty())
                 rule.declarations.push_back({ std::move(property), std::move(value) });
 
