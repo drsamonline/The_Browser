@@ -35,7 +35,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1e2 | `localStorage` across a page load | `[x]` | `+` the commit before this; two documents, one process |
 | 1g | Navigation: `location.href`/`assign`/`reload`, a click follows a link | `[x]` | same commit; page B loads at /b |
 | 1g2 | Realm isolation on navigation (old globals and listeners survive) | `[ ]` | deliberate limit of keeping the interpreter alive |
-| 1g3 | `history`, `location.replace()`, `location.pathname`/`search`/`hash`, dot-segment URL resolution | `[ ]` | not built; upstream's `HTML/Location.idl` has all of them |
+| 1g3 | `history.length`/`back()`/`forward()`, `location.replace()` | `[x]` | `+` the commit before this; replace keeps the length at 1 where a push would give 2 |
+| 1g4 | `history.go(delta)`, `pushState`/`replaceState`, `history.state` | `[ ]` | not built |
+| 1g5 | `location.pathname`/`search`/`hash`/`origin`, dot-segment URL resolution | `[ ]` | not built; upstream's `HTML/Location.idl` has all of them |
 | 1f4 | `focus()` refuses a non-focusable target | `[x]` | `+` the commit before this; 10 cases measured, 7 in the suite |
 | 1f5 | Rendering requirement: `display:none` is not focusable | `[x]` | `+` the commit before this; 3 cases incl. focus() at load |
 | 1f7 | `visibility` — inherited, per-box paint, focusability | `[x]` | `+` the commit before this; 4 cases |
