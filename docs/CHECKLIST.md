@@ -75,7 +75,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | --- | --- | --- | --- |
 | 3a1 | `::before`/`::after` computed style | `[x]` | `57d3a8eb`; five assertions in `AetherisCss`, including inheritance from the element rather than its parent |
 | 3a2 | Generate the box when `content` is neither `normal` nor `none` | `[x]` | `51d7b016`; the box appears in the tree and `::before` paints its text |
-| 3a5 | `::after` is generated and laid out but does not paint | `[ ]` | **open**: both boxes appear in the tree with their text, only `::before` paints. Next: compare the two boxes' fragments and rects after layout — `AETHERIS_TRACE_GENERATED=1` prints the children |
+| 3a5 | `::after` shares the line with `::before` | `[x]` | `e62c9529`; it painted all along, one line lower, because generated boxes took the block path. Both now content-sized on one line, asserted by pixel order |
 | 3a2-old | (superseded) **attempted and reverted.** The box is created (the page reports one more layout node per `::before`/`::after`) but its text does not paint: a 24 px magenta `::before` on a white paragraph leaves the pixel white. Next step is to find which of the two paths drops it — `layout_inline_children`'s text branch requires `dom_node`, and `RenderTree::emit` may too — before writing the box again |
 | 3a4 | `content: ''` generates an empty box | `[ ]` | **divergence**: the parser stores a string value without its quotes, so an empty string is indistinguishable from no `content` property, and ours generates nothing where upstream generates an empty box |
 | 3a3 | Paint the generated box | `[ ]` | needs a synthetic text node whose `dom_node` is null, which several paths dereference |
