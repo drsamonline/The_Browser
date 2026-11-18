@@ -632,6 +632,67 @@ static JSValue js_location_href_set(JSContext* context, JSValueConst, int argc, 
     return JS_UNDEFINED;
 }
 
+// The URL components `location` exposes (HTML/Location.idl: origin, protocol, host, hostname, port,
+// pathname, search, hash). Upstream serialises them from the parsed URL record; this splits the string
+// the embedder hands back, which is the same thing for the URLs this engine loads.
+struct UrlParts {
+    std::string origin;
+    std::string path;
+    std::string search;
+    std::string hash;
+};
+
+static UrlParts split_url(std::string const& url)
+{
+    UrlParts parts;
+    auto const scheme_end = url.find("://");
+    auto const authority_start = scheme_end == std::string::npos ? 0 : scheme_end + 3;
+    auto const path_start = url.find_first_of("/?#", authority_start);
+    parts.origin = url.substr(0, path_start == std::string::npos ? url.size() : path_start);
+
+    std::string rest = path_start == std::string::npos ? std::string() : url.substr(path_start);
+    auto const hash_at = rest.find('#');
+    if (hash_at != std::string::npos) {
+        parts.hash = rest.substr(hash_at);
+        rest = rest.substr(0, hash_at);
+    }
+    auto const search_at = rest.find('?');
+    if (search_at != std::string::npos) {
+        parts.search = rest.substr(search_at);
+        rest = rest.substr(0, search_at);
+    }
+    parts.path = rest.empty() ? "/" : rest;
+    return parts;
+}
+
+static JSValue location_component(JSContext* context, std::string UrlParts::*member)
+{
+    if (!g_current_url)
+        return JS_NewString(context, "");
+    auto const parts = split_url(g_current_url());
+    return JS_NewString(context, (parts.*member).c_str());
+}
+
+static JSValue js_location_origin_get(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    return location_component(context, &UrlParts::origin);
+}
+
+static JSValue js_location_pathname_get(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    return location_component(context, &UrlParts::path);
+}
+
+static JSValue js_location_search_get(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    return location_component(context, &UrlParts::search);
+}
+
+static JSValue js_location_hash_get(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    return location_component(context, &UrlParts::hash);
+}
+
 // `location.replace(url)`: navigates and overwrites the history entry, so Back does not return here
 // (upstream: HTML/Location.cpp, replace() - navigate with replacement enabled).
 static JSValue js_location_replace(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
@@ -734,6 +795,18 @@ void Interpreter::setup_globals()
         JS_NewCFunction(m_context, js_location_href_set, "href", 1), 0);
     JS_FreeAtom(m_context, href_atom);
     define_function(m_context, location, "replace", js_location_replace);
+    // The read-only components. Setters are not built: upstream has them, and each one re-parses the
+    // whole URL and navigates, which is row 1g5's other half.
+    for (auto const& [name, getter] : std::initializer_list<std::pair<char const*, JSCFunction*>> {
+             { "origin", js_location_origin_get },
+             { "pathname", js_location_pathname_get },
+             { "search", js_location_search_get },
+             { "hash", js_location_hash_get } }) {
+        JSAtom atom = JS_NewAtom(m_context, name);
+        JS_DefinePropertyGetSet(m_context, location, atom, JS_NewCFunction(m_context, getter, name, 0),
+            JS_UNDEFINED, 0);
+        JS_FreeAtom(m_context, atom);
+    }
     JS_SetPropertyStr(m_context, global, "location", location);
 
     // history
