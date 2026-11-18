@@ -982,13 +982,17 @@ void write_classes(rendering::DomNode* node, std::vector<std::string> const& cla
 
 // Upstream's DOM/Element.idl has `[Reflect=class] attribute DOMString className`, so this is the
 // `class` content attribute read and written, nothing more: absent reads as the empty string.
-// Upstream runs the focusing steps and fires blur then focus (DOM/Element.cpp); set_focus() here does the
-// same, in the loop, which is why this only records the request.
+// Upstream's focusing steps are HTML/Focus.cpp, run_focusing_steps(new_focus_target, fallback_target,
+// focus_trigger, scroll_into_view, focus_visible); set_focus() here does the same in the loop, which is
+// why this only records the request.
 //
-// KNOWN GAP, measured 2026-11-18: the state moves and `:focus` styling follows, but a listener registered
-// with addEventListener('focus', ...) does not run. set_focus() guards its dispatch on
-// dom.handle_by_node, so either the control has no handle or the listener is not reachable from it.
-// Recorded in docs/CHECKLIST.md; the state is what the test asserts.
+// KNOWN DIVERGENCE, found by reading that file on 2026-11-18 after this was written: run_focusing_steps
+// maps a non-focusable target through get_focusable_area() and returns if it is still not focusable. This
+// focuses whatever it is handed, so `focus()` on a div with no tabindex focuses it where upstream would
+// refuse. Row 1f4 in docs/CHECKLIST.md.
+//
+// The earlier version of this comment cited DOM/Element.cpp, which has no focus() - a citation written to
+// fit code already in place rather than one that sent me to the file.
 JSValue js_focus(JSContext* context, JSValueConst this_value, int, JSValueConst*)
 {
     if (auto* node = node_of(context, this_value))

@@ -603,9 +603,12 @@ void set_navigation_hooks(std::function<std::string()> current_url,
     g_request_navigation = std::move(request_navigation);
 }
 
-// `location`. Upstream's Location is a full URL record; this is href, assign and reload, which is what a
-// page or a harness needs to move between documents. The request goes to the embedder, which owns the
-// session and the page.
+// `location`. Upstream's Location (HTML/Location.idl) is a full URL record: href as a stringifier
+// attribute, plus origin, protocol, host, hostname, port, pathname, search, hash, assign, replace and
+// reload. This is href, assign and reload - what a page or a harness needs to move between documents, and
+// no more. `replace()` and the component attributes are missing; row 1g3 in docs/CHECKLIST.md.
+//
+// Written from memory before that IDL was read, which is the wrong order; the shape happened to match.
 static JSValue js_location_href_get(JSContext* context, JSValueConst, int, JSValueConst*)
 {
     if (!g_current_url)
