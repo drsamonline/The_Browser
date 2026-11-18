@@ -37,7 +37,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1g2 | Realm isolation on navigation (old globals and listeners survive) | `[ ]` | deliberate limit of keeping the interpreter alive |
 | 1g3 | `history`, `location.replace()`, `location.pathname`/`search`/`hash`, dot-segment URL resolution | `[ ]` | not built; upstream's `HTML/Location.idl` has all of them |
 | 1f4 | `focus()` refuses a non-focusable target | `[x]` | `+` the commit before this; 10 cases measured, 7 in the suite |
-| 1f5 | Rendering requirement: `display:none` must not be focusable | `[ ]` | upstream also needs `meets_focusable_area_rendering_requirements()` |
+| 1f5 | Rendering requirement: `display:none` is not focusable | `[x]` | `+` the commit before this; 3 cases incl. focus() at load |
+| 1f7 | `visibility: hidden` must not be focusable | `[ ]` | the property is not implemented at all, so the check cannot exist |
 | 1f6 | The click path focuses whatever it hits | `[ ]` | 1f4 gates the script path only |
 | 1h | `:has(+ .x)`, `:has(~ .x)` | `[x]` | `+` the commit before this; 3 cases + the mutation |
 | 1e3 | `sessionStorage` | `[ ]` | same interface, scoped to the tab |
