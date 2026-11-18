@@ -19,6 +19,7 @@ struct CssRule {
 
 struct CssStyleSheet {
     std::vector<CssRule> rules;
+    bool m_uses_generated_content { false };
     bool empty() const { return rules.empty(); }
 
     // Whether any selector mentions `pseudo` (":hover", ":focus", ":active").
@@ -66,6 +67,17 @@ struct CssStyleSheet {
                         return true;
             }
         return false;
+    }
+
+    // Whether any selector names a generated box. `::before` and `::after` cost a style resolution per
+    // element per pass, and no sheet in the test fixtures has one, so the builder asks this first.
+    // Computed once, when the sheet is parsed: asking this per node made every build scan every
+    // selector, which slowed the whole window test past its timeout.
+    bool uses_generated_content() const { return m_uses_generated_content; }
+    void note_selector(std::string_view selector)
+    {
+        if (selector.find("::before") != std::string::npos || selector.find("::after") != std::string::npos)
+            m_uses_generated_content = true;
     }
 
     bool uses_pseudo_class(std::string_view pseudo) const

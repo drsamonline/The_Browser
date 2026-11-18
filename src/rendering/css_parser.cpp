@@ -218,8 +218,11 @@ void CssParser::parse_block(std::vector<CssToken> const& tokens, size_t& positio
             }
         }
 
-        if (!rule.selectors.empty())
+        if (!rule.selectors.empty()) {
+            for (auto const& selector : rule.selectors)
+                sheet.note_selector(selector);
             sheet.rules.push_back(std::move(rule));
+        }
     }
 }
 
