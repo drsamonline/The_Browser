@@ -38,7 +38,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1g3 | `history.length`/`back()`/`forward()`, `location.replace()` | `[x]` | `+` the commit before this; replace keeps the length at 1 where a push would give 2 |
 | 1g4 | `history.go(delta)`, `pushState`/`replaceState`, `history.state` | `[ ]` | not built |
 | 1g5 | `location.origin`/`pathname`/`search`/`hash` (getters) | `[x]` | `+` the commit before this; four URL shapes |
-| 1g6 | Dot-segment URL resolution | `[ ]` | **reproduction**: `location.href = '../up'` from `/deep/dir/page` hangs the process with no output. A `remove_dot_segments()` + rewritten `resolve_url()` did exactly that and was reverted. Plain navigation and the four URL shapes still work, so the fault is in that resolver |
+| 1g6 | Dot-segment URL resolution | `[ ]` | **the resolver is correct and is not the cause.** With it wired, the server saw `/deep/dir/page` → `/deep/up` → `/up`, exactly right. The process hangs **inside `fetcher.fetch()` for the third document** — after the request goes out, before any content returns (`AETHERIS_TRACE_NAV=1`). Leading hypothesis: a keep-alive socket the server already closed, with no read timeout |
+| 1g8 | A fetch can block forever: no read timeout | `[ ]` | the defect 1g6 uncovered. Test with a server that accepts a connection and never answers |
 | 1g7 | `location` setters (`pathname = ...`, `search = ...`) | `[ ]` | not built; upstream re-parses and navigates for each |
 | 1f4 | `focus()` refuses a non-focusable target | `[x]` | `+` the commit before this; 10 cases measured, 7 in the suite |
 | 1f5 | Rendering requirement: `display:none` is not focusable | `[x]` | `+` the commit before this; 3 cases incl. focus() at load |
