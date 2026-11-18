@@ -427,6 +427,7 @@ std::vector<rendering::DomNode*> g_focus_requests;
 std::string g_navigation_request;
 bool g_navigation_pending { false };
 bool g_navigation_reload { false };
+bool g_navigation_replace { false };
 
 struct DomHost {
     JSContext* context { nullptr };
@@ -2244,20 +2245,42 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     constexpr int kHeight = 768;
     int content_height = kHeight - kChromeHeight;
 
-    // `location` asks these two questions and nothing else.
-    aetheris::js::set_navigation_hooks(
-        [] { return g_current_url; },
-        [](std::string target, bool reload) {
-            g_navigation_request = reload || target.empty() ? g_current_url : resolve_url(g_current_url, target);
-            g_navigation_pending = true;
-            g_navigation_reload = reload;
-        });
-
     ui::BrowserSession session;
     if (!session.open(url)) {
         std::cerr << "Not a loadable URL: " << url << std::endl;
         return 1;
     }
+
+    // `location` asks these two questions and nothing else.
+    aetheris::js::set_navigation_hooks(
+        [] { return g_current_url; },
+        [](std::string target, bool reload, bool replace) {
+            g_navigation_request = reload || target.empty() ? g_current_url : resolve_url(g_current_url, target);
+            g_navigation_pending = true;
+            g_navigation_reload = reload;
+            g_navigation_replace = replace;
+        },
+        [&session] { return session.history_length(); },
+        // A history move changes the tab's URL; the page then has to be reloaded, which is the same
+        // request the loop already performs for a scripted navigation. Without this the URL moved and
+        // nothing re-rendered - the page stayed on the old document.
+        [&session] {
+            if (!session.history_back())
+                return false;
+            g_navigation_request = session.current_url();
+            g_navigation_pending = true;
+            g_navigation_reload = true;
+            return true;
+        },
+        [&session] {
+            if (!session.history_forward())
+                return false;
+            g_navigation_request = session.current_url();
+            g_navigation_pending = true;
+            g_navigation_reload = true;
+            return true;
+        });
+
 
     // The loaded page is kept between frames. Before this, every repaint
     // refetched the document over the network, which made a scroll a download.
@@ -2461,7 +2484,12 @@ session.set_page_title(document_title(cached_page->document().root()));
             g_navigation_pending = false;
             std::string const target = g_navigation_request;
             g_navigation_request.clear();
-            if (session.navigate(target)) {
+            // A reload replaces the entry it reloads: it is the same document address, and pushing a
+            // second copy truncated whatever was ahead of it - so `back()` followed by `forward()`
+            // could not move forward, because the reload had just deleted the entry it would move to.
+            bool const replace = g_navigation_replace || g_navigation_reload;
+            g_navigation_replace = false;
+            if (session.navigate(target, replace)) {
                 page_dirty = true;
                 cached_page.reset();
                 need_render = true;

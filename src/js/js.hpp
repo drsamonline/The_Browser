@@ -28,7 +28,10 @@ struct ViewportMetrics {
 // The two things `location` needs from whoever owns the window: the current URL, and a request to go
 // somewhere. Kept as hooks so the JS module does not have to know about sessions, tabs or fetching.
 void set_navigation_hooks(std::function<std::string()> current_url,
-    std::function<void(std::string, bool reload)> request_navigation);
+    std::function<void(std::string target, bool reload, bool replace)> request_navigation,
+    std::function<std::size_t()> history_length,
+    std::function<bool()> history_back,
+    std::function<bool()> history_forward);
 
 class Interpreter {
 public:

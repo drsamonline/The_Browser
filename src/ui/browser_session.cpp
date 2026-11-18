@@ -60,12 +60,13 @@ bool BrowserSession::open(std::string url)
     if (!is_loadable(url))
         return false;
     m_tabs.clear();
-    m_tabs.push_back(BrowserTab { normalise(std::move(url)), {}, true, false, {} });
+    auto normalised = normalise(std::move(url));
+    m_tabs.push_back(BrowserTab { normalised, {}, true, false, {}, { normalised }, 0 });
     m_active = 0;
     return true;
 }
 
-bool BrowserSession::navigate(std::string url)
+bool BrowserSession::navigate(std::string url, bool replace)
 {
     if (!is_loadable(url))
         return false;
@@ -73,6 +74,18 @@ bool BrowserSession::navigate(std::string url)
     if (!tab)
         return false;
     tab->url = normalise(std::move(url));
+
+    // History: a navigation after going back discards what was ahead of it, and a replacement
+    // overwrites the entry it stands on.
+    if (tab->entries.empty())
+        tab->entries.push_back(tab->url);
+    else if (replace)
+        tab->entries[tab->index] = tab->url;
+    else {
+        tab->entries.resize(tab->index + 1);
+        tab->entries.push_back(tab->url);
+        tab->index = tab->entries.size() - 1;
+    }
     tab->loading = true;
     tab->failed = false;
     tab->error.clear();
@@ -98,6 +111,38 @@ void BrowserSession::set_error(std::string message)
         tab->failed = true;
         tab->error = std::move(message);
     }
+}
+
+std::size_t BrowserSession::history_length() const
+{
+    auto const* tab = m_tabs.empty() ? nullptr : &m_tabs[m_active];
+    return tab ? tab->entries.size() : 0;
+}
+
+bool BrowserSession::history_back()
+{
+    auto* tab = active();
+    if (!tab || tab->index == 0)
+        return false;
+    --tab->index;
+    tab->url = tab->entries[tab->index];
+    tab->loading = true;
+    tab->failed = false;
+    tab->error.clear();
+    return true;
+}
+
+bool BrowserSession::history_forward()
+{
+    auto* tab = active();
+    if (!tab || tab->index + 1 >= tab->entries.size())
+        return false;
+    ++tab->index;
+    tab->url = tab->entries[tab->index];
+    tab->loading = true;
+    tab->failed = false;
+    tab->error.clear();
+    return true;
 }
 
 std::string const& BrowserSession::current_url() const

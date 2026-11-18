@@ -14,6 +14,12 @@ struct BrowserTab {
     bool loading { false };
     bool failed { false };
     std::string error;
+
+    // Session history. Upstream keeps a session history on the navigable and `History` reads it
+    // (HTML/History.idl: length, go, back, forward). One list and an index, truncated on a new
+    // navigation and overwritten in place by `location.replace()`.
+    std::vector<std::string> entries;
+    std::size_t index { 0 };
 };
 
 class BrowserSession {
@@ -23,7 +29,15 @@ public:
 
     // Points the active tab at a new URL. The caller loads it and reports back
     // with set_page_title() / set_loading() / set_error().
-    bool navigate(std::string url);
+    //
+    // `replace` overwrites the current history entry instead of adding one, which is what
+    // `location.replace()` means: the page moves and Back does not return to it.
+    bool navigate(std::string url, bool replace = false);
+
+    // Session history, as `History` exposes it.
+    std::size_t history_length() const;
+    bool history_back();
+    bool history_forward();
 
     void set_page_title(std::string title);
     void set_loading(bool loading);

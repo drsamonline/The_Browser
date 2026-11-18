@@ -594,13 +594,22 @@ static JSValue js_storage_key(JSContext* context, JSValueConst, int argc, JSValu
 
 // The embedder's navigation behaviour. Set once, before any page is built.
 static std::function<std::string()> g_current_url;
-static std::function<void(std::string, bool)> g_request_navigation;
+static std::function<void(std::string, bool, bool)> g_request_navigation;
+static std::function<std::size_t()> g_history_length;
+static std::function<bool()> g_history_back;
+static std::function<bool()> g_history_forward;
 
 void set_navigation_hooks(std::function<std::string()> current_url,
-    std::function<void(std::string, bool reload)> request_navigation)
+    std::function<void(std::string, bool, bool)> request_navigation,
+    std::function<std::size_t()> history_length,
+    std::function<bool()> history_back,
+    std::function<bool()> history_forward)
 {
     g_current_url = std::move(current_url);
     g_request_navigation = std::move(request_navigation);
+    g_history_length = std::move(history_length);
+    g_history_back = std::move(history_back);
+    g_history_forward = std::move(history_forward);
 }
 
 // `location`. Upstream's Location (HTML/Location.idl) is a full URL record: href as a stringifier
@@ -619,14 +628,44 @@ static JSValue js_location_href_get(JSContext* context, JSValueConst, int, JSVal
 static JSValue js_location_href_set(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
 {
     if (argc >= 1 && g_request_navigation)
-        g_request_navigation(to_string(context, argv[0]), false);
+        g_request_navigation(to_string(context, argv[0]), false, false);
+    return JS_UNDEFINED;
+}
+
+// `location.replace(url)`: navigates and overwrites the history entry, so Back does not return here
+// (upstream: HTML/Location.cpp, replace() - navigate with replacement enabled).
+static JSValue js_location_replace(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc >= 1 && g_request_navigation)
+        g_request_navigation(to_string(context, argv[0]), false, true);
     return JS_UNDEFINED;
 }
 
 static JSValue js_location_reload(JSContext*, JSValueConst, int, JSValueConst*)
 {
     if (g_request_navigation)
-        g_request_navigation({}, true);
+        g_request_navigation({}, true, false);
+    return JS_UNDEFINED;
+}
+
+// `history` (HTML/History.idl: length, go, back, forward). `go(delta)` is not implemented - it needs the
+// same stack this reads, but with an argument, and nothing here has needed it yet.
+static JSValue js_history_length(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    return JS_NewInt32(context, g_history_length ? static_cast<int32_t>(g_history_length()) : 0);
+}
+
+static JSValue js_history_back(JSContext*, JSValueConst, int, JSValueConst*)
+{
+    if (g_history_back)
+        g_history_back();
+    return JS_UNDEFINED;
+}
+
+static JSValue js_history_forward(JSContext*, JSValueConst, int, JSValueConst*)
+{
+    if (g_history_forward)
+        g_history_forward();
     return JS_UNDEFINED;
 }
 
@@ -694,7 +733,18 @@ void Interpreter::setup_globals()
         JS_NewCFunction(m_context, js_location_href_get, "href", 0),
         JS_NewCFunction(m_context, js_location_href_set, "href", 1), 0);
     JS_FreeAtom(m_context, href_atom);
+    define_function(m_context, location, "replace", js_location_replace);
     JS_SetPropertyStr(m_context, global, "location", location);
+
+    // history
+    JSValue history = JS_NewObject(m_context);
+    define_function(m_context, history, "back", js_history_back);
+    define_function(m_context, history, "forward", js_history_forward);
+    JSAtom history_length_atom = JS_NewAtom(m_context, "length");
+    JS_DefinePropertyGetSet(m_context, history, history_length_atom,
+        JS_NewCFunction(m_context, js_history_length, "length", 0), JS_UNDEFINED, 0);
+    JS_FreeAtom(m_context, history_length_atom);
+    JS_SetPropertyStr(m_context, global, "history", history);
 
     // window
     JSValue window = JS_NewObject(m_context);
