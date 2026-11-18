@@ -1,5 +1,6 @@
 #include "software_surface.hpp"
 
+#include "font.hpp"
 #include "font_library.hpp"
 #include "glyph_rasterizer.hpp"
 #include "bitmap_font.hpp"
@@ -193,7 +194,10 @@ void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, f
         int baseline = static_cast<int>(std::lround(rect.y + static_cast<float>(font->ascender()) * scale));
         bool have_previous = false;
         uint16_t previous_glyph = 0;
-        for (unsigned char character : text) {
+        // Code points, so a non-ASCII character is one glyph rather than its UTF-8 bytes drawn as
+        // Latin-1. The bitmap fallback below stays byte-wise: it is ASCII art and has no other cells.
+        for (std::size_t index = 0; index < text.size();) {
+            auto const character = utf8_next(text, index);
             auto glyph = font->glyph_index(character);
             if (have_previous)
                 pen_x += static_cast<float>(kerning_adjustment(*font, previous_glyph, glyph)) * scale;
