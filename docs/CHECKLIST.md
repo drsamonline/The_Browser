@@ -70,7 +70,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 2b | Wire `glyph_rasterizer` into paint | `[ ]` | — |
 | 2c | Kerning | `[ ]` | — |
 | 2d | Text shaping | `[x]` | `15c6496e`; `shape_run()` returns glyphs, clusters and advances from the font tables, and `AetherisShaping` pins the contract (fi -> one glyph, clusters as byte offsets) |
-| 2d2 | Use the shaper in `TextLayout` | `[ ]` | next: `TextLayout` still sums one advance per code point. Wiring it changes every width, so the pixel fixtures need re-baselining in the same pass |
+| 2d2 | Use the shaper in the text path | `[x]` | `6d8ca43c`; `measure` and the drawing pen both use shaped advances, `measure("fi")` 10.0938 -> 10.0781 |
 | 2d3 | Cache the face per font | `[ ]` | `shape_run` builds a face per call; a cache needs the font's identity, not its buffer address |
 
 ## Tier 3 — layout completeness
