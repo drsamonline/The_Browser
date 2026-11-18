@@ -11,6 +11,7 @@
 
 #include "css_parser.hpp"
 #include "render_document.hpp"
+#include "url_path.hpp"
 #include "style.hpp"
 #include "image_output.hpp"
 #include "http_resource_backend.hpp"
@@ -35,6 +36,7 @@
 #include <chrono>
 #include <functional>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -2311,6 +2313,8 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             }
             rendering::Url document_url = rendering::Url::parse(session.current_url());
             SecureFetcher fetcher(document_url);
+            if (std::getenv("AETHERIS_TRACE_NAV"))
+                std::fprintf(stderr, "NAV fetch [%s]\n", session.current_url().c_str());
             auto loaded = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
             network::Socket::cleanup();
             if (!loaded.succeeded()) {
@@ -2430,7 +2434,12 @@ session.set_page_title(document_title(cached_page->document().root()));
     ui::InputRouter router(kChromeHeight);
     router.set_address_text(session.current_url());
 
+    int trace_frame = 0;
     while (host->is_open() && !done) {
+        if (std::getenv("AETHERIS_TRACE_NAV"))
+            std::fprintf(stderr, "NAV frame %d need_render=%d dirty=%d page=%p done=%d\n",
+                trace_frame++, need_render ? 1 : 0, page_dirty ? 1 : 0,
+                static_cast<void const*>(cached_page ? &*cached_page : nullptr), done ? 1 : 0);
         if (need_render) {
             window.clear(rendering::Color { 255, 255, 255, 255 });
             render_frame(window);
@@ -2491,6 +2500,9 @@ session.set_page_title(document_title(cached_page->document().root()));
             // could not move forward, because the reload had just deleted the entry it would move to.
             bool const replace = g_navigation_replace || g_navigation_reload;
             g_navigation_replace = false;
+            if (std::getenv("AETHERIS_TRACE_NAV"))
+                std::fprintf(stderr, "NAV request=[%s] replace=%d reload=%d\n",
+                    target.c_str(), replace ? 1 : 0, g_navigation_reload ? 1 : 0);
             if (session.navigate(target, replace)) {
                 page_dirty = true;
                 cached_page.reset();
