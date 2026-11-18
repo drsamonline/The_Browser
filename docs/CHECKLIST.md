@@ -74,7 +74,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | Row | Item | Status | Proof / blocker |
 | --- | --- | --- | --- |
 | 3a1 | `::before`/`::after` computed style | `[x]` | `57d3a8eb`; five assertions in `AetherisCss`, including inheritance from the element rather than its parent |
-| 3a2 | Generate the box when `content` is neither `normal` nor `none` | `[ ]` | next: upstream `Rust/src/layout/tree_builder.rs`, the `PseudoElementDecision` rule |
+| 3a2 | Generate the box when `content` is neither `normal` nor `none` | `[ ]` | **attempted and reverted.** The box is created (the page reports one more layout node per `::before`/`::after`) but its text does not paint: a 24 px magenta `::before` on a white paragraph leaves the pixel white. Next step is to find which of the two paths drops it — `layout_inline_children`'s text branch requires `dom_node`, and `RenderTree::emit` may too — before writing the box again |
+| 3a4 | `content: ''` generates an empty box | `[ ]` | **divergence**: the parser stores a string value without its quotes, so an empty string is indistinguishable from no `content` property, and ours generates nothing where upstream generates an empty box |
 | 3a3 | Paint the generated box | `[ ]` | needs a synthetic text node whose `dom_node` is null, which several paths dereference |
 | 3b | `position: sticky` | `[ ]` | — |
 | 3c | Complete flex and grid (`flex-shrink`, `basis`, grid areas) | `[ ]` | — |
