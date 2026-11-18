@@ -1,5 +1,9 @@
 #include "shaper.hpp"
 
+#include <cstdint>
+#include <map>
+#include <vector>
+
 #ifdef AETHERIS_HAVE_HARFBUZZ
 #include <hb-ot.h>
 #include <hb.h>
@@ -10,14 +14,45 @@ namespace aetheris::rendering {
 #ifdef AETHERIS_HAVE_HARFBUZZ
 
 namespace {
-// A face per font file, kept alive because creating one per run re-parses the font. Keyed by the
-// data pointer and size, which is stable for a loaded TtfFont.
-struct CachedFace {
+// A face per font file. Creating one per run was measurable: `hb_face_create` sanitises the table
+// directory, and text is measured many times per page. Keyed by a hash of the font data rather than
+// its address, because an address is reused when a font is reloaded into the same buffer - a cache
+// keyed on the pointer would then serve the previous font's glyphs.
+struct FaceEntry {
     hb_blob_t* blob { nullptr };
     hb_face_t* face { nullptr };
-    hb_font_t* font { nullptr };
-    float size { 0 };
 };
+
+uint64_t hash_font_data(std::vector<uint8_t> const& data)
+{
+    uint64_t hash = 1469598103934665603ull;
+    for (auto byte : data) {
+        hash ^= byte;
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+std::map<uint64_t, FaceEntry>& face_cache()
+{
+    static std::map<uint64_t, FaceEntry> cache;
+    return cache;
+}
+
+hb_face_t* cached_face(std::vector<uint8_t> const& data)
+{
+    uint64_t const key = hash_font_data(data);
+    auto& cache = face_cache();
+    auto found = cache.find(key);
+    if (found != cache.end())
+        return found->second.face;
+    // The blob copies the bytes, so the cached face does not depend on the caller's buffer outliving it.
+    hb_blob_t* blob = hb_blob_create(reinterpret_cast<char const*>(data.data()),
+        static_cast<unsigned>(data.size()), HB_MEMORY_MODE_DUPLICATE, nullptr, nullptr);
+    hb_face_t* face = hb_face_create(blob, 0);
+    cache.emplace(key, FaceEntry { blob, face });
+    return face;
+}
 } // namespace
 
 bool shaping_available() { return true; }
@@ -27,12 +62,10 @@ std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const& font_data, std::s
     if (font_data.empty() || text.empty())
         return {};
 
-    // NB: one face per call for now. Caching belongs here, but a cache keyed on the data pointer is
-    // wrong when a Font is reloaded into the same buffer, so it needs the font's identity, not its
-    // address - and that is a change to TtfFont, not to this file.
-    hb_blob_t* blob = hb_blob_create(reinterpret_cast<char const*>(font_data.data()),
-        static_cast<unsigned>(font_data.size()), HB_MEMORY_MODE_READONLY, nullptr, nullptr);
-    hb_face_t* face = hb_face_create(blob, 0);
+    hb_face_t* face = cached_face(font_data);
+    if (!face)
+        return {};
+    // A font per call: it carries the scale, and a cached one would need a second key for the size.
     hb_font_t* font = hb_font_create(face);
     hb_ot_font_set_funcs(font);
 
@@ -66,8 +99,7 @@ std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const& font_data, std::s
 
     hb_buffer_destroy(buffer);
     hb_font_destroy(font);
-    hb_face_destroy(face);
-    hb_blob_destroy(blob);
+    // The face and blob are owned by the cache and live for the process.
     return glyphs;
 }
 
