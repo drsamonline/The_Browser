@@ -308,8 +308,15 @@ add_executable(TestAetherisScrolling
 target_link_libraries(TestAetherisScrolling PRIVATE AetherisRendering)
 add_test(NAME AetherisScrolling COMMAND TestAetherisScrolling)
 
-add_executable(TestAetherisWindowScripts
-    TestAetherisWindowScripts.cpp
-)
-target_link_libraries(TestAetherisWindowScripts PRIVATE Threads::Threads)
-add_test(NAME AetherisWindowScripts COMMAND TestAetherisWindowScripts $<TARGET_FILE:aetheris>)
+# Four window tests instead of one 2,500-line file. They are the bulk of the suite's wall time, and
+# the split lets ctest run them concurrently. Upstream keeps one directory per area with shared
+# headers at the root (Tests/LibWeb/FetchTestDocument.h); this is that shape at a smaller scale.
+foreach(window_test IN ITEMS Core Style Layout Geometry)
+    add_executable(TestWindow${window_test} TestWindow${window_test}.cpp)
+    target_link_libraries(TestWindow${window_test} PRIVATE Threads::Threads)
+    add_test(NAME Window${window_test} COMMAND TestWindow${window_test} $<TARGET_FILE:aetheris>)
+    set(window_test_directory ${CMAKE_BINARY_DIR}/window-tests/${window_test})
+    file(MAKE_DIRECTORY ${window_test_directory})
+    set_tests_properties(Window${window_test} PROPERTIES WORKING_DIRECTORY ${window_test_directory})
+endforeach()
+
