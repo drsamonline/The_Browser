@@ -824,6 +824,48 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // focus() refuses a target that is not focusable, which is upstream's first move in the focusing
+    // steps (HTML/Focus.cpp:749 -> get_focusable_area). The rules, read from three levels:
+    //   Element::is_focusable()          tabindex parses as an integer
+    //   HTMLAnchorElement::is_focusable  base || has_attribute(href)
+    //   HTMLInputElement::is_focusable   type != hidden && enabled()  (button/select/textarea: enabled())
+    //
+    // One candidate per page: eight focus() calls in one timer all run inside one run_timers() window,
+    // so only the last would be visible and every earlier one would read as a failure.
+    {
+        std::string const directory = "aetheris-focusable-frames";
+        struct FocusableCase {
+            char const* what;
+            std::string body;
+            bool focusable;
+        };
+        std::vector<FocusableCase> const cases {
+            { "a div with no tabindex is not focusable", "<div id='t'>x</div>", false },
+            { "a div with tabindex is focusable", "<div id='t' tabindex='0'>x</div>", true },
+            { "an input is focusable", "<input id='t'>", true },
+            { "an input of type hidden is not", "<input id='t' type='hidden'>", false },
+            { "a disabled button is not", "<button id='t' disabled>x</button>", false },
+            { "an anchor without href is not", "<a id='t'>x</a>", false },
+            { "an anchor with href is", "<a id='t' href='/x'>x</a>", true },
+        };
+        for (auto const& focus_case : cases) {
+            std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+            std::string const html = "<html><head><title>Focusable</title><style>body{margin:0}"
+                "div,button,input,a{display:block;margin:0;padding:0;border:0;width:100px;height:20px;"
+                "background:#00ff00}:focus{background:#ff00ff}"
+                "</style></head><body>" + focus_case.body +
+                "<script>setTimeout(function () { document.getElementById('t').focus(); }, 5);"
+                "</script></body></html>";
+            auto result = run_window(binary, html, "", 3, directory);
+            std::string const message = std::string("the focusable run for ") + focus_case.what + " exits cleanly";
+            require(result.status == 0, message.c_str());
+            int rgb[3] = { 0, 0, 0 };
+            require(frame_pixel(directory, 50, 34 + 5, rgb), "the focusable pixel is readable");
+            require(focus_case.focusable ? is_magenta(rgb) : is_green(rgb), focus_case.what);
+        }
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // Navigation, and the cross-load localStorage persistence that depends on it. A click on a link
     // navigates; the interpreter survives the navigation, so the store does too. This is the proof row
     // 1e2 was waiting for, and it needs two documents, which is why run_window() grew a second one.
