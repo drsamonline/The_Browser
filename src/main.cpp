@@ -2512,8 +2512,15 @@ session.set_page_title(document_title(cached_page->document().root()));
             // state before the handler runs so the repaint shows it.
             auto* click_target = node_at(*cached_page, page_dom, viewport,
                 static_cast<float>(click_x), static_cast<float>(click_y - kChromeHeight));
-            focused = click_target;
-            if (set_focus(*cached_page, page_js, page_dom, visual_state, click_target,
+            // Upstream's focus_candidate_for_position() (Page/EventHandler.cpp:3543): walk up from the
+            // hit node to the nearest focusable ancestor, and run the focusing steps with a null
+            // fallback - so a click that finds nothing focusable does not move focus at all. A plain
+            // div is not a focus target.
+            auto* focus_candidate = click_target;
+            while (focus_candidate && !is_focusable_node(*focus_candidate))
+                focus_candidate = const_cast<rendering::DomNode*>(focus_candidate->parent);
+            focused = focus_candidate;
+            if (focus_candidate && set_focus(*cached_page, page_js, page_dom, visual_state, focus_candidate,
                     static_cast<float>(kWidth)))
                 ++relayouts;
             if (dispatch_click_at(*cached_page, page_js, page_dom, viewport,
