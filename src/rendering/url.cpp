@@ -53,14 +53,29 @@ Url Url::resolve(Url const& base, std::string_view reference)
             break;
         path.replace(pos, 3, "/");
     }
+    // Remove "/../" segments. A ".." at the root is dropped and the leading slash kept, which is
+    // what the URL spec says and what this did not do: `pos - 1` underflowed to SIZE_MAX when the
+    // ".." was the first segment, so `rfind` searched from the end, found a later slash, and the
+    // replace was a no-op - an infinite loop. Measured on base "/up" with reference "../up", which
+    // hung the browser until the harness killed it.
     for (;;) {
         auto pos = path.find("/../");
         if (pos == std::string::npos)
             break;
+        if (pos == 0) {
+            // "/../up" -> "/up": the ".." cannot go above the root.
+            path.erase(0, 3);
+            continue;
+        }
         auto previous = path.rfind('/', pos - 1);
+        std::size_t const before = path.size();
         if (previous == std::string::npos)
+            path.erase(0, pos + 3);
+        else
+            path.replace(previous, pos + 4 - previous, "/");
+        // Every branch must make progress; if one did not, stop rather than spin.
+        if (path.size() >= before && path.find("/../") == pos)
             break;
-        path.replace(previous, pos + 4 - previous, "/");
     }
 
     return Url(origin + path);
