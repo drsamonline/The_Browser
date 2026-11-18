@@ -190,6 +190,10 @@ add_executable(TestAetherisHttpClient TestAetherisHttpClient.cpp)
 target_link_libraries(TestAetherisHttpClient PRIVATE AetherisRuntime Threads::Threads)
 add_test(NAME AetherisHttpClient COMMAND TestAetherisHttpClient)
 
+add_executable(TestUrl TestUrl.cpp)
+target_link_libraries(TestUrl PRIVATE AetherisRendering)
+add_test(NAME Url COMMAND TestUrl)
+
 add_executable(TestAetherisBitmapFont TestAetherisBitmapFont.cpp)
 target_link_libraries(TestAetherisBitmapFont PRIVATE AetherisRendering)
 add_test(NAME AetherisBitmapFont COMMAND TestAetherisBitmapFont)
