@@ -63,6 +63,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 3a | `::before` / `::after` synthetic boxes | `[ ]` | — |
 | 3b | `position: sticky` | `[ ]` | — |
 | 3c | Complete flex and grid (`flex-shrink`, `basis`, grid areas) | `[ ]` | — |
+| 3e | Inline siblings do not flow onto one line | `[ ]` | **measured**: three spans → x 0/0/0, width 1024 each, y 0/19.2/38.4. An author `display:inline` does not change it, so the display value is not the cause. A shrink-to-content attempt had no effect and was reverted |
+| 3f | Phrasing content is inline in the UA sheet | `[x]` | `+` the commit before this; spec-correct, but 3e shows it is not sufficient |
 | 3d | `@font-face`, transitions, animations | `[ ]` | — |
 
 ## Tier 4 — shell
