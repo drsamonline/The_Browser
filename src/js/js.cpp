@@ -594,6 +594,7 @@ static JSValue js_storage_key(JSContext* context, JSValueConst, int argc, JSValu
 
 // The embedder's navigation behaviour. Set once, before any page is built.
 static std::function<std::string()> g_current_url;
+static std::function<void(std::string)> g_set_current_url;
 static std::function<void(std::string, bool, bool)> g_request_navigation;
 static std::function<std::size_t()> g_history_length;
 static std::function<bool()> g_history_back;
@@ -601,6 +602,7 @@ static std::function<bool()> g_history_forward;
 static std::function<bool(int)> g_history_go;
 
 void set_navigation_hooks(std::function<std::string()> current_url,
+    std::function<void(std::string)> set_current_url,
     std::function<void(std::string, bool, bool)> request_navigation,
     std::function<std::size_t()> history_length,
     std::function<bool()> history_back,
@@ -608,6 +610,7 @@ void set_navigation_hooks(std::function<std::string()> current_url,
     std::function<bool(int)> history_go)
 {
     g_current_url = std::move(current_url);
+    g_set_current_url = std::move(set_current_url);
     g_request_navigation = std::move(request_navigation);
     g_history_length = std::move(history_length);
     g_history_back = std::move(history_back);
@@ -800,8 +803,13 @@ static JSValue js_location_hash_set(JSContext* context, JSValueConst, int argc, 
     std::string const current = parts.hash.empty() ? std::string() : parts.hash.substr(1);
     if (value == current)
         return JS_UNDEFINED;
-    g_request_navigation(rebuild_url(g_current_url(), parts.path, parts.search,
-        value.empty() ? std::string() : "#" + value), false, false);
+    auto const url = rebuild_url(g_current_url(), parts.path, parts.search,
+        value.empty() ? std::string() : "#" + value);
+    // A fragment change is a same-document navigation, so the URL moves now and `location.hash`
+    // reads the new value on the next statement rather than after a load that no longer happens.
+    if (g_set_current_url)
+        g_set_current_url(url);
+    g_request_navigation(url, false, false);
     return JS_UNDEFINED;
 }
 

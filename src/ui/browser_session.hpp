@@ -34,6 +34,10 @@ public:
     // `location.replace()` means: the page moves and Back does not return to it.
     bool navigate(std::string url, bool replace = false);
 
+    // A same-document navigation: the URL and the history move, nothing is loaded. Upstream treats a
+    // fragment change on the same document this way (DOM/Document.cpp, scroll_to_the_fragment).
+    bool navigate_in_place(std::string url);
+
     // Session history, as `History` exposes it. `go` is the primitive: back() is go(-1) and forward()
     // is go(+1), which is how upstream's History is built (HTML/History.cpp, delta_traverse), and
     // go(0) reloads the current document.

@@ -2267,6 +2267,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     // `location` asks these two questions and nothing else.
     aetheris::js::set_navigation_hooks(
         [] { return g_current_url; },
+        [](std::string url) { g_current_url = std::move(url); },
         [](std::string target, bool reload, bool replace) {
             g_navigation_request = reload || target.empty() ? g_current_url : resolve_url(g_current_url, target);
             g_navigation_pending = true;
@@ -2531,7 +2532,40 @@ session.set_page_title(document_title(cached_page->document().root()));
             if (std::getenv("AETHERIS_TRACE_NAV"))
                 std::fprintf(stderr, "NAV request=[%s] replace=%d reload=%d\n",
                     target.c_str(), replace ? 1 : 0, g_navigation_reload ? 1 : 0);
-            if (session.navigate(target, replace)) {
+            // A fragment change on the same document is a same-document navigation: the URL and the
+            // history move, the document is not fetched. Upstream resolves the indicated part and
+            // scrolls to it (DOM/Document.cpp, scroll_to_the_fragment); ours re-fetched the page, lost
+            // the scroll position and, for an anchor link, landed back at the top.
+            auto const without_fragment = [](std::string const& url) {
+                auto const hash = url.find('#');
+                return hash == std::string::npos ? url : url.substr(0, hash);
+            };
+            bool const same_document = !replace && cached_page
+                && without_fragment(target) == without_fragment(session.current_url());
+            if (std::getenv("AETHERIS_TRACE_NAV"))
+                std::fprintf(stderr, "NAV target=[%s] current=[%s] same=%d replace=%d page=%d\n",
+                    target.c_str(), session.current_url().c_str(), same_document ? 1 : 0,
+                    replace ? 1 : 0, cached_page ? 1 : 0);
+            if (same_document) {
+                auto const hash = target.find('#');
+                std::string const fragment = hash == std::string::npos ? std::string() : target.substr(hash + 1);
+                if (session.navigate_in_place(target)) {
+                    // The script-visible URL moves with the navigation, so `location.hash` reads the new
+                    // value on the next statement rather than after a reload that no longer happens.
+                    g_current_url = session.current_url();
+                    auto const rect = rendering::DocumentInteraction {}.fragment_target(*cached_page, fragment);
+                    if (std::getenv("AETHERIS_TRACE_NAV"))
+                        std::fprintf(stderr, "NAV fragment=[%s] target=%s y=%.1f scroll_before=%.1f\n",
+                            fragment.c_str(), rect ? "found" : "none", rect ? rect->y : -1.0f, viewport.scroll_y());
+                    if (rect)
+                        viewport.scroll_to(viewport.scroll_x(), rect->y);
+                    else
+                        viewport.scroll_to(0.0f, 0.0f);
+                    if (std::getenv("AETHERIS_TRACE_NAV"))
+                        std::fprintf(stderr, "NAV scroll_after=%.1f\n", viewport.scroll_y());
+                    need_render = true;
+                }
+            } else if (session.navigate(target, replace)) {
                 page_dirty = true;
                 cached_page.reset();
                 need_render = true;

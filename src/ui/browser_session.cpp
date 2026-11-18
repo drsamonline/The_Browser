@@ -66,6 +66,22 @@ bool BrowserSession::open(std::string url)
     return true;
 }
 
+bool BrowserSession::navigate_in_place(std::string url)
+{
+    auto* tab = active();
+    if (!tab)
+        return false;
+    tab->url = url;
+    // A fragment navigation adds a history entry, and truncates what was ahead.
+    tab->entries.resize(tab->index + 1);
+    tab->entries.push_back(tab->url);
+    tab->index = tab->entries.size() - 1;
+    tab->loading = false;
+    tab->failed = false;
+    tab->error.clear();
+    return true;
+}
+
 bool BrowserSession::navigate(std::string url, bool replace)
 {
     if (!is_loadable(url))
