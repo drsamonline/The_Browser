@@ -1034,6 +1034,22 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // The URL components `location` exposes: origin, pathname, search, hash. Upstream serialises them
+    // from the parsed URL record (HTML/Location.idl); this splits the string the embedder hands back.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Location parts</title><style>body{margin:0}</style></head><body><script>"
+            "console.log('MARK parts ' + location.pathname + '|' + location.search + '|' + location.hash);"
+            "console.log('MARK origin ' + (location.origin.indexOf('127.0.0.1') !== -1));"
+            "</script></body></html>", "", 2);
+        require(result.status == 0, "the location-parts run exits cleanly");
+        // The harness serves the document at "/", so the path is "/" and there is no query or fragment.
+        require(result.output.find("MARK parts /||") != std::string::npos,
+            "pathname, search and hash are the three components, empty where absent");
+        require(result.output.find("MARK origin true") != std::string::npos,
+            "origin is the scheme and host, without the path");
+    }
+
     // Session history: `history.length` counts entries, and `location.replace()` overwrites the current
     // one instead of adding. Upstream: HTML/History.idl for the interface, and replace() navigates with
     // replacement enabled (HTML/Location.cpp).
