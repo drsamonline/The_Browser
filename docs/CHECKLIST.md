@@ -45,7 +45,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1g8 | **Fixed**: `Url::resolve` looped forever on a `..` at the root | `[x]` | `pos - 1` underflowed when the `..` was the first segment, `rfind` searched from the end, the replace was a no-op. `/../up` is now `/up`. Four unit cases; the fixture exits in under a second |
 | 1g8-old | (superseded) **the fetch does not block**: `AETHERIS_TRACE_FETCH=1` shows both recvs completing in 2 ms and 0 ms, then nothing — no script output, no next frame. So the process stops inside document creation. Next instrument: print around `create_scripted_document` |
 | 1g8-old | (superseded) **read, not yet fixed.** `timeout_ms` reaches `connect()` only — lines 524 and 531 of `include/aetheris/network/http_client.hpp` are its only uses — so nothing bounds `recv`. The three read loops (`read_headers`, `read_until`, `read_remaining`) all break on EOF and on error, so this is not a spin. What is measured: the third fetch blocks for more than 25 s with no further frame and no error. Next step: instrument inside the fetch — print before and after each `recv` with elapsed milliseconds — before changing anything |
-| 1g7 | `location` setters (`pathname = ...`, `search = ...`) | `[ ]` | not built; upstream re-parses and navigates for each |
+| 1g7 | `location.pathname`/`search`/`hash` setters | `[x]` | `+` the commit before this; each navigates and carries its value, and an unchanged fragment makes no request |
+| 1g7b | A fragment change should not re-fetch the document | `[ ]` | **divergence**: ours navigates and fetches; upstream scrolls within the same document |
+| 4b | The window test is 160-260 s and is the whole suite's bulk | `[ ]` | it grew by ~10 runs today; split it or shard it |
 | 1f4 | `focus()` refuses a non-focusable target | `[x]` | `+` the commit before this; 10 cases measured, 7 in the suite |
 | 1f5 | Rendering requirement: `display:none` is not focusable | `[x]` | `+` the commit before this; 3 cases incl. focus() at load |
 | 1f7 | `visibility` — inherited, per-box paint, focusability | `[x]` | `+` the commit before this; 4 cases |
