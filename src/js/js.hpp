@@ -31,7 +31,8 @@ void set_navigation_hooks(std::function<std::string()> current_url,
     std::function<void(std::string target, bool reload, bool replace)> request_navigation,
     std::function<std::size_t()> history_length,
     std::function<bool()> history_back,
-    std::function<bool()> history_forward);
+    std::function<bool()> history_forward,
+    std::function<bool(int)> history_go);
 
 class Interpreter {
 public:

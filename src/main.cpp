@@ -1976,7 +1976,13 @@ static PageStyle collect_page_style(std::string const& body, std::string const& 
         std::vector<unsigned char>(body.begin(), body.end()),
     };
 
-    for (auto const& dependency : loader.discover_dependencies(document_resource, base)) {
+    auto trace = [](char const* what) {
+        if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "STYLE %s\n", what);
+    };
+    trace("discover begin");
+    auto dependencies = loader.discover_dependencies(document_resource, base);
+    trace("discover done");
+    for (auto const& dependency : dependencies) {
         std::string path = dependency.path();
         bool is_css = path.size() >= 4 && path.compare(path.size() - 4, 4, ".css") == 0;
         if (!is_css)
@@ -1990,7 +1996,10 @@ static PageStyle collect_page_style(std::string const& body, std::string const& 
         style.css.append(fetched.resource->bytes.begin(), fetched.resource->bytes.end());
     }
 
-    for (auto const& block : extract_styles(body)) {
+    trace("extract begin");
+    auto blocks = extract_styles(body);
+    trace("extract done");
+    for (auto const& block : blocks) {
         if (!style.css.empty())
             style.css.push_back('\n');
         style.css += block;
@@ -2283,6 +2292,21 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             g_navigation_pending = true;
             g_navigation_reload = true;
             return true;
+        },
+        // go(0) is a reload, which is the same request with the reload flag set.
+        [&session](int delta) {
+            if (delta == 0) {
+                g_navigation_request = session.current_url();
+                g_navigation_pending = true;
+                g_navigation_reload = true;
+                return true;
+            }
+            if (!session.history_go(delta))
+                return false;
+            g_navigation_request = session.current_url();
+            g_navigation_pending = true;
+            g_navigation_reload = true;
+            return true;
         });
 
 
@@ -2316,7 +2340,9 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             if (std::getenv("AETHERIS_TRACE_NAV"))
                 std::fprintf(stderr, "NAV fetch [%s]\n", session.current_url().c_str());
             auto loaded = fetcher.fetch(rendering::ResourceRequestContext::Document, document_url);
+            if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "DOC fetched ok=%d\n", loaded.succeeded() ? 1 : 0);
             network::Socket::cleanup();
+            if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "DOC socket cleanup done\n");
             if (!loaded.succeeded()) {
                 session.set_error(loaded.message);
                 page_dirty = false;
@@ -2336,7 +2362,9 @@ static int run_window(std::string const& url, int frames, std::string const& fra
                 }
                 page_js.set_storage_origin(origin);
             }
+            if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "DOC style begin\n");
             auto style = collect_page_style(body, session.current_url(), fetcher);
+            if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "DOC style done\n");
             // Scripts run here, so a page that builds its content in JavaScript
             // renders in the window instead of coming up blank.
             cached_page.emplace(create_scripted_document(body, style.css, session.current_url(), nullptr,
@@ -2823,8 +2851,14 @@ static rendering::RenderDocument create_scripted_document(
     aetheris::js::Interpreter& js, DomHost& dom,
     std::shared_ptr<std::array<double, 4>> viewport_state, double timer_budget_ms)
 {
+    auto trace_phase = [](char const* what) {
+        if (std::getenv("AETHERIS_TRACE_DOC"))
+            std::fprintf(stderr, "DOC %s\n", what);
+    };
+    trace_phase("parse begin");
     // Parse the document so inline scripts can read and mutate it.
     rendering::Document document = rendering::Document::parse_html(html);
+    trace_phase("parse done");
 
     rendering::CssParser computed_parser;
     rendering::CssStyleSheet computed_sheet = computed_parser.parse(css);
@@ -2943,22 +2977,28 @@ static rendering::RenderDocument create_scripted_document(
     if (!csp_allows_inline_scripts(policy)) {
         std::cerr << "  [js] inline scripts blocked by Content-Security-Policy" << std::endl;
     } else for (auto const& script : extract_scripts(html)) {
+        trace_phase("script begin");
         js.run(script);
+        trace_phase("script done");
         if (js.has_error()) {
             std::cerr << "  [js] " << js.error() << std::endl;
             break;
         }
     }
     if (!js.has_error()) {
+        trace_phase("events begin");
         js.dispatch_event("DOMContentLoaded");
         js.dispatch_event("load");
+        trace_phase("events done");
         // A one-shot render drains the timer queue (negative budget); a window
         // advances one frame at a time, because draining there would fire a
         // repeating timer a thousand times before the first frame.
+        trace_phase("timers begin");
         if (timer_budget_ms < 0)
             js.run_event_loop();
         else
             js.run_timers(timer_budget_ms);
+        trace_phase("timers done");
     }
 
     // textContent writes go straight to the DOM through its accessor, so no
@@ -2972,7 +3012,10 @@ static rendering::RenderDocument create_scripted_document(
         (body ? *body : document.root()).append_child(std::move(text_node));
     }
 
-    return rendering::RenderDocument::create_from_document(std::move(document), css, 1024.0f, resources, url);
+    trace_phase("layout begin");
+    auto built = rendering::RenderDocument::create_from_document(std::move(document), css, 1024.0f, resources, url);
+    trace_phase("layout done");
+    return built;
 }
 
 static int run_render(std::string const& url, std::string const& output_path, std::string const& dispatch_id = {}, std::string const& dispatch_type = {}, float click_x = -1, float click_y = -1) {

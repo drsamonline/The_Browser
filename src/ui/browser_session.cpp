@@ -119,25 +119,19 @@ std::size_t BrowserSession::history_length() const
     return tab ? tab->entries.size() : 0;
 }
 
-bool BrowserSession::history_back()
+bool BrowserSession::history_go(int delta)
 {
     auto* tab = active();
-    if (!tab || tab->index == 0)
+    if (!tab || tab->entries.empty())
         return false;
-    --tab->index;
-    tab->url = tab->entries[tab->index];
-    tab->loading = true;
-    tab->failed = false;
-    tab->error.clear();
-    return true;
-}
 
-bool BrowserSession::history_forward()
-{
-    auto* tab = active();
-    if (!tab || tab->index + 1 >= tab->entries.size())
+    // A traversal that lands outside the session history does nothing, which is what the spec's
+    // traversal does when there is no entry to move to.
+    long const target = static_cast<long>(tab->index) + delta;
+    if (target < 0 || static_cast<std::size_t>(target) >= tab->entries.size())
         return false;
-    ++tab->index;
+
+    tab->index = static_cast<std::size_t>(target);
     tab->url = tab->entries[tab->index];
     tab->loading = true;
     tab->failed = false;

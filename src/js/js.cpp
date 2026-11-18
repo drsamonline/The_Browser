@@ -598,18 +598,21 @@ static std::function<void(std::string, bool, bool)> g_request_navigation;
 static std::function<std::size_t()> g_history_length;
 static std::function<bool()> g_history_back;
 static std::function<bool()> g_history_forward;
+static std::function<bool(int)> g_history_go;
 
 void set_navigation_hooks(std::function<std::string()> current_url,
     std::function<void(std::string, bool, bool)> request_navigation,
     std::function<std::size_t()> history_length,
     std::function<bool()> history_back,
-    std::function<bool()> history_forward)
+    std::function<bool()> history_forward,
+    std::function<bool(int)> history_go)
 {
     g_current_url = std::move(current_url);
     g_request_navigation = std::move(request_navigation);
     g_history_length = std::move(history_length);
     g_history_back = std::move(history_back);
     g_history_forward = std::move(history_forward);
+    g_history_go = std::move(history_go);
 }
 
 // `location`. Upstream's Location (HTML/Location.idl) is a full URL record: href as a stringifier
@@ -730,6 +733,18 @@ static JSValue js_history_forward(JSContext*, JSValueConst, int, JSValueConst*)
     return JS_UNDEFINED;
 }
 
+// `history.go(delta)`: back() and forward() are go(-1) and go(+1) upstream, and go(0) reloads
+// (HTML/History.cpp, delta_traverse).
+static JSValue js_history_go(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    int delta = 0;
+    if (argc >= 1)
+        JS_ToInt32(context, &delta, argv[0]);
+    if (g_history_go)
+        g_history_go(delta);
+    return JS_UNDEFINED;
+}
+
 void Interpreter::setup_globals()
 {
     g_active_interpreter = this;
@@ -813,6 +828,7 @@ void Interpreter::setup_globals()
     JSValue history = JS_NewObject(m_context);
     define_function(m_context, history, "back", js_history_back);
     define_function(m_context, history, "forward", js_history_forward);
+    define_function(m_context, history, "go", js_history_go);
     JSAtom history_length_atom = JS_NewAtom(m_context, "length");
     JS_DefinePropertyGetSet(m_context, history, history_length_atom,
         JS_NewCFunction(m_context, js_history_length, "length", 0), JS_UNDEFINED, 0);

@@ -34,10 +34,13 @@ public:
     // `location.replace()` means: the page moves and Back does not return to it.
     bool navigate(std::string url, bool replace = false);
 
-    // Session history, as `History` exposes it.
+    // Session history, as `History` exposes it. `go` is the primitive: back() is go(-1) and forward()
+    // is go(+1), which is how upstream's History is built (HTML/History.cpp, delta_traverse), and
+    // go(0) reloads the current document.
     std::size_t history_length() const;
-    bool history_back();
-    bool history_forward();
+    bool history_go(int delta);
+    bool history_back() { return history_go(-1); }
+    bool history_forward() { return history_go(1); }
 
     void set_page_title(std::string title);
     void set_loading(bool loading);
