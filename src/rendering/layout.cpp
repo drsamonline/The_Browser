@@ -337,11 +337,22 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
     float cursor_x = x;
     float line_height = TextLayout::line_height(node.style);
     float max_bottom = y;
+    // A non-whitespace inline item may break only where whitespace precedes it. Upstream:
+    // inline_formatting_context.rs, text_item_wrap_opportunity() - `line_ends_in_whitespace` or
+    // `item.can_break_before`. Without it, two adjacent spans with no space between them wrap.
+    bool line_ends_in_whitespace = false;
 
     for (auto& child : node.children) {
         if (child->display == LayoutDisplay::None || is_positioned(*child))
             continue;
 
+        if (std::getenv("AETHERIS_TRACE_INLINE")) {
+            std::string data = child->dom_node ? child->dom_node->data : std::string();
+            std::fprintf(stderr, "TRACE child display=%d kind=%s data=[%s] cursor_x=%.1f width=%.1f avail=%.1f\n",
+                static_cast<int>(child->display),
+                child->dom_node ? (child->dom_node->type == DomNodeType::Text ? "text" : "element") : "none",
+                data.substr(0, 12).c_str(), cursor_x, child->rect.width, available_width);
+        }
         if (child->display == LayoutDisplay::Inline && child->dom_node && child->dom_node->type == DomNodeType::Text) {
             // A text run is laid out here rather than through layout_node, so it has to be counted
             // here too or `layout nodes:` under-reports what the pass did. It is not reusable:
@@ -371,17 +382,32 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
                 child->box.content.width = std::max(0.0f, text_extent - child->box.content.x);
                 child->rect = { child->box.content.x, child->box.content.y, child->box.content.width, child->box.content.height };
             }
+            line_ends_in_whitespace = !child->dom_node->data.empty()
+                && std::isspace(static_cast<unsigned char>(child->dom_node->data.back()));
             continue;
         }
 
-        layout_node(*child, cursor_x, cursor_y, x + available_width - cursor_x);
-        if (cursor_x > x && child->rect.width > x + available_width - cursor_x) {
+        // Measured against the whole line: an inline box shrinks to fit what it is given, so laying it
+        // out against the space left clamps its width to exactly that and the fit test never fires.
+        layout_node(*child, cursor_x, cursor_y, available_width);
+        float const natural_width = child->rect.width;
+        bool const child_starts_with_whitespace = child->dom_node && child->dom_node->type == DomNodeType::Text
+            && !child->dom_node->data.empty()
+            && std::isspace(static_cast<unsigned char>(child->dom_node->data.front()));
+        bool const may_break = line_ends_in_whitespace || child_starts_with_whitespace;
+        if (std::getenv("AETHERIS_TRACE_INLINE"))
+            std::fprintf(stderr, "TRACE decide natural=%.1f remaining=%.1f may_break=%d cursor_x=%.1f\n",
+                natural_width, x + available_width - cursor_x, may_break ? 1 : 0, cursor_x);
+        if (may_break && cursor_x > x && natural_width > x + available_width - cursor_x) {
             cursor_x = x;
             cursor_y = max_bottom;
             layout_node(*child, cursor_x, cursor_y, available_width);
+        } else {
+            layout_node(*child, cursor_x, cursor_y, x + available_width - cursor_x);
         }
         cursor_x = child->rect.x + child->rect.width;
         max_bottom = std::max(max_bottom, child->rect.y + child->rect.height);
+        line_ends_in_whitespace = false;
         if (cursor_x >= x + available_width) {
             cursor_x = x;
             cursor_y = max_bottom;
