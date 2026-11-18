@@ -47,7 +47,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1g8-old | (superseded) **read, not yet fixed.** `timeout_ms` reaches `connect()` only — lines 524 and 531 of `include/aetheris/network/http_client.hpp` are its only uses — so nothing bounds `recv`. The three read loops (`read_headers`, `read_until`, `read_remaining`) all break on EOF and on error, so this is not a spin. What is measured: the third fetch blocks for more than 25 s with no further frame and no error. Next step: instrument inside the fetch — print before and after each `recv` with elapsed milliseconds — before changing anything |
 | 1g7 | `location.pathname`/`search`/`hash` setters | `[x]` | `+` the commit before this; each navigates and carries its value, and an unchanged fragment makes no request |
 | 1g7b | A fragment change does not re-fetch the document | `[x]` | `760b882c`; one request, script runs once, scroll to the indicated part (266 px, clamped from 700) |
-| 1g7c | `location.hash` does not read back synchronously after assignment | `[ ]` | the setter records the navigation and the loop performs it; the URL hook does not reach the getter within the same script |
+| 1g7c | `location.hash` reads back synchronously | `[x]` | `d25f3343`; it always did. The claim that it did not came from a probe against a binary 73 minutes old |
 | 4d | A timed-out build reads as a success | `[ ]` | **hazard**: `cmake --build \| grep error:` prints nothing when the build is killed at the 300 s limit. Check the binary's mtime, not the absence of errors |
 | 4b | The window test is 130-260 s and is the whole suite's bulk | `[ ]` | **three split attempts, all reverted.** 3-way and 4-way splits both produced a Core chunk that fails with "the outer pixel is readable" under `ctest -j4` and passes when run alone, and giving each test its own `WORKING_DIRECTORY` did not fix it — so a block depends on state outside itself, which is the thing to find first. A parallel suite that fails nondeterministically is worse than a slow one |
 | 4c | Find which window-test block depends on state outside itself | `[ ]` | the blocker for 4b: run the split chunks with the failing block isolated, and print the frame directory it reads |
@@ -69,7 +69,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 2a2 | UTF-8 decoding in measure, measure_text and draw | `[x]` | `utf8_next()`; 5 decode cases + 2 measurement assertions in `AetherisTextLayout` |
 | 2b | Wire `glyph_rasterizer` into paint | `[ ]` | — |
 | 2c | Kerning | `[ ]` | — |
-| 2d | Shaping — Arabic and Indic last | `[ ]` | — |
+| 2d | Text shaping | `[ ]` | **unblocked and measured**: HarfBuzz 15.0.0 builds here via upstream CMake, 70 TUs at -O0 -j2 in three resumable commands, `hb_shape` present in `libharfbuzz.a`. `tools/fetch-harfbuzz.sh` fetches it. Remaining: link the engine, then a fixture proving a ligature collapses two code points into one glyph |
 
 ## Tier 3 — layout completeness
 
