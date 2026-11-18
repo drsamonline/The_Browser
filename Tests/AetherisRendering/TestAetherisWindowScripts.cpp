@@ -824,6 +824,28 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // Inline siblings flow onto one line, and an inline box is as wide as its content. Three spans
+    // used to be three full-width lines at x = 0, because a text run's box was given the whole
+    // remaining line width - which poisoned every inline ancestor's shrink-to-fit.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Inline flow</title><style>body{margin:0;font-size:16px}</style>"
+            "</head><body><div><span id='s1'>aa</span><span id='s2'>bb</span><span id='s3'>cc</span></div>"
+            "<script>setTimeout(function () {"
+            "var a = document.getElementById('s1').getBoundingClientRect();"
+            "var b = document.getElementById('s2').getBoundingClientRect();"
+            "var c = document.getElementById('s3').getBoundingClientRect();"
+            "console.log('MARK y ' + a.y + ' ' + b.y + ' ' + c.y);"
+            "console.log('MARK x ' + (b.x > a.x && c.x > b.x));"
+            "console.log('MARK widths ' + (a.width < 100 && b.width < 100 && c.width < 100));"
+            "}, 5);</script></body></html>", "", 3);
+        require(result.status == 0, "the inline flow run exits cleanly");
+        require(result.output.find("MARK y 0 0 0") != std::string::npos, "three spans share one line");
+        require(result.output.find("MARK x true") != std::string::npos, "each span starts where the last ended");
+        require(result.output.find("MARK widths true") != std::string::npos,
+            "an inline box is as wide as its content, not as wide as the line");
+    }
+
     // `visibility`. Upstream: inherited (CSS/Properties.json), initial `visible`, affects hit testing,
     // and paint checks it per box (Painting/BoxViews.cpp:189). The difference from display:none is the
     // whole point - the box still occupies space, and a descendant that re-sets `visible` is painted
