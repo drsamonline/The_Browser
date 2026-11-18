@@ -73,7 +73,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 
 | Row | Item | Status | Proof / blocker |
 | --- | --- | --- | --- |
-| 3a | `::before` / `::after` synthetic boxes | `[ ]` | — |
+| 3a1 | `::before`/`::after` computed style | `[x]` | `57d3a8eb`; five assertions in `AetherisCss`, including inheritance from the element rather than its parent |
+| 3a2 | Generate the box when `content` is neither `normal` nor `none` | `[ ]` | next: upstream `Rust/src/layout/tree_builder.rs`, the `PseudoElementDecision` rule |
+| 3a3 | Paint the generated box | `[ ]` | needs a synthetic text node whose `dom_node` is null, which several paths dereference |
 | 3b | `position: sticky` | `[ ]` | — |
 | 3c | Complete flex and grid (`flex-shrink`, `basis`, grid areas) | `[ ]` | — |
 | 3e | Inline siblings flow onto one line | `[x]` | `+` the commit before this; three spans at x 0/19.6/39.9 on one line. Cause: the text run's box was given the whole line width |
