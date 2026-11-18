@@ -134,8 +134,10 @@ claim, one understated blocker and one stale line:
    limit for cycles.
    **Media queries, the structural pseudo-classes (`:first-child`,
    `:last-child`, `:only-child`, `:nth-child(n)`, `:empty`, `:root`,
-   `-of-type`, `An+B`), `:is()`/`:where()`/`:has()`/`:not(list)` and `transform`
-   (translate/scale) are done.**
+   `-of-type`, `An+B`), `:is()`/`:where()`/`:has()` including its sibling forms,
+   `:not(list)`, the sibling combinators `+` and `~`, `[a=v i]`, the form states
+   `:checked`/`:disabled`/`:placeholder-shown`, `visibility`, and `transform`
+   (translate/scale) are done as of 2026-11-18.**
    `position: sticky` was deliberately deferred while there was no scroll
    offset to stick to. **The scroll offset now exists** (`PaintOffset` in the
    paint pass, `Viewport` in the window loop, wheel/PageUp/PageDown/Home/End
@@ -143,6 +145,11 @@ claim, one understated blocker and one stale line:
    missing infrastructure — it is now ordinary layout work.
 5. ~~Form elements~~ — **done**: `value` on `input`/`textarea`/`select`/`option`,
    `checked`, and `form.submit()` firing a cancelable `submit` event.
+
+5a. **Storage and navigation** — `localStorage` and `location` are done as of 2026-11-18, with two limits
+   each that matter: the store is in memory (no profile on disk) and `key(i)` is sorted; navigation has no
+   realm isolation, no `history`, no `location.replace()`, and URL resolution does no dot-segment removal.
+   `sessionStorage` is not built.
 
 ### Medium value
 

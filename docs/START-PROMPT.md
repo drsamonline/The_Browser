@@ -38,7 +38,9 @@ the tree is older than this prompt):
 ## Step 1 — read, in this order
 
 0. `docs/CHECKLIST.md` — the live progress list. **Read it first and update it in the same commit as any work.**
-1. `docs/SESSION-HANDOFF-2026-11-17.md` — 21 items, in order, each with what shipped and the numbers.
+1. `docs/SESSION-HANDOFF-2026-11-18.md` — items 22–32, the newest session: what shipped, what reading
+   upstream changed, and the errors made so you do not repeat them. Then `SESSION-HANDOFF-2026-11-17.md`
+   (items 1–21) if you need the earlier detail.
 2. `docs/HANDOVER.md` — build, the state table (one row per mechanism), known limitations.
 3. `docs/UPSTREAM-FIRST.md` — **read upstream before writing any feature.**
 
@@ -115,6 +117,28 @@ The window summary is the measurement surface:
 
 Extend this surface rather than opening a debugger. When a counter can go stale — `layout nodes` did after a
 skipped pass — fix the counter before believing it.
+
+## Documentation contract — every item, five places
+
+An item is not done when the code works. It is done when all five of these are true, **in the same commit as the
+work or the one immediately after**:
+
+| Place | What goes there | Written for |
+| --- | --- | --- |
+| `docs/CHECKLIST.md` | the row moves, with a proof — a commit sha, a test name, or a number | the next session's first read |
+| `docs/HANDOVER.md` | a row per mechanism: what it does, what it deliberately does not, and the trap | whoever changes it next |
+| `docs/SESSION-HANDOFF-<date>.md` | the item, its commits, its numbers, and any error worth not repeating | the narrative of the session |
+| `docs/COVERAGE.md` | the feature's state and the file that proves it | ordering the remaining work |
+| `drsamonline/audit` | the session entry: what I read upstream, what shipped, evidence, what I did not do, next | the record outside the repository |
+
+Rules that come with it:
+
+- **A limit stated in the commit message is not documented.** Commit messages are not read by the next session;
+  the rows are.
+- **Every "not built" gets a row**, in `CHECKLIST.md` with its reason. A deleted row gets re-proposed.
+- **Every divergence from upstream gets a row**, even when it is deliberate. `visibility: collapse` treated as
+  `hidden` is fine; unrecorded it is a bug someone will "fix" later.
+- **Numbers, not adjectives.** "405 → 5 nodes" or "10 cases, 7 in the suite"; never "much faster" or "well tested".
 
 ## Working rules — earned, not decorative
 
