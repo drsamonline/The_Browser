@@ -17,6 +17,8 @@
 
 #include <cctype>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <charconv>
 #include <cstdint>
@@ -430,9 +432,21 @@ struct HttpTransport {
 
     SocketError recv(std::span<char> buffer, size_t& bytes_read)
     {
+        // AETHERIS_TRACE_FETCH=1 prints each read with how long it took, which is how a
+        // fetch that blocks is told apart from one that spins or fails.
+        auto const started = std::chrono::steady_clock::now();
+        SocketError result = SocketError::None;
         if (tls)
-            return tls->read(buffer.data(), buffer.size(), bytes_read) ? SocketError::None : SocketError::RecvFailed;
-        return socket->recv(buffer, bytes_read);
+            result = tls->read(buffer.data(), buffer.size(), bytes_read) ? SocketError::None : SocketError::RecvFailed;
+        else
+            result = socket->recv(buffer, bytes_read);
+        if (std::getenv("AETHERIS_TRACE_FETCH")) {
+            auto const ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started).count();
+            std::fprintf(stderr, "FETCH recv bytes=%zu err=%d took=%lldms\n", bytes_read,
+                static_cast<int>(result), static_cast<long long>(ms));
+        }
+        return result;
     }
 };
 

@@ -403,10 +403,10 @@ static std::string resolve_url(std::string const& base, std::string const& href)
     auto const host_end = base.find('/', scheme_end + 3);
     std::string const origin = host_end == std::string::npos ? base : base.substr(0, host_end);
     if (!href.empty() && href.front() == '/')
-        return origin + href;
+        return origin + rendering::remove_dot_segments(href);
     auto const slash = base.find_last_of('/');
     std::string const directory = slash == std::string::npos || slash < scheme_end + 3 ? origin + "/" : base.substr(0, slash + 1);
-    return directory + href;
+    return origin + rendering::remove_dot_segments(directory.substr(origin.size()) + href);
 }
 
 // The page the window loop is currently driving. `getBoundingClientRect()` needs the layout tree and
