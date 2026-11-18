@@ -1034,6 +1034,27 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // Session history: `history.length` counts entries, and `location.replace()` overwrites the current
+    // one instead of adding. Upstream: HTML/History.idl for the interface, and replace() navigates with
+    // replacement enabled (HTML/Location.cpp).
+    //
+    // The discriminating assertion is the length after a replacement: a push would make it 2.
+    {
+        auto result = run_window(binary,
+            "<html><head><title>History</title><style>body{margin:0}</style></head><body><script>"
+            "console.log('MARK a len ' + history.length);"
+            "setTimeout(function () { location.replace('/b'); }, 5);"
+            "</script></body></html>",
+            "", 5, {},
+            "<html><head><title>History B</title><style>body{margin:0}</style></head><body><script>"
+            "console.log('MARK b len ' + history.length + ' url ' + location.href.slice(-2));"
+            "</script></body></html>");
+        require(result.status == 0, "the history run exits cleanly");
+        require(result.output.find("MARK a len 1") != std::string::npos, "a first load is one history entry");
+        require(result.output.find("MARK b len 1 url /b") != std::string::npos,
+            "location.replace() moves the page without adding a history entry");
+    }
+
     // Navigation, and the cross-load localStorage persistence that depends on it. A click on a link
     // navigates; the interpreter survives the navigation, so the store does too. This is the proof row
     // 1e2 was waiting for, and it needs two documents, which is why run_window() grew a second one.
