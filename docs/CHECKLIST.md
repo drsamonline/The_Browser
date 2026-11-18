@@ -49,8 +49,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1g7b | A fragment change does not re-fetch the document | `[x]` | `760b882c`; one request, script runs once, scroll to the indicated part (266 px, clamped from 700) |
 | 1g7c | `location.hash` reads back synchronously | `[x]` | `d25f3343`; it always did. The claim that it did not came from a probe against a binary 73 minutes old |
 | 4d | A timed-out build reads as a success | `[ ]` | **hazard**: `cmake --build \| grep error:` prints nothing when the build is killed at the 300 s limit. Check the binary's mtime, not the absence of errors |
-| 4b | The window test is 130-260 s and is the whole suite's bulk | `[ ]` | **three split attempts, all reverted.** 3-way and 4-way splits both produced a Core chunk that fails with "the outer pixel is readable" under `ctest -j4` and passes when run alone, and giving each test its own `WORKING_DIRECTORY` did not fix it — so a block depends on state outside itself, which is the thing to find first. A parallel suite that fails nondeterministically is worse than a slow one |
-| 4c | Find which window-test block depends on state outside itself | `[ ]` | the blocker for 4b: run the split chunks with the failing block isolated, and print the frame directory it reads |
+| 4b | Split the window test | `[x]` | `60dfd68b`; four tests, two at a time: Core 47 s, Style 60 s, plus Layout and Geometry. Suite is 64 tests in 151-157 s |
+| 4c | The split's "hidden dependency" | `[x]` | **not hidden state — 2 cores.** `-j4` on this box ran eight processes on two cores; the failures were contention. `ctest -j2` is green |
 | 1f4 | `focus()` refuses a non-focusable target | `[x]` | `+` the commit before this; 10 cases measured, 7 in the suite |
 | 1f5 | Rendering requirement: `display:none` is not focusable | `[x]` | `+` the commit before this; 3 cases incl. focus() at load |
 | 1f7 | `visibility` — inherited, per-box paint, focusability | `[x]` | `+` the commit before this; 4 cases |
