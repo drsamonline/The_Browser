@@ -36,7 +36,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1g | Navigation: `location.href`/`assign`/`reload`, a click follows a link | `[x]` | same commit; page B loads at /b |
 | 1g2 | Realm isolation on navigation (old globals and listeners survive) | `[ ]` | deliberate limit of keeping the interpreter alive |
 | 1g3 | `history.length`/`back()`/`forward()`, `location.replace()` | `[x]` | `+` the commit before this; replace keeps the length at 1 where a push would give 2 |
-| 1g4 | `history.go(delta)`, `pushState`/`replaceState`, `history.state` | `[ ]` | not built |
+| 1g4 | `history.go(delta)` | `[x]` | `+` the commit before this; back/forward are now go(±1); go(0) reloads, asserted in the suite |
+| 1g4b | `pushState`/`replaceState`, `history.state` | `[ ]` | not built — needs per-entry state, which means serialising a JS value |
+| 1g4c | `scrollRestoration` | `[ ]` | not built |
 | 1g5 | `location.origin`/`pathname`/`search`/`hash` (getters) | `[x]` | `+` the commit before this; four URL shapes |
 | 1g6 | Dot-segment URL resolution | `[x]` | `+` the commit before this: `remove_dot_segments()` (nine unit-tested paths) wired into `resolve_url`; `/deep/dir/page` → `/deep/up` → `/up`, confirmed by the server log and the suite |
 | 1g6-old | (superseded) **the resolver is correct and is not the cause.** With it wired, the server saw `/deep/dir/page` → `/deep/up` → `/up`, exactly right. The process hangs **inside `fetcher.fetch()` for the third document** — after the request goes out, before any content returns (`AETHERIS_TRACE_NAV=1`). Leading hypothesis: a keep-alive socket the server already closed, with no read timeout |
