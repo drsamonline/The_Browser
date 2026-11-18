@@ -36,7 +36,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1g | Navigation: `location.href`/`assign`/`reload`, a click follows a link | `[x]` | same commit; page B loads at /b |
 | 1g2 | Realm isolation on navigation (old globals and listeners survive) | `[ ]` | deliberate limit of keeping the interpreter alive |
 | 1g3 | `history`, `location.replace()`, `location.pathname`/`search`/`hash`, dot-segment URL resolution | `[ ]` | not built; upstream's `HTML/Location.idl` has all of them |
-| 1f4 | `focus()` must refuse a non-focusable target | `[ ]` | **divergence**: upstream `run_focusing_steps` maps through `get_focusable_area()` and returns if still not focusable (`HTML/Focus.cpp:749`); this focuses whatever it is handed |
+| 1f4 | `focus()` refuses a non-focusable target | `[x]` | `+` the commit before this; 10 cases measured, 7 in the suite |
+| 1f5 | Rendering requirement: `display:none` must not be focusable | `[ ]` | upstream also needs `meets_focusable_area_rendering_requirements()` |
+| 1f6 | The click path focuses whatever it hits | `[ ]` | 1f4 gates the script path only |
 | 1h | `:has(+ .x)`, `:has(~ .x)` | `[x]` | `+` the commit before this; 3 cases + the mutation |
 | 1e3 | `sessionStorage` | `[ ]` | same interface, scoped to the tab |
 | 1f | `getBoundingClientRect()` | `[x]` | `+` the commit before this one; page asserts its own numbers |
@@ -107,7 +109,8 @@ Recorded so the same ground is not re-covered. Detail in `SESSION-HANDOFF-2026-1
 | 4th nested-syntax bug — brackets as well as parentheses | fixed in 4 scanners | `dd310ca3` |
 | `specificity()` was the last scanner without a depth notion | **checked, correct**: brackets are consumed in one gulp and parens by the `:is`/`:not` branch | probe, 2026-11-18 |
 | `specificity()` with nested parens (`:is(:not(.a))`) | mis-scores: it takes the first `)` | not fixed, rare |
-| Upstream citations written from memory | two found 2026-11-18: `focus()` cited `DOM/Element.cpp` (no such method) and `location` was written before `HTML/Location.idl` was read | corrected in the comments; the rule is cite what you read |
+| Upstream citations written from memory | two found 2026-11-18: `focus()` cited `DOM/Element.cpp` (no such method) and `location` was written before `HTML/Location.idl` was read | corrected; the rule is cite what you read |
+| `is_focusable` overrides read after the base rule | reading `Element::is_focusable()` alone gives tabindex-only, which would have made every input unfocusable | caught before writing by reading `HTMLInputElement`/`HTMLAnchorElement` |
 | `of S` argument in `:nth-child(2n of .x)` | not built | `style.cpp` |
 | `register_subtree`/`purge_subtree` callers must note the child-list change | sharp edge | `main.cpp` |
 | `DocumentRuntime::set_attribute` keeps its own `mark_dirty` contract | unaudited | `document_runtime.cpp` |
