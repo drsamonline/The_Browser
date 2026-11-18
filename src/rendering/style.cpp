@@ -361,6 +361,62 @@ void StyleProperties::inherit_custom_properties(StyleProperties const& parent)
     });
 }
 
+StyleProperties StyleResolver::resolve_pseudo_element(DomNode const& node, CssStyleSheet const& sheet,
+    std::string_view pseudo_element, StyleProperties const* parent_style,
+    VisualInteractionState const* interaction_state) const
+{
+    StyleProperties properties;
+
+    // A generated box inherits from the element it belongs to, not from the element's parent.
+    if (parent_style)
+        properties.inherit_from(*parent_style);
+
+    std::string const suffix = "::" + std::string(pseudo_element);
+    struct Match {
+        int specificity;
+        size_t source_order;
+        CssDeclaration const* declaration;
+    };
+    std::vector<Match> matching;
+
+    for (auto const& rule : sheet.rules) {
+        for (auto const& selector : rule.selectors) {
+            if (selector.size() <= suffix.size())
+                continue;
+            if (selector.compare(selector.size() - suffix.size(), suffix.size(), suffix) != 0)
+                continue;
+            std::string const base = selector.substr(0, selector.size() - suffix.size());
+            if (!matches(node, base, interaction_state))
+                continue;
+            for (auto const& declaration : rule.declarations)
+                matching.push_back({ specificity(base), rule.source_order, &declaration });
+        }
+    }
+
+    std::stable_sort(matching.begin(), matching.end(), [](auto const& a, auto const& b) {
+        if (a.specificity != b.specificity)
+            return a.specificity < b.specificity;
+        return a.source_order < b.source_order;
+    });
+
+    for (auto const& match : matching) {
+        if (match.declaration->property.rfind("--", 0) == 0)
+            apply_declaration(properties, *match.declaration);
+    }
+    for (auto const& match : matching) {
+        if (match.declaration->property.rfind("--", 0) == 0)
+            continue;
+        if (match.declaration->value.find("var(") != std::string::npos) {
+            CssDeclaration substituted { match.declaration->property,
+                substitute_vars(match.declaration->value, properties, 0) };
+            apply_declaration(properties, substituted);
+        } else {
+            apply_declaration(properties, *match.declaration);
+        }
+    }
+    return properties;
+}
+
 StyleProperties StyleResolver::resolve(DomNode const& node, CssStyleSheet const& sheet, StyleProperties const* parent_style, VisualInteractionState const* interaction_state) const
 {
     StyleProperties properties;

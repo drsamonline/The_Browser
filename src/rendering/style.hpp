@@ -60,6 +60,18 @@ class StyleResolver {
 public:
     StyleProperties resolve(DomNode const& node, CssStyleSheet const& sheet, StyleProperties const* parent_style = nullptr, VisualInteractionState const* interaction_state = nullptr) const;
 
+    // The computed style of a generated box: `::before` or `::after` on `node`. Upstream keeps a
+    // pseudo-element's computed style beside the element's (DOM/Element.cpp, `pseudo_elements`) and
+    // generates a box only when `content` is neither `normal` nor `none`
+    // (Rust/src/layout/tree_builder.rs, the PseudoElementDecision rule). This is the style half; the
+    // box half is row 3a2.
+    //
+    // A selector ending in `::before`/`::after` is stripped of that suffix and matched against the
+    // element, so `p.card::before` reads as `p.card` here.
+    StyleProperties resolve_pseudo_element(DomNode const& node, CssStyleSheet const& sheet,
+        std::string_view pseudo_element, StyleProperties const* parent_style = nullptr,
+        VisualInteractionState const* interaction_state = nullptr) const;
+
     // Whether a rule puts `pseudo` on a compound that `node` matches and that is not the
     // last one - `.card:focus-within .title`. That is the only shape in which an element's
     // style can depend on an *ancestor* holding the pseudo-class, so it is the question to
