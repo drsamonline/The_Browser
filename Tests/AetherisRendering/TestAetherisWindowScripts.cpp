@@ -1219,6 +1219,10 @@ int main(int argc, char* argv[])
         // navigation and is covered by the fragment test below: setting it does not reload, so there is
         // no next load to read it on. Reading it back synchronously does not work yet - row 1g7c.
         setter_case("search", "MARK search before []", "MARK search after [?q=1]");
+        // `hash` is a same-document navigation: no reload, so it must read back in the statement after
+        // the assignment. This assertion was deleted once on the strength of a probe against a binary
+        // 73 minutes old - it was right the first time (row 4d).
+        setter_case("hash", "MARK hash before []", "MARK hash after [#frag]");
     }
 
     // `history.go(delta)`. Upstream: back() and forward() are go(-1) and go(+1), and go(0) reloads
