@@ -1,187 +1,121 @@
-# START PROMPT — Aetheris, resume (2026-11-17, second session)
+# START PROMPT — Aetheris / The_Browser, resume 2026-11-18 (evening)
 
-Paste this as the first message of a new session. It is self-contained: it does not assume anything about
-the sandbox, and it says where to read the rest from the repository.
+Paste this as the first message of a new session. It is self-contained: the repo, the state, the rules, and the
+traps that cost time today.
 
 ---
 
-You are resuming work on `drsamonline/The_Browser` ("Aetheris"), a C++20 browser engine derived from
-Ladybird, MIT licensed. Work only in that repository. Documentation changes only in `sorex`, `nodus`,
-`volumen`; exactly one entry per session in `drsamonline/audit`.
+You are continuing work on **`drsamonline/The_Browser`** — a small C++23 browser engine ("Aetheris") that renders
+real HTML/CSS with its own layout, style, paint and JS (QuickJS) layers.
 
-## Step 0 — establish state before touching anything
+## The three rules, in order
 
-    git clone https://github.com/drsamonline/The_Browser.git && cd The_Browser
-    git log --oneline -3
-    grep -c "layout_passes\|key_checks\|laid_out_nodes" src/rendering/render_document.hpp
+1. **Read upstream first, always.** `/scratch/work/ladybird/Libraries/LibWeb` (and `LibGfx`, `LibURL`, `LibHTTP`,
+   `Rust/src/layout`) before designing, building or measuring anything. Port the *shape* of the solution, not just
+   the outcome. Read the caller, not only the callee. This has been the rule for every session and it is not
+   negotiable.
+2. **Document everything, in the same commit.** Every item lands in `docs/CHECKLIST.md`, `docs/HANDOVER.md`,
+   `docs/SESSION-HANDOFF-<date>.md`, `docs/COVERAGE.md` and one audit entry in `drsamonline/audit`.
+3. **Push every commit immediately.** `git push origin main` after each commit; verify with
+   `gh api repos/drsamonline/The_Browser/commits/main --jq '.sha[0:8]'`.
 
-| Check | Expected |
+Report format: tables and bullets, no paragraphs.
+
+## Current state
+
+| | |
 | --- | --- |
-| `main` tip | `0c01edf7` — `docs: An+B, and where the session stands` — or newer |
-| `docs/SESSION-HANDOFF-2026-11-17.md` | present, 18 items; read it fully |
-| `docs/HANDOVER.md` | present — build, gotchas, known limitations |
-| `docs/UPSTREAM-FIRST.md` | present — the feature→file map |
+| repo | `/scratch/work/The_Browser`, tip **`b0249938`** |
+| suite | **64 tests, 64/64, twice**, 151-157 s at `ctest -j2` |
+| last handover | `docs/SESSION-HANDOFF-2026-11-18.md` — read it first, it has the errors table |
+| tracker | `docs/CHECKLIST.md` — the live list; update it in the same commit as the work |
+| audit | `drsamonline/audit`, `log/2026-11/2026-11-18-aetheris-batch-a-selectors.md` |
 
-If the tip is **older** than `0c01edf7`, stop and report: the branch has moved backwards.
+## Setting up a fresh sandbox
 
-Symbols that must exist before you edit anything (each is a thing a session added, and their absence means
-the tree is older than this prompt):
+The pod does not survive; `/scratch/work` usually does. Check, then:
 
-| Symbol | Where | Means |
+```sh
+cd /scratch/work/The_Browser && git log --oneline -1 && git status --short
+pip install cmake ninja ziglang
+ZIG=$(python3 -c 'import ziglang,os;print(os.path.join(os.path.dirname(ziglang.__file__),"zig"))')
+mkdir -p /scratch/work/toolchain
+printf '#!/bin/sh\nexec %s cc "$@"\n' "$ZIG"  > /scratch/work/toolchain/zigcc
+printf '#!/bin/sh\nexec %s c++ "$@"\n' "$ZIG" > /scratch/work/toolchain/zigcxx
+chmod +x /scratch/work/toolchain/zig*
+sh tools/fetch-harfbuzz.sh          # 26 MB, from PyPI, no GitHub needed
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_C_COMPILER=/scratch/work/toolchain/zigcc -DCMAKE_CXX_COMPILER=/scratch/work/toolchain/zigcxx \
+  -DCMAKE_C_COMPILER_WORKS=1 -DCMAKE_CXX_COMPILER_WORKS=1 \
+  -DAETHERIS_STANDALONE_BUILD=ON -DAETHERIS_ENABLE_TESTING=ON -DBUILD_TESTING=ON \
+  -DOPENSSL_INCLUDE_DIR=/usr/include/node \
+  -DOPENSSL_SSL_LIBRARY=/usr/lib/x86_64-linux-gnu/libssl.so.3 \
+  -DOPENSSL_CRYPTO_LIBRARY=/usr/lib/x86_64-linux-gnu/libcrypto.so.3 \
+  -DAETHERIS_WEBP_LIBRARY=/usr/lib/x86_64-linux-gnu/libwebp.so.7 \
+  -DCMAKE_CXX_FLAGS="-Wno-error=#warnings"
+ninja -C build -j2        # the first build includes ~70 HarfBuzz TUs; repeat the command, it resumes
+ctest --test-dir build -j 2
+```
+
+## Facts about this box that change decisions
+
+| fact | consequence |
+| --- | --- |
+| **2 cores** (`nproc`) | `ctest -j2`, never `-j4`. Four tests at `-j4` fail from contention and look like a bug in the code |
+| no `apt`, no dev headers, no `make` | build dependencies come from pip/npm or are fetched as source |
+| `/tmp` is a **64 MB tmpfs** | a 38.9 MB sdist does not fit; work under `/scratch` |
+| each command is capped at **300 s** | long builds must be split and resumed; ninja resumes, a single-TU amalgamation cannot |
+| a killed build prints **no error** | never conclude success from an empty `grep error:` — check `ls -la build/bin/aetheris` |
+
+## Build facts that cost time to learn
+
+- The engine compiles with `-Werror -Wcast-qual` and `-fstrict-flex-arrays=2`. The vendored HarfBuzz target needs
+  `-w -fstrict-flex-arrays=0`. Without the second, **HarfBuzz panics on a valid font** — its OpenType tables end in
+  `[1]` trailing arrays, which that flag makes real one-element arrays. Clang rejects `-fno-strict-flex-arrays`.
+- HarfBuzz is fetched, not committed (`third_party/harfbuzz` is gitignored). Without it the engine still builds and
+  text is measured per code point; with it, shaping is available.
+- `active_font()` is loaded **once** from `AETHERIS_FONT` or a system path list. A unit test starts with neither, so
+  `Font::measure` silently uses the bitmap fallback — which looks exactly like "the shaper does not work".
+
+## What is done
+
+Tier 1 complete: custom properties, sibling combinators, `[a=v i]`, form states, `localStorage`, `sessionStorage`,
+`getBoundingClientRect`, `focus()`/`blur()` with focusability, navigation, history with `go`, `location`'s components
+and setters, fragment navigation without a re-fetch.
+
+Pseudo-elements: `::before`/`::after` resolve their own style, generate a box, flow inline and paint, including
+`content: ''`.
+
+Shaping: HarfBuzz builds here, `shape_run()` returns glyphs/clusters/advances, `measure` and the drawing pen both use
+them, the face is cached. `tools/run-shaping-smoke.sh` proves GSUB with a control.
+
+Tests: the 2,500-line window test is four tests, two at a time.
+
+## Open work, in this order
+
+| row | item | note |
 | --- | --- | --- |
-| `layout_passes`, `key_checks`, `laid_out_nodes` | `render_document.hpp` | incremental layout, all three counters |
-| `reuse_subtree`, `LayoutReuse` | `layout.hpp` | per-node layout reuse |
-| `set_attribute`, `note_child_list_mutation_at` | `dom_mutation.hpp` | the attribute choke point, structural notes |
-| `uses_positional_pseudo_class` | `css_stylesheet.hpp` | the invalidation list for positional selectors |
-| `matches_an_plus_b` | `style.cpp` | `:nth-child(2n)` and friends |
+| 2d4 | shaping cost in a **release** build | 1.043 ms per 24-char run at `-O0`; measure before optimising |
+| 3a6 | `content` as a real list type, with alt text | the parser's quoting is a stand-in; `content: "x" / "alt"` cannot be expressed |
+| 1g4b | `pushState`/`replaceState`/`history.state` | scope the JS value serialisation decision first |
+| 3i | overflow at an exactly-full line | recorded divergence |
+| 3c, 3d | flex/grid completeness, `@font-face`, transitions | large |
+| 0.1 | tier-0 coverage corpus | **blocked**, no open internet |
 
-## Step 1 — read, in this order
+Known gaps not yet rows: **bidi** (HarfBuzz does none — runs must be split by direction) and line breaking by
+cluster (`HB_GLYPH_FLAG_UNSAFE_TO_BREAK`) rather than by whitespace.
 
-0. `docs/CHECKLIST.md` — the live progress list. **Read it first and update it in the same commit as any work.**
-1. `docs/SESSION-HANDOFF-2026-11-18.md` — items 22–32, the newest session: what shipped, what reading
-   upstream changed, and the errors made so you do not repeat them. Then `SESSION-HANDOFF-2026-11-17.md`
-   (items 1–21) if you need the earlier detail.
-2. `docs/HANDOVER.md` — build, the state table (one row per mechanism), known limitations.
-3. `docs/UPSTREAM-FIRST.md` — **read upstream before writing any feature.**
+## How to work here
 
-Upstream reference:
+- **Instrument before patching.** Every investigation that started with a trace or a print landed on the first
+  build; the ones that started with a patch cost two or three reverts.
+- **A row written from a symptom names the wrong layer.** Eight times today the first reading was wrong — see the
+  errors table in `docs/SESSION-HANDOFF-2026-11-18.md`. Reproduce, measure, then fix.
+- **Revert rather than ship unverified.** An unverified layout or navigation change that silently alters behaviour is
+  worse than the gap it closes. Four reverts today were the right call.
+- **Commit style**: `type(scope): imperative summary`, body with the upstream reference, a before/after table, and
+  `Suite: 64/64, twice.`
+- **Never** modify `sorex`, `nodus` or `volumen`; add exactly one entry to `drsamonline/audit` per session.
 
-    git clone --depth 1 --filter=blob:none --sparse https://github.com/LadybirdBrowser/ladybird.git
-    cd ladybird && git sparse-checkout set Libraries/LibWeb
-
-Layout line breaking is Rust, under `Libraries/LibWeb/Rust/src/css/` — `style/selector.rs` for selector
-matching predicates, `style/component_matching.rs` for the position matcher, `parser/query_parser.rs` for
-selector parsing. The C++ side is a bridge; the answers are often in the Rust.
-
-## Step 2 — the first task
-
-`docs/CHECKLIST.md` is the authority on what is open. `docs/PHASES.md` (section "Reviewed order, 2026-11-17")
-says what order to take it in and which rows batch together. The handoff's `Next` list, for reference:
-
-1. **`:is`, `:where`, `:has`.** Each needs a selector-list argument. `:has` also needs invalidation in the
-   other direction — a child's change restyling an ancestor — which the current dirty sets do not do.
-2. `[a=v i]` and sibling combinators (`+`, `~`) — **not built, by evidence**: no fixture, test page or
-   stylesheet under `Tests/`, `docs/` or `src/` uses either. Revisit only when a page needs them. If you add
-   `+`/`~`, `collect_state_change_dirty()` has a comment at the exact line that must change with them.
-3. Family P0 builds — blocked in this sandbox (no `make`, `autoconf`, dev headers). Needs a machine with dev
-   packages; record versions in each `SOURCES.md`.
-4. `register_subtree()` / `purge_subtree()` no longer note a mutation — they only walk the tree for JS handles,
-   and their **callers** note the child-list change. A new caller that forgets leaves the page stale.
-
-## Environment
-
-    pip install cmake ninja ziglang
-    # wrappers: /scratch/work/toolchain/zigcc and zigcxx -> the zig binary, `cc` / `c++`
-
-    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-      -DCMAKE_C_COMPILER=/scratch/work/toolchain/zigcc -DCMAKE_CXX_COMPILER=/scratch/work/toolchain/zigcxx \
-      -DCMAKE_C_COMPILER_WORKS=1 -DCMAKE_CXX_COMPILER_WORKS=1 \
-      -DAETHERIS_STANDALONE_BUILD=ON -DAETHERIS_ENABLE_TESTING=ON -DBUILD_TESTING=ON \
-      -DOPENSSL_INCLUDE_DIR=/usr/include/node \
-      -DOPENSSL_SSL_LIBRARY=/usr/lib/x86_64-linux-gnu/libssl.so.3 \
-      -DOPENSSL_CRYPTO_LIBRARY=/usr/lib/x86_64-linux-gnu/libcrypto.so.3 \
-      -DAETHERIS_WEBP_LIBRARY=/usr/lib/x86_64-linux-gnu/libwebp.so.7 \
-      -DCMAKE_CXX_FLAGS="-Wno-error=#warnings"
-
-**The last flag is not optional in this sandbox.** `zig cc` at `-Og` does not define `__OPTIMIZE__`, so glibc's
-`_FORTIFY_SOURCE` warning becomes an error under `-Werror` on the first translation unit. Fortify is inert at
-`-Og` either way; the flag stops it failing the build.
-
-A clean build is three `cmake --build build --parallel` calls of ~280 s each. Configure alone is ~280 s. The
-sandbox recycles: after a restore the tree may be **stale** — `git pull --ff-only` and check a symbol from the
-table above before editing. `/scratch/work` does not survive a recycle: commit and push early.
-
-## Verification habit
-
-    ctest --test-dir build --no-tests=error -j 8      # 59 tests, ~95 s wall at -j 8
-
-`AetherisWindowScripts` is ~80 s of that: it drives the real binary against loopback fixtures, about 40 runs.
-It is the only test that renders anything. Do not delete parts of it for being slow.
-
-`/tmp` is a **64 MB tmpfs** here. Frame dumps are 2.3 MB each. The window test clears `/tmp/aetheris-*-frames`
-on the way out and writes its own dumps under the build tree; a second run from an uncleaned `/tmp` fails
-elsewhere for a disk reason. Check `df -h /tmp` before believing a failure.
-
-The window summary is the measurement surface:
-
-    Window 1024x768 ..., relayouts: N, layouts: M, key checks: K, layout nodes: L, resolves: X, style hits: Y
-
-| Counter | Means | A good number |
-| --- | --- | --- |
-| `relayouts` | rebuilds the window asked for | 1 per interaction |
-| `layouts` | layout-engine passes | 1 = the load; a paint-only change adds none |
-| `key checks` | layout keys compared in the last skip decision | 5 on a 406-node page after a hover |
-| `layout nodes` | nodes actually laid out, text runs included | 5 of 405 for a text edit in row 100 |
-| `resolves` | nodes whose style was re-resolved | 5 after a local change |
-| `style hits` | nodes that reused a cached style | the rest of the page |
-
-Extend this surface rather than opening a debugger. When a counter can go stale — `layout nodes` did after a
-skipped pass — fix the counter before believing it.
-
-## Documentation contract — every item, five places
-
-An item is not done when the code works. It is done when all five of these are true, **in the same commit as the
-work or the one immediately after**:
-
-| Place | What goes there | Written for |
-| --- | --- | --- |
-| `docs/CHECKLIST.md` | the row moves, with a proof — a commit sha, a test name, or a number | the next session's first read |
-| `docs/HANDOVER.md` | a row per mechanism: what it does, what it deliberately does not, and the trap | whoever changes it next |
-| `docs/SESSION-HANDOFF-<date>.md` | the item, its commits, its numbers, and any error worth not repeating | the narrative of the session |
-| `docs/COVERAGE.md` | the feature's state and the file that proves it | ordering the remaining work |
-| `drsamonline/audit` | the session entry: what I read upstream, what shipped, evidence, what I did not do, next | the record outside the repository |
-
-Rules that come with it:
-
-- **A limit stated in the commit message is not documented.** Commit messages are not read by the next session;
-  the rows are.
-- **Every "not built" gets a row**, in `CHECKLIST.md` with its reason. A deleted row gets re-proposed.
-- **Every divergence from upstream gets a row**, even when it is deliberate. `visibility: collapse` treated as
-  `hidden` is fine; unrecorded it is a bug someone will "fix" later.
-- **Numbers, not adjectives.** "405 → 5 nodes" or "10 cases, 7 in the suite"; never "much faster" or "well tested".
-
-## Working rules — earned, not decorative
-
-1. **Read upstream first.** This session's clearest win was reading `CSSStyleDeclaration.idl` and *not* building
-   named properties on `style`, because the IDL has no named-property accessor. Reading cost one command; the
-   build would have cost a day and been wrong.
-2. **Check the instrument before the subject.** Six failures this session, every one the instrument:
-   - a full `/tmp` read as a bad render (`AetherisDomHost` "render exits 0");
-   - `zig cc` + `_FORTIFY_SOURCE` read as a broken tree;
-   - `flex-grow` "has no effect" — the fixture's children had no `height`, so every probe fell below them;
-   - an `innerHTML` fixture with no element for its `#mid` id, read as "the reuse path did not fire";
-   - `class='hit'` replacing `class='r'`, which grew a row and moved 200 rows — caught by the layout-node
-     count, not the frame comparison;
-   - an `:empty` control whose expected colour matched the failure colour, green for two commits.
-3. **A control must be able to fail.** If the expected value equals what the broken code produces, the
-   assertion proves nothing. Say what the failing case looks like before writing the assertion.
-4. **Specificity is the fixture's most common lie.** Four times this session a rule "did not apply" because a
-   fixture put `#id` against `.class` (10000 against 100). The tell is reliable: **relayout count right, pixel
-   wrong — look at specificity.**
-5. **Two probes, then park.** Record what was measured and eliminated, with no theory attached.
-6. **Batch.** Several items per build; one audit entry per batch; one commit per item.
-7. **Never ship a green test you cannot explain**, and never tune a test until it passes. If behaviour changed
-   on purpose, say so in the commit message.
-8. **State limits in the code and in `HANDOVER.md`**, not only in the commit message.
-9. `git config user.name "Dr Sohil Momin"` and `user.email "sohilmomin2000@gmail.com"` in the clone — there is
-   no global identity. Small self-contained commits to `main`. Never force-push or rewrite history. If a commit
-   message turns out to be wrong, correct the record in `HANDOVER.md` and the audit entry and point at the
-   commit; do not rewrite it.
-
-## The invariant to keep in mind
-
-Incremental layout reuses a subtree's geometry when nothing restyled inside it and it sits at the same
-`(x, y, available_width)`. That is sound because a node's subtree geometry is a function of (its resolved style,
-those three numbers, its DOM subtree). Anything that makes geometry depend on state outside that tuple breaks
-it. `float` is not implemented and flex items take their width from the parent, so nothing does today — read
-that sentence again before adding `float`.
-
-## Audit entry
-
-`drsamonline/audit`, `log/YYYY-MM/YYYY-MM-DD-<slug>.md`, headings: what I looked at upstream, what shipped,
-evidence (raw numbers), what I deliberately did not do, next. Verify with the contents API. One entry per
-session: extend it as the session goes rather than creating a second file.
-
-## Answer style
-
-Tables and bullets for status, never paragraphs. No emoji. Say plainly what is unverified.
+Start by reading `docs/SESSION-HANDOFF-2026-11-18.md` and `docs/CHECKLIST.md`, then take row **2d4** unless
+something in the checklist says otherwise.
