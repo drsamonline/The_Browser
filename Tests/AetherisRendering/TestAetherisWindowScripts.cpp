@@ -824,6 +824,55 @@ int main(int argc, char* argv[])
         std::system(("rm -rf " + directory).c_str());
     }
 
+    // `visibility`. Upstream: inherited (CSS/Properties.json), initial `visible`, affects hit testing,
+    // and paint checks it per box (Painting/BoxViews.cpp:189). The difference from display:none is the
+    // whole point - the box still occupies space, and a descendant that re-sets `visible` is painted
+    // inside a hidden ancestor.
+    {
+        std::string const directory = "aetheris-visibility-frames";
+        // 1. Not painted, but still taking space.
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto result = run_window(binary,
+            "<html><head><title>Visibility</title><style>body{margin:0}"
+            "div{width:200px;height:20px;background:#00ff00}#h{visibility:hidden;background:#ff00ff}"
+            "</style></head><body><div id='h'></div><div id='after'></div></body></html>", "", 2, directory);
+        require(result.status == 0, "the visibility run exits cleanly");
+        int hidden[3] = { 0, 0, 0 };
+        int after[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 50, 34 + 5, hidden), "the hidden pixel is readable");
+        require(frame_pixel(directory, 50, 34 + 25, after), "the pixel after it is readable");
+        require(!is_magenta(hidden) && !is_green(hidden), "a visibility:hidden element paints nothing");
+        require(is_green(after), "a visibility:hidden element still takes its space in the flow");
+
+        // 2. A child that re-sets `visible` inside a hidden parent is painted.
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto nested = run_window(binary,
+            "<html><head><title>Visibility child</title><style>body{margin:0}"
+            "#h{visibility:hidden;width:200px;height:40px;background:#ff00ff}"
+            "#c{visibility:visible;width:100px;height:20px;background:#0000ff}"
+            "</style></head><body><div id='h'><div id='c'></div></div></body></html>", "", 2, directory);
+        require(nested.status == 0, "the nested visibility run exits cleanly");
+        int child[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 50, 34 + 5, child), "the child pixel is readable");
+        require(child[0] == 0 && child[1] == 0 && child[2] == 255,
+            "a child that sets visibility:visible is painted inside a hidden parent");
+
+        // 3. The third clause of focusability.
+        std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
+        auto focusable = run_window(binary,
+            "<html><head><title>Visibility focus</title><style>body{margin:0}"
+            "input{display:block;margin:0;padding:0;border:0;width:100px;height:20px;background:#00ff00}"
+            "input:focus{background:#ff00ff}#t{visibility:hidden}"
+            "</style></head><body><input id='t'><script>"
+            "setTimeout(function () { document.getElementById('t').focus(); }, 5);"
+            "</script></body></html>", "", 3, directory);
+        require(focusable.status == 0, "the visibility focus run exits cleanly");
+        int focused[3] = { 0, 0, 0 };
+        require(frame_pixel(directory, 50, 34 + 5, focused), "the visibility focus pixel is readable");
+        require(!is_magenta(focused), "a visibility:hidden control cannot be focused");
+        std::system(("rm -rf " + directory).c_str());
+    }
+
     // A click focuses the nearest focusable ancestor, and moves nothing if there is none. Upstream's
     // focus_candidate_for_position() (Page/EventHandler.cpp:3543) walks up while the node is not
     // focusable and then runs the focusing steps with a null fallback, which returns without touching
