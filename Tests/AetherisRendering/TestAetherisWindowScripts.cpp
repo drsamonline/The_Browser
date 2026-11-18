@@ -847,6 +847,14 @@ int main(int argc, char* argv[])
             { "a disabled button is not", "<button id='t' disabled>x</button>", false },
             { "an anchor without href is not", "<a id='t'>x</a>", false },
             { "an anchor with href is", "<a id='t' href='/x'>x</a>", true },
+            // The rendering requirement: upstream's meets_focusable_area_rendering_requirements()
+            // refuses a display:none subtree. We ask the layout node and refuse only what it can prove
+            // is hidden, so a focus() before the first layout is still allowed - which the last case
+            // checks, because a page that focuses on load must not be refused.
+            { "an input with display:none is not", "<input id='t' style='display:none'>", false },
+            { "an input inside a display:none parent is not",
+                "<div style='display:none'><input id='t'></div>", false },
+            { "focus() during load on a visible input is allowed", "<input id='t'>", true },
         };
         for (auto const& focus_case : cases) {
             std::system(("rm -rf " + directory + " && mkdir -p " + directory).c_str());
@@ -854,14 +862,21 @@ int main(int argc, char* argv[])
                 "div,button,input,a{display:block;margin:0;padding:0;border:0;width:100px;height:20px;"
                 "background:#00ff00}:focus{background:#ff00ff}"
                 "</style></head><body>" + focus_case.body +
-                "<script>setTimeout(function () { document.getElementById('t').focus(); }, 5);"
-                "</script></body></html>";
+                // The last case focuses during load rather than after a timer, which is what proves the
+                // check does not require a layout node that does not exist yet.
+                + (std::string(focus_case.what).find("during load") != std::string::npos
+                        ? "<script>document.getElementById('t').focus();</script>"
+                        : "<script>setTimeout(function () { document.getElementById('t').focus(); }, 5);</script>")
+                + "</body></html>";
             auto result = run_window(binary, html, "", 3, directory);
             std::string const message = std::string("the focusable run for ") + focus_case.what + " exits cleanly";
             require(result.status == 0, message.c_str());
             int rgb[3] = { 0, 0, 0 };
             require(frame_pixel(directory, 50, 34 + 5, rgb), "the focusable pixel is readable");
-            require(focus_case.focusable ? is_magenta(rgb) : is_green(rgb), focus_case.what);
+            // "Not focusable" is asserted as "not magenta", not as "green": a display:none element
+            // renders nothing, so its pixel is the page background. The first version of this expected
+            // green everywhere and failed on a correct engine.
+            require(focus_case.focusable ? is_magenta(rgb) : !is_magenta(rgb), focus_case.what);
         }
         std::system(("rm -rf " + directory).c_str());
     }
