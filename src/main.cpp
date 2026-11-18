@@ -996,6 +996,31 @@ static bool is_focusable_node(rendering::DomNode const& node)
     if (node.type != rendering::DomNodeType::Element)
         return false;
 
+    // The rendering requirement (upstream: Element::meets_focusable_area_rendering_requirements(),
+    // DOM/Element.cpp:6757 - connected, not a display:none subtree, visibility:visible). Upstream asks
+    // the *style*, so it works before layout; we have no style accessor for an arbitrary node, so this
+    // asks the layout node and refuses only what it can prove is hidden:
+    //
+    //   no layout node  -> allowed. Before the first layout nothing has a box, and a page that calls
+    //                      focus() at load must not be refused. Upstream does not require a box either.
+    //   display: none   -> refused, which is the case this row exists for.
+    //
+    // visibility:hidden is not checked because this engine does not implement the property at all.
+    if (g_current_page) {
+        std::function<rendering::LayoutNode const*(rendering::LayoutNode const&)> find
+            = [&](rendering::LayoutNode const& candidate) -> rendering::LayoutNode const* {
+            if (candidate.dom_node == &node)
+                return &candidate;
+            for (auto const& child : candidate.children)
+                if (auto const* found = find(*child))
+                    return found;
+            return nullptr;
+        };
+        if (auto const* layout = find(g_current_page->layout_root()))
+            if (layout->display == rendering::LayoutDisplay::None)
+                return false;
+    }
+
     // The generic rule, which every element gets.
     if (auto const* tabindex = node.attribute("tabindex")) {
         char* end = nullptr;
