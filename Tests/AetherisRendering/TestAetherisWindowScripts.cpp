@@ -1074,6 +1074,27 @@ int main(int argc, char* argv[])
             "origin is the scheme and host, without the path");
     }
 
+    // `location`'s component setters. Upstream copies the URL, replaces one component and navigates
+    // (HTML/Location.cpp), and the hash setter returns early when the fragment is unchanged.
+    //
+    // Each fixture sets the component once and then reads it back on the next load, so the assertion
+    // is that the navigation happened *and* carried the value.
+    {
+        auto setter_case = [&](std::string const& component, char const* first, char const* second) {
+            auto result = run_window(binary,
+                "<html><head><title>Location setter</title><style>body{margin:0}</style></head><body><script>"
+                "console.log('MARK " + component + " [' + location." + component + " + ']');"
+                "if (!location." + component + ") { setTimeout(function () { location." + component
+                    + " = '" + (std::string(component) == "search" ? "q=1" : "#frag") + "'; }, 5); }"
+                "</script></body></html>", "", 6);
+            require(result.status == 0, "the location-setter run exits cleanly");
+            require(result.output.find(first) != std::string::npos, first);
+            require(result.output.find(second) != std::string::npos, second);
+        };
+        setter_case("search", "MARK search []", "MARK search [?q=1]");
+        setter_case("hash", "MARK hash []", "MARK hash [#frag]");
+    }
+
     // `history.go(delta)`. Upstream: back() and forward() are go(-1) and go(+1), and go(0) reloads
     // the current document (HTML/History.cpp, delta_traverse).
     {
