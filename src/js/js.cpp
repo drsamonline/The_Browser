@@ -691,6 +691,57 @@ static JSValue js_location_search_get(JSContext* context, JSValueConst, int, JSV
     return location_component(context, &UrlParts::search);
 }
 
+// The setters. Upstream copies the URL, replaces one component and navigates
+// (HTML/Location.cpp: set_pathname, set_search, set_hash). The hash setter returns early when the
+// fragment is unchanged, which is the one case that must not reload the page.
+static std::string rebuild_url(std::string const& url, std::string const& path,
+    std::string const& search, std::string const& hash)
+{
+    auto const parts = split_url(url);
+    std::string out = parts.origin;
+    out += path.empty() || path.front() != '/' ? "/" + path : path;
+    if (!search.empty())
+        out += search.front() == '?' ? search : "?" + search;
+    if (!hash.empty())
+        out += hash.front() == '#' ? hash : "#" + hash;
+    return out;
+}
+
+static JSValue js_location_pathname_set(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc < 1 || !g_current_url || !g_request_navigation)
+        return JS_UNDEFINED;
+    auto const parts = split_url(g_current_url());
+    g_request_navigation(rebuild_url(g_current_url(), to_string(context, argv[0]), parts.search, parts.hash), false, false);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_location_search_set(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc < 1 || !g_current_url || !g_request_navigation)
+        return JS_UNDEFINED;
+    auto const parts = split_url(g_current_url());
+    g_request_navigation(rebuild_url(g_current_url(), parts.path, to_string(context, argv[0]), parts.hash), false, false);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_location_hash_set(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc < 1 || !g_current_url || !g_request_navigation)
+        return JS_UNDEFINED;
+    auto const parts = split_url(g_current_url());
+    auto value = to_string(context, argv[0]);
+    // A single leading "#" is stripped, and an unchanged fragment does not navigate.
+    if (!value.empty() && value.front() == '#')
+        value = value.substr(1);
+    std::string const current = parts.hash.empty() ? std::string() : parts.hash.substr(1);
+    if (value == current)
+        return JS_UNDEFINED;
+    g_request_navigation(rebuild_url(g_current_url(), parts.path, parts.search,
+        value.empty() ? std::string() : "#" + value), false, false);
+    return JS_UNDEFINED;
+}
+
 static JSValue js_location_hash_get(JSContext* context, JSValueConst, int, JSValueConst*)
 {
     return location_component(context, &UrlParts::hash);
@@ -812,14 +863,21 @@ void Interpreter::setup_globals()
     define_function(m_context, location, "replace", js_location_replace);
     // The read-only components. Setters are not built: upstream has them, and each one re-parses the
     // whole URL and navigates, which is row 1g5's other half.
-    for (auto const& [name, getter] : std::initializer_list<std::pair<char const*, JSCFunction*>> {
-             { "origin", js_location_origin_get },
-             { "pathname", js_location_pathname_get },
-             { "search", js_location_search_get },
-             { "hash", js_location_hash_get } }) {
-        JSAtom atom = JS_NewAtom(m_context, name);
-        JS_DefinePropertyGetSet(m_context, location, atom, JS_NewCFunction(m_context, getter, name, 0),
-            JS_UNDEFINED, 0);
+    // `origin` is read-only; the three components are settable, each navigating.
+    struct LocationComponent {
+        char const* name;
+        JSCFunction* getter;
+        JSCFunction* setter;
+    };
+    for (auto const& component : std::initializer_list<LocationComponent> {
+             { "origin", js_location_origin_get, nullptr },
+             { "pathname", js_location_pathname_get, js_location_pathname_set },
+             { "search", js_location_search_get, js_location_search_set },
+             { "hash", js_location_hash_get, js_location_hash_set } }) {
+        JSAtom atom = JS_NewAtom(m_context, component.name);
+        JS_DefinePropertyGetSet(m_context, location, atom,
+            JS_NewCFunction(m_context, component.getter, component.name, 0),
+            component.setter ? JS_NewCFunction(m_context, component.setter, component.name, 1) : JS_UNDEFINED, 0);
         JS_FreeAtom(m_context, atom);
     }
     JS_SetPropertyStr(m_context, global, "location", location);
