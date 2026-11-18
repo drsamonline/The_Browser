@@ -38,7 +38,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1g3 | `history`, `location.replace()`, `location.pathname`/`search`/`hash`, dot-segment URL resolution | `[ ]` | not built; upstream's `HTML/Location.idl` has all of them |
 | 1f4 | `focus()` refuses a non-focusable target | `[x]` | `+` the commit before this; 10 cases measured, 7 in the suite |
 | 1f5 | Rendering requirement: `display:none` is not focusable | `[x]` | `+` the commit before this; 3 cases incl. focus() at load |
-| 1f7 | `visibility: hidden` must not be focusable | `[ ]` | the property is not implemented at all, so the check cannot exist |
+| 1f7 | `visibility` — inherited, per-box paint, focusability | `[x]` | `+` the commit before this; 4 cases |
 | 1f6 | A click focuses the nearest focusable ancestor, or nothing | `[x]` | `+` the commit before this; 6 cases |
 | 1h | `:has(+ .x)`, `:has(~ .x)` | `[x]` | `+` the commit before this; 3 cases + the mutation |
 | 1e3 | `sessionStorage` | `[ ]` | same interface, scoped to the tab |

@@ -33,6 +33,7 @@ are at the bottom.
 | CSS custom properties `var()` | done, 2026-11-17 — inherited, fallbacks, chains, cycle guard | `substitute_vars()` in `style.cpp` |
 | Media queries | done | `css_parser.cpp` |
 | `transform` (translate/scale) | done | paint pass |
+| `visibility` | done, 2026-11-18 — inherited, per-box, `collapse` as `hidden` | `RenderTree::emit()` |
 
 ## Layout
 
