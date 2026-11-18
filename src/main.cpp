@@ -388,7 +388,9 @@ DomHost* g_dom_host { nullptr };
 
 // Resolves an href against the page it was found on. Absolute stays absolute, a leading slash takes the
 // scheme and host, anything else replaces the last path segment. Not RFC 3986 - no dot-segment removal,
-// no query merging - which is enough for a link and stated here rather than implied.
+// no query merging - which is enough for a link and stated here rather than implied. A dot-segment
+// implementation was written on 2026-11-18, hung the browser on `../up`, and was reverted: see
+// docs/CHECKLIST.md row 1g5.
 static std::string resolve_url(std::string const& base, std::string const& href)
 {
     if (href.rfind("http://", 0) == 0 || href.rfind("https://", 0) == 0)
