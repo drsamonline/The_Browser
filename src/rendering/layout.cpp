@@ -5,6 +5,7 @@
 #include "text_layout.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <functional>
 
@@ -289,6 +290,31 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
         if (max_height >= 0)
             node.box.content.height = std::min(node.box.content.height, max_height);
 
+        // An inline-level box is as wide as its content, not as wide as its container. Upstream gets
+        // this from the inline formatting context, where an inline box's inline size is the extent of
+        // what it placed (Rust/src/layout/inline_formatting_context.rs: `inline_size = glyph_end(last)
+        // - origin`). Here the children were laid out against `content_width`, which for an inline box
+        // was the whole remaining line - so every <span> filled the line and its siblings wrapped.
+        //
+        // Shrink-to-fit is the standard two-pass shape: the children are laid out against the
+        // available width (already done above), and the box then takes the extent they produced.
+        if (specified_width < 0
+            && (node.display == LayoutDisplay::Inline || node.display == LayoutDisplay::InlineBlock)) {
+            float extent = node.box.content.x;
+            for (auto const& fragment : node.text_fragments)
+                extent = std::max(extent, fragment.rect.x + fragment.rect.width);
+            for (auto const& child : node.children) {
+                if (child->display == LayoutDisplay::None || is_positioned(*child))
+                    continue;
+                extent = std::max(extent, child->rect.x + child->rect.width);
+            }
+            float const fitted = std::max(0.0f, extent - node.box.content.x);
+            if (fitted > 0 && fitted < content_width) {
+                content_width = fitted;
+                node.box.content.width = fitted;
+            }
+        }
+
         layout_absolute_children(node, content_width);
     }
 
@@ -336,6 +362,13 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
                     max_bottom = std::max(max_bottom, fragment.rect.y + fragment.rect.height);
                 }
                 child->box.content.height = max_bottom - child->box.content.y;
+                // The box is the text's extent, not the remaining line width. Giving it the whole
+                // line made every inline ancestor's shrink-to-fit see a full-width child, so the
+                // ancestor kept the line's width and its siblings wrapped.
+                float text_extent = child->box.content.x;
+                for (auto const& fragment : child->text_fragments)
+                    text_extent = std::max(text_extent, fragment.rect.x + fragment.rect.width);
+                child->box.content.width = std::max(0.0f, text_extent - child->box.content.x);
                 child->rect = { child->box.content.x, child->box.content.y, child->box.content.width, child->box.content.height };
             }
             continue;
