@@ -1,5 +1,7 @@
 #include "resource_loader.hpp"
 
+#include <cstdio>
+#include <cstdlib>
 #include <regex>
 
 namespace aetheris::rendering {
@@ -83,7 +85,9 @@ std::vector<Url> ResourceLoader::discover_dependencies(ResourceData const& docum
     std::regex pattern(R"((?:href|src)\s*=\s*[\"']([^\"']+)[\"'])", std::regex::icase);
     for (std::sregex_iterator it(text.begin(), text.end(), pattern), end; it != end; ++it) {
         auto raw = (*it)[1].str();
+        if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "STYLE dep raw=[%s]\n", raw.c_str());
         auto resolved = Url::resolve(base_url, raw);
+        if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "STYLE dep resolved=[%s]\n", resolved.serialized().c_str());
         if (resolved.is_valid())
             urls.push_back(std::move(resolved));
     }

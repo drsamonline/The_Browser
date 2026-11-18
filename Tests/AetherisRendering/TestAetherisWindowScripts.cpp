@@ -1074,6 +1074,27 @@ int main(int argc, char* argv[])
             "origin is the scheme and host, without the path");
     }
 
+    // `history.go(delta)`. Upstream: back() and forward() are go(-1) and go(+1), and go(0) reloads
+    // the current document (HTML/History.cpp, delta_traverse).
+    {
+        auto result = run_window(binary,
+            "<html><head><title>Go</title><style>body{margin:0}</style></head><body><script>"
+            "console.log('MARK a len ' + history.length);"
+            "setTimeout(function () { location.href = '/b'; }, 5);"
+            "</script></body></html>",
+            "", 8, {},
+            "<html><head><title>Go B</title><style>body{margin:0}</style></head><body><script>"
+            "console.log('MARK b len ' + history.length);"
+            "if (!window.__reloaded) { window.__reloaded = true; setTimeout(function () { history.go(0); }, 5); }"
+            "</script></body></html>");
+        require(result.status == 0, "the history.go run exits cleanly");
+        // go(0) reloads: the same document is fetched and its script runs a second time.
+        auto first = result.output.find("MARK b len 2");
+        require(first != std::string::npos, "the second document is two entries deep");
+        require(result.output.find("MARK b len 2", first + 1) != std::string::npos,
+            "history.go(0) reloads the current document");
+    }
+
     // Session history: `history.length` counts entries, and `location.replace()` overwrites the current
     // one instead of adding. Upstream: HTML/History.idl for the interface, and replace() navigates with
     // replacement enabled (HTML/Location.cpp).
