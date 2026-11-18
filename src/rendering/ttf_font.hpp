@@ -30,6 +30,10 @@ class TtfFont {
 public:
     bool load(std::vector<uint8_t> const& data);
     bool loaded() const { return !m_data.empty(); }
+
+    // The font file itself. A shaper needs the tables this reader deliberately does not parse
+    // (GSUB/GPOS), and handing it the bytes is cheaper than teaching this class to parse them twice.
+    std::vector<uint8_t> const& data() const { return m_data; }
     std::string const& error() const { return m_error; }
 
     uint16_t units_per_em() const { return m_units_per_em; }

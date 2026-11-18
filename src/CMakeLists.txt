@@ -34,6 +34,7 @@ add_library(AetherisRendering STATIC
     rendering/image.cpp
     rendering/font.cpp
     rendering/bitmap_font.cpp
+    rendering/shaper.cpp
     rendering/png.cpp
     rendering/jpeg.cpp
     rendering/gif.cpp
@@ -56,6 +57,37 @@ add_library(AetherisRendering STATIC
 
 # Consumers (including the Tests/AetherisRendering suite) include these headers
 # as <name.hpp>, so the directory must be an INTERFACE include dir as well.
+# HarfBuzz is optional and fetched, not committed: without third_party/harfbuzz the engine builds
+# exactly as before and text is measured one code point at a time. With it, shaping is available.
+set(AETHERIS_HARFBUZZ_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/harfbuzz)
+if(EXISTS ${AETHERIS_HARFBUZZ_DIR}/CMakeLists.txt AND NOT DEFINED AETHERIS_NO_HARFBUZZ)
+    set(HB_BUILD_SUBSET OFF CACHE BOOL "" FORCE)
+    set(HB_BUILD_RASTER OFF CACHE BOOL "" FORCE)
+    set(HB_BUILD_VECTOR OFF CACHE BOOL "" FORCE)
+    set(HB_BUILD_GPU OFF CACHE BOOL "" FORCE)
+    set(HB_BUILD_UTILS OFF CACHE BOOL "" FORCE)
+    set(HB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(HB_HAVE_FREETYPE OFF CACHE BOOL "" FORCE)
+    set(HB_HAVE_GLIB OFF CACHE BOOL "" FORCE)
+    set(HB_HAVE_ICU OFF CACHE BOOL "" FORCE)
+    set(HB_HAVE_CAIRO OFF CACHE BOOL "" FORCE)
+    set(HB_HAVE_GRAPHITE2 OFF CACHE BOOL "" FORCE)
+    set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
+    add_subdirectory(${AETHERIS_HARFBUZZ_DIR} ${CMAKE_BINARY_DIR}/harfbuzz EXCLUDE_FROM_ALL)
+    # This project builds with -Werror -Wcast-qual, and vendored HarfBuzz casts away const in its own
+    # templates. Silencing the vendored target is the only correct fix: the alternative is patching
+    # third-party source we do not own, which would then differ from the upstream we read.
+    # -w for warnings, and -fstrict-flex-arrays=0 because this project builds with
+    # -fstrict-flex-arrays=2: HarfBuzz's OpenType tables end in a `[1]` trailing array, which that flag
+    # turns into a real one-element array, so HarfBuzz's own table lookup panics on a valid font.
+    target_compile_options(harfbuzz PRIVATE -w -fstrict-flex-arrays=0)
+    target_link_libraries(AetherisRendering PRIVATE harfbuzz)
+    target_compile_definitions(AetherisRendering PRIVATE AETHERIS_HAVE_HARFBUZZ=1)
+    message(STATUS "Aetheris: shaping with HarfBuzz from ${AETHERIS_HARFBUZZ_DIR}")
+else()
+    message(STATUS "Aetheris: no HarfBuzz (run tools/fetch-harfbuzz.sh); text is measured per code point")
+endif()
+
 target_include_directories(AetherisRendering
     PUBLIC
         # ${CMAKE_CURRENT_SOURCE_DIR} lets consumers include headers as

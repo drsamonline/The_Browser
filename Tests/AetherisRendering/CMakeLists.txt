@@ -10,6 +10,12 @@ add_executable(TestAetherisDomBuilder
 target_link_libraries(TestAetherisDomBuilder PRIVATE AetherisRendering)
 add_test(NAME AetherisDomBuilder COMMAND TestAetherisDomBuilder)
 
+add_executable(TestAetherisShaping
+    TestShaping.cpp
+)
+target_link_libraries(TestAetherisShaping PRIVATE AetherisRendering)
+add_test(NAME AetherisShaping COMMAND TestAetherisShaping)
+
 add_executable(TestAetherisCss
     TestCss.cpp
 )
