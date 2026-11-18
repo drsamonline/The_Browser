@@ -1,3 +1,4 @@
+#include <url.hpp>
 #include <url_path.hpp>
 
 #include <cstdlib>
@@ -35,6 +36,23 @@ int main()
     };
     for (auto const& test : cases)
         require(remove_dot_segments(test.path) == test.expected, test.what);
+
+    // Url::resolve with a ".." that cannot go above the root. This hung the browser: `pos - 1`
+    // underflowed when the ".." was the first segment, `rfind` then searched from the end, and the
+    // replace was a no-op - an infinite loop on base "/up" with reference "../up".
+    {
+        auto base = Url::parse("http://example.com/up");
+        require(Url::resolve(base, "../up").serialized() == "http://example.com/up",
+            "a dot dot at the root is dropped, not looped on");
+        auto deep = Url::parse("http://example.com/deep/dir/page");
+        require(Url::resolve(deep, "../up").serialized() == "http://example.com/deep/up",
+            "a dot dot pops one segment");
+        require(Url::resolve(deep, "../../up").serialized() == "http://example.com/up",
+            "two dot dots pop two");
+        auto root = Url::parse("http://example.com/");
+        require(Url::resolve(root, "../up").serialized() == "http://example.com/up",
+            "a dot dot from the root resolves at the root");
+    }
 
     std::cout << "url: " << (sizeof(cases) / sizeof(cases[0])) << " cases pass\n";
     return 0;
