@@ -37,7 +37,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 1g2 | Realm isolation on navigation (old globals and listeners survive) | `[ ]` | deliberate limit of keeping the interpreter alive |
 | 1g3 | `history.length`/`back()`/`forward()`, `location.replace()` | `[x]` | `+` the commit before this; replace keeps the length at 1 where a push would give 2 |
 | 1g4 | `history.go(delta)`, `pushState`/`replaceState`, `history.state` | `[ ]` | not built |
-| 1g5 | `location.pathname`/`search`/`hash`/`origin`, dot-segment URL resolution | `[ ]` | not built; upstream's `HTML/Location.idl` has all of them |
+| 1g5 | `location.origin`/`pathname`/`search`/`hash` (getters) | `[x]` | `+` the commit before this; four URL shapes |
+| 1g6 | Dot-segment URL resolution | `[ ]` | **reproduction**: `location.href = '../up'` from `/deep/dir/page` hangs the process with no output. A `remove_dot_segments()` + rewritten `resolve_url()` did exactly that and was reverted. Plain navigation and the four URL shapes still work, so the fault is in that resolver |
+| 1g7 | `location` setters (`pathname = ...`, `search = ...`) | `[ ]` | not built; upstream re-parses and navigates for each |
 | 1f4 | `focus()` refuses a non-focusable target | `[x]` | `+` the commit before this; 10 cases measured, 7 in the suite |
 | 1f5 | Rendering requirement: `display:none` is not focusable | `[x]` | `+` the commit before this; 3 cases incl. focus() at load |
 | 1f7 | `visibility` — inherited, per-box paint, focusability | `[x]` | `+` the commit before this; 4 cases |
