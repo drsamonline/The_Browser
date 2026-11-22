@@ -10,6 +10,7 @@
 #include "bidi.hpp"
 #include "embedded_font.inc"
 #include <shaper.hpp>
+#include <text_layout.hpp>
 #include <ttf_font.hpp>
 
 #include <cstdlib>
@@ -40,6 +41,27 @@ static std::string describe(std::string_view text, std::vector<DirectionalRun> c
         out += ']';
     }
     return out;
+}
+
+// The visual order, written as the items themselves, so a failure reads like the line.
+static std::string describe_order(std::vector<std::string_view> const& items, std::vector<std::size_t> const& order)
+{
+    std::string out;
+    for (auto index : order) {
+        if (!out.empty())
+            out += '|';
+        out += items[index];
+    }
+    return out;
+}
+
+static void require_order(std::vector<std::string_view> const& items, bool paragraph_right_to_left, char const* expected, char const* message)
+{
+    auto const actual = describe_order(items, visual_order(items, paragraph_right_to_left));
+    if (actual != expected) {
+        std::cerr << "FAILED: " << message << "\n  expected: " << expected << "\n  actual:   " << actual << '\n';
+        std::exit(1);
+    }
 }
 
 static void require_runs(std::string_view text, char const* expected, char const* message)
@@ -80,6 +102,38 @@ int main()
     require(split_directional_runs("\xd9\xa1\xd9\xa2\xd9\xa3").empty(),
         "a string of Arabic-Indic digits alone needs no split either");
 
+// Level 2: the order the line's words are *placed* in. The shaper gets each word right; this is what
+    // makes the words themselves land in the order a reader expects.
+    {
+        std::vector<std::string_view> const arabic_pair { "\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85", " ",
+            "\xd8\xb9\xd9\x84\xd9\x8a\xd9\x83\xd9\x85" };
+        // Two Arabic words: the first one ends up on the right, whichever way the paragraph reads.
+        require_order(arabic_pair, false, "\xd8\xb9\xd9\x84\xd9\x8a\xd9\x83\xd9\x85| |\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85",
+            "a Latin paragraph places the first Arabic word on the right of the RTL run");
+        require_order(arabic_pair, true, "\xd8\xb9\xd9\x84\xd9\x8a\xd9\x83\xd9\x85| |\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85",
+            "a right-to-left paragraph does the same");
+
+        std::vector<std::string_view> const mixed { "abc", " ", "\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85", " ", "xyz" };
+        require_order(mixed, false, "abc| |\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85| |xyz",
+            "one Arabic word between Latin words keeps its place");
+        require_order(mixed, true, "xyz| |\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85| |abc",
+            "in a right-to-left paragraph the Latin ends swap around it");
+
+        std::vector<std::string_view> const latin { "abc", " ", "xyz" };
+        require_order(latin, false, "abc| |xyz", "a Latin line is untouched");
+        require_order(latin, true, "abc| |xyz",
+            "an all-Latin line in a right-to-left paragraph is reversed twice and comes back as it was");
+
+        std::vector<std::string_view> const with_number { "\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85", " ", "123" };
+        require_order(with_number, false, "\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85| |123",
+            "in a Latin paragraph the digits follow the Arabic");
+        require_order(with_number, true, "123| |\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85",
+            "in a right-to-left paragraph the digits move to the left, in their own order");
+
+        std::vector<std::string_view> const ascii_only { "hello" };
+        require_order(ascii_only, false, "hello", "a single Latin word needs no reordering");
+    }
+
     // Shaping. The embedded font is a Latin subset, so Arabic comes back as .notdef glyphs - but the
     // order of the clusters is the direction, and that is what a layout consumes.
     TtfFont font;
@@ -111,6 +165,21 @@ int main()
     auto const arabic_only = shape_run(font.data(), "\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85", 16.0f, font.identity());
     require(!arabic_only.empty() && arabic_only.front().cluster > arabic_only.back().cluster,
         "a right-to-left string shapes in descending cluster order");
+
+// The layout integration, which is the point of level 2: the fragments a line produces are the order
+    // paint draws them in, so the first logical word has to be the *last* fragment on the line.
+    {
+        StyleProperties style;
+        style.set("font-size", "16px");
+        auto const fragments = TextLayout::layout(
+            "\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85 \xd8\xb9\xd9\x84\xd9\x8a\xd9\x83\xd9\x85", 0, 0, 200, style);
+        require(fragments.size() == 2, "two Arabic words produce two fragments");
+        require(fragments[0].text == "\xd8\xb9\xd9\x84\xd9\x8a\xd9\x83\xd9\x85",
+            "the second logical word is the first fragment");
+        require(fragments[1].text == "\xd8\xb3\xd9\x84\xd8\xa7\xd9\x85",
+            "and the first logical word is the last fragment");
+        require(fragments[0].rect.x < fragments[1].rect.x, "fragments come back in the order they are drawn");
+    }
 
     std::cout << "bidi: " << describe("abc \xd8\xb3\xd9\x84\xd8\xa7\xd9\x85 xyz", split_directional_runs("abc \xd8\xb3\xd9\x84\xd8\xa7\xd9\x85 xyz"))
               << ", and the Arabic run shapes in visual order\n";

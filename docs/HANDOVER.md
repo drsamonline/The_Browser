@@ -53,6 +53,11 @@ All credited in `CREDITS.md`.
   so Arabic joins and ligates instead of coming out in isolated forms. A line's runs are still painted
   in logical order — row **2e2** carries the rest, and the checklist entry says what it looks like
   from outside (a multi-word RTL line with its words reversed). Suite 65/65.
+- **Row 2e2 closed** (third batch): bidi level 2. `visual_order()` gives every fragment on a line a level
+  and `TextLayout::layout` places them in that order, so an Arabic line's words land where a reader
+  expects them; `direction: rtl` now reaches text through the cascade (`direction` added to the inherited
+  list, as `CSS/Properties.json` says). Rows 2e3 (`text-align: start`/`end`) and 2h (layout measures per
+  code point, paint draws shaped glyphs) added from what this batch exposed.
 
 ## 2. Current state
 

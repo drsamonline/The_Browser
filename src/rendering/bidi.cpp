@@ -2,6 +2,9 @@
 
 #include "font.hpp" // utf8_next()
 
+#include <algorithm>
+#include <cstddef>
+
 namespace aetheris::rendering {
 
 namespace {
@@ -158,6 +161,165 @@ std::vector<DirectionalRun> split_directional_runs(std::string_view text)
         }
     }
     return runs;
+}
+
+} // namespace aetheris::rendering
+
+namespace aetheris::rendering {
+
+namespace {
+
+// What an item is, before its level is decided. `Number` and `Neutral` have no direction of their own:
+// the first is displayed left to right wherever it sits, the second takes its direction from the strong
+// characters around it.
+enum class ItemKind {
+    RightToLeft,
+    LeftToRight,
+    Number,
+    Neutral,
+};
+
+ItemKind kind_of(std::string_view item)
+{
+    bool right_to_left = false;
+    bool left_to_right = false;
+    bool number = false;
+    for (std::size_t index = 0; index < item.size();) {
+        switch (bidi_class(utf8_next(item, index))) {
+        case BidiClass::RightToLeft:
+        case BidiClass::ArabicLetter:
+            right_to_left = true;
+            break;
+        case BidiClass::LeftToRight:
+            left_to_right = true;
+            break;
+        case BidiClass::Number:
+            number = true;
+            break;
+        case BidiClass::Neutral:
+            break;
+        }
+    }
+    // A fragment is one direction or it is not handled: "abcسلام" as a single item is right to left,
+    // because one right-to-left character makes the run right to left. Splitting a fragment would need
+    // layout to emit two fragments, which is what split_directional_runs() does inside the shaper.
+    if (right_to_left)
+        return ItemKind::RightToLeft;
+    if (left_to_right)
+        return ItemKind::LeftToRight;
+    if (number)
+        return ItemKind::Number;
+    return ItemKind::Neutral;
+}
+
+} // namespace
+
+std::vector<std::size_t> visual_order(std::vector<std::string_view> const& items, bool paragraph_right_to_left)
+{
+    std::vector<std::size_t> order(items.size());
+    for (std::size_t i = 0; i < order.size(); ++i)
+        order[i] = i;
+    // The gate, per line rather than per string: a Latin line's items are all ASCII and it leaves here
+    // without a table lookup or an allocation.
+    bool any_right_to_left = false;
+    for (auto const& item : items) {
+        if (may_require_bidi(item)) {
+            any_right_to_left = true;
+            break;
+        }
+    }
+    if (!any_right_to_left)
+        return order;
+
+    std::vector<ItemKind> kinds;
+    kinds.reserve(items.size());
+    for (auto const& item : items)
+        kinds.push_back(kind_of(item));
+
+    // The nearest strong direction before each item, which is what the weak types take their level
+    // from (UAX#9 W rules, collapsed to "a number follows the direction of the text it sits in").
+    int const paragraph_direction = paragraph_right_to_left ? 1 : 0;
+    std::vector<int> strong_before(items.size(), paragraph_direction);
+    int running = paragraph_direction;
+    for (std::size_t i = 0; i < kinds.size(); ++i) {
+        strong_before[i] = running;
+        if (kinds[i] == ItemKind::RightToLeft)
+            running = 1;
+        else if (kinds[i] == ItemKind::LeftToRight)
+            running = 0;
+    }
+
+    // Directions first, levels second: a left-to-right item is level 0 in a left-to-right paragraph and
+    // level 2 in a right-to-left one (UAX#9 I2), a right-to-left item is level 1 in both.
+    std::vector<bool> right_to_left(items.size(), false);
+    for (std::size_t i = 0; i < kinds.size(); ++i) {
+        switch (kinds[i]) {
+        case ItemKind::RightToLeft:
+            right_to_left[i] = true;
+            break;
+        case ItemKind::LeftToRight:
+            right_to_left[i] = false;
+            break;
+        case ItemKind::Number:
+            right_to_left[i] = false;
+            break;
+        case ItemKind::Neutral: {
+            // N1: a neutral between two strong characters of one direction takes it. N2: anything else
+            // takes the paragraph direction.
+            std::size_t end = i;
+            while (end < kinds.size() && kinds[end] == ItemKind::Neutral)
+                ++end;
+            int after = paragraph_direction;
+            for (std::size_t j = end; j < kinds.size(); ++j) {
+                if (kinds[j] == ItemKind::RightToLeft) {
+                    after = 1;
+                    break;
+                }
+                if (kinds[j] == ItemKind::LeftToRight) {
+                    after = 0;
+                    break;
+                }
+            }
+            // N1 when both sides agree, N2 - the paragraph direction - when they do not. Collapsing N2 to
+            // "left to right" is wrong for a right-to-left paragraph, and the test caught exactly that:
+            // the two spaces of "abc سلام xyz" went to the ends of the line instead of staying with
+            // their words.
+            bool resolved = paragraph_right_to_left;
+            if (strong_before[i] == 1 && after == 1)
+                resolved = true;
+            else if (strong_before[i] == 0 && after == 0)
+                resolved = false;
+            for (std::size_t j = i; j < end; ++j)
+                right_to_left[j] = resolved;
+            i = end - 1;
+            break;
+        }
+        }
+    }
+
+    std::vector<int> levels(items.size(), 0);
+    int highest = 0;
+    for (std::size_t i = 0; i < right_to_left.size(); ++i) {
+        levels[i] = right_to_left[i] ? 1 : (paragraph_right_to_left ? 2 : 0);
+        highest = std::max(highest, levels[i]);
+    }
+
+    // L2: from the highest level down to the lowest odd level, reverse every contiguous run at or above
+    // it. With levels 0..2 that is at most two passes.
+    for (int level = highest; level >= 1; --level) {
+        std::size_t i = 0;
+        while (i < order.size()) {
+            if (levels[order[i]] < level) {
+                ++i;
+                continue;
+            }
+            std::size_t begin = i;
+            while (i < order.size() && levels[order[i]] >= level)
+                ++i;
+            std::reverse(order.begin() + static_cast<std::ptrdiff_t>(begin), order.begin() + static_cast<std::ptrdiff_t>(i));
+        }
+    }
+    return order;
 }
 
 } // namespace aetheris::rendering

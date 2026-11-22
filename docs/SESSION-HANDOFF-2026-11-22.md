@@ -148,3 +148,60 @@ UAX#9 level 2, which needs the line's fragments and a paragraph direction, not a
 2. **A pixel measurement needs a reference.** Ink widths of each word rendered alone turned an ambiguous
    screenshot into a number that named the word on the left.
 3. **Check the CLI can see the input before blaming the engine.** `file://` was never registered.
+
+---
+
+# Third batch, same day — row 2e2: bidi level 2
+
+Suite **65 tests, 65/65, twice**, 125.97 s and 130.42 s at `ctest -j2`. No new test binary: the level-2
+cases went into `AetherisBidi`, which is where the level-1 cases already were.
+
+## 12. What shipped
+
+| what | where |
+| --- | --- |
+| `visual_order()`: levels 0/1/2 per fragment, N1/N2 for neutrals, numbers level 2 inside RTL, then UAX#9 L2 | `src/rendering/bidi.cpp` |
+| `TextLayout::layout` rewritten from one minified line into a readable function that places fragments in visual order; LTR behaviour identical | `src/rendering/text_layout.cpp` |
+| `direction` added to the inherited properties, so a text node sees its block's `direction: rtl` | `src/rendering/style.cpp` |
+| Six order assertions plus the fragment order a line returns | `Tests/AetherisRendering/TestBidi.cpp` |
+
+## 13. Numbers that were measured
+
+| case | before | after |
+| --- | --- | --- |
+| "سلام عليكم" (Latin paragraph) | ink groups 30 px left, 37 px right — first word on the left | **37 px left, 30 px right** — first word on the right |
+| "عليكم سلام" | same as above (the two were indistinguishable) | the mirror of it |
+| "abc سلام xyz", `direction: rtl` | identical to the LTR paragraph | "xyz سلام abc" — the Latin ends swap out |
+| "سلام 123", `direction: rtl` | "سلام 123" | "123 سلام", digits in their own order |
+| Latin line in an RTL paragraph | — | unchanged: reversed twice by L2 and back |
+
+## 14. The errors, and what each cost
+
+| first reading | what was true | what settled it |
+| --- | --- | --- |
+| "N2 means the neutral is left to right" | N2 means the *paragraph* direction; in an RTL paragraph a neutral is RTL | the test failed with both spaces at the ends of the line: `|xyz|سلام|abc| ` |
+| "`direction: rtl` does not work" | it was never reaching the text node: `direction` is inherited in CSS and was missing from the inheritance list | dumping every node's resolved `direction` showed `-` everywhere |
+| "the page's `<style>` is applied by `RenderDocument::create()`" | it takes the author CSS as an argument; only the browser path collects `<style>` (`src/main.cpp:1858`) | the render came out at 16 px when the page asked for 28 px |
+| "the class selector is broken" | it was fine; the sheet was never passed | passing the CSS explicitly made `.rtl` work |
+
+Three of those four were the harness, not the engine. The habit that caught them: print the resolved
+value rather than infer it from the picture.
+
+## 15. Open work, in the order I would take it
+
+| row | item | why here |
+| --- | --- | --- |
+| 2h | layout measures per code point, paint draws shaped glyphs | the fragment box is the pre-shaping width, so Arabic text is placed by one metric and drawn by another (سلام: 60 px against 57.5 px) |
+| 2e3 | `text-align: start`/`end` follow `direction` | they are treated as left/right, which is wrong in an RTL block |
+| 2f | line breaking by cluster | unchanged |
+| 3a6 | `content` as a real list type, with alt text | unchanged |
+| 1g4b | `pushState`/`replaceState`/`history.state` | unchanged |
+
+## 16. What this batch would do differently
+
+1. **Check the harness passes the input the page assumes.** Two hours of "the engine ignores `direction`"
+   was the harness passing an empty stylesheet.
+2. **Write the assertion before the render.** The order assertions named the failure in one line; the
+   pixel comparison needed a reference render per word to say anything.
+3. **A minified function is a wall, not a shortcut.** `TextLayout::layout` was one line of 1,900
+   characters; rewriting it readably was most of the diff and none of the risk.
