@@ -35,6 +35,7 @@ add_library(AetherisRendering STATIC
     rendering/font.cpp
     rendering/bitmap_font.cpp
     rendering/shaper.cpp
+    rendering/bidi.cpp
     rendering/png.cpp
     rendering/jpeg.cpp
     rendering/gif.cpp

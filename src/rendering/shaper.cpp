@@ -1,8 +1,11 @@
 #include "shaper.hpp"
 
+#include "bidi.hpp"
+
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -96,6 +99,37 @@ uint32_t bits_of(float value)
     return bits;
 }
 
+// Shapes one run into `out`. Clusters stay byte offsets into the whole text because the buffer is told
+// the item's offset within it: a caller that stitches runs together still sees one coordinate space.
+void shape_into(hb_font_t* font, std::string_view text, std::size_t begin, std::size_t length,
+    std::optional<hb_direction_t> direction, std::vector<ShapedGlyph>& out)
+{
+    hb_buffer_t* buffer = hb_buffer_create();
+    hb_buffer_add_utf8(buffer, text.data(), static_cast<int>(text.size()), static_cast<unsigned>(begin),
+        static_cast<int>(length));
+    // A forced direction wins: hb_buffer_guess_segment_properties() only fills in what is unset, so
+    // setting the direction first is how a run says which way it reads. It still supplies the script.
+    if (direction)
+        hb_buffer_set_direction(buffer, *direction);
+    hb_buffer_guess_segment_properties(buffer);
+    hb_shape(font, buffer, nullptr, 0);
+
+    unsigned count = hb_buffer_get_length(buffer);
+    hb_glyph_info_t* info = hb_buffer_get_glyph_infos(buffer, nullptr);
+    hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buffer, nullptr);
+    out.reserve(out.size() + count);
+    for (unsigned i = 0; i < count; ++i) {
+        out.push_back(ShapedGlyph {
+            info[i].codepoint,
+            info[i].cluster,
+            static_cast<float>(positions[i].x_advance) / 64.0f,
+            static_cast<float>(positions[i].x_offset) / 64.0f,
+            static_cast<float>(-positions[i].y_offset) / 64.0f,
+        });
+    }
+    hb_buffer_destroy(buffer);
+}
+
 } // namespace
 
 bool shaping_available() { return true; }
@@ -139,27 +173,19 @@ std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const& font_data, std::s
         return {};
     }
 
-    hb_buffer_t* buffer = hb_buffer_create();
-    hb_buffer_add_utf8(buffer, text.data(), static_cast<int>(text.size()), 0, static_cast<int>(text.size()));
-    hb_buffer_guess_segment_properties(buffer);
-    hb_shape(font, buffer, nullptr, 0);
-
-    unsigned count = hb_buffer_get_length(buffer);
-    hb_glyph_info_t* info = hb_buffer_get_glyph_infos(buffer, nullptr);
-    hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buffer, nullptr);
-
+    // One buffer per directional run, concatenated in logical order. A string with no right-to-left
+    // code point takes the single-run path it always took; `may_require_bidi` is what makes that free
+    // for Latin text, and it is checked here rather than by the caller so measure and paint cannot
+    // disagree about it.
     std::vector<ShapedGlyph> glyphs;
-    glyphs.reserve(count);
-    for (unsigned i = 0; i < count; ++i) {
-        glyphs.push_back(ShapedGlyph {
-            info[i].codepoint,
-            info[i].cluster,
-            static_cast<float>(positions[i].x_advance) / 64.0f,
-            static_cast<float>(positions[i].x_offset) / 64.0f,
-            static_cast<float>(-positions[i].y_offset) / 64.0f,
-        });
+    auto const runs = split_directional_runs(text);
+    if (runs.empty()) {
+        shape_into(font, text, 0, text.size(), std::nullopt, glyphs);
+    } else {
+        for (auto const& run : runs)
+            shape_into(font, text, run.begin, run.end - run.begin,
+                run.right_to_left ? HB_DIRECTION_RTL : HB_DIRECTION_LTR, glyphs);
     }
-    hb_buffer_destroy(buffer);
 
     if (!cache) {
         hb_font_destroy(font);

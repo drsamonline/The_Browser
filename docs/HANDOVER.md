@@ -28,7 +28,7 @@ a Chromium/Gecko/WebKit wrapper.
 | Licence | MIT |
 | Language | C++20 |
 | Size profile | ~2.5 MB stripped (report-only, never enforced) |
-| Tests | 64 CTest suites, all passing (`ctest -j2`; two cores, never `-j4`) |
+| Tests | 65 CTest suites, all passing (`ctest -j2`; two cores, never `-j4`) |
 | Platforms | Linux (verified), Windows (verified at runtime 16 Nov) |
 
 Vendored: `third_party/gumbo` (Apache-2.0, HTML5 parsing),
@@ -48,6 +48,11 @@ All credited in `CREDITS.md`.
   string used to pay that hash.
 - `tools/shaping-bench.cpp` and `tools/run-shaping-bench.sh` exist so the next claim about shaping cost
   is a measurement, not a memory of one.
+- **Row 2e closed** (second batch, same day): bidi level 1. `bidi.cpp` classifies code points, splits
+  text at the direction change, and `shape_run()` shapes one buffer per run with the direction forced,
+  so Arabic joins and ligates instead of coming out in isolated forms. A line's runs are still painted
+  in logical order — row **2e2** carries the rest, and the checklist entry says what it looks like
+  from outside (a multi-word RTL line with its words reversed). Suite 65/65.
 
 ## 2. Current state
 

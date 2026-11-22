@@ -82,3 +82,69 @@ above the code being changed.
    afternoon's confusion was a bench priced at -O2 against a library built at -O0.
 4. **Set the precondition in the harness, not in the shell.** `AETHERIS_FONT` in the bench, not in the
    command line, so the next person cannot run it without one.
+
+---
+
+# Second batch, same day — row 2e: bidi level 1
+
+Suite **65 tests, 65/65, twice**, 125.14 s and 125.28 s at `ctest -j2` (one new test, `AetherisBidi`).
+
+## 7. What shipped
+
+| what | where |
+| --- | --- |
+| `bidi_class()`: a range table for R/AL/number, everything else LTR | `src/rendering/bidi.{hpp,cpp}` |
+| `split_directional_runs()`: cut at the direction change, neutrals by N1/N2, numbers in their own LTR run | same |
+| `may_require_bidi()`: upstream's gate, asking the table and not the byte value | same |
+| `shape_run()` shapes one buffer per run with `hb_buffer_set_direction()` forced, clusters still byte offsets into the whole text | `shaper.cpp` |
+| `TestAetherisBidi`: nine split cases, the gate, cluster order inside the RTL run | `Tests/AetherisRendering/TestBidi.cpp` |
+
+Upstream read first: `LibUnicode/Bidi.cpp` (`may_require_bidi_processing()`), `LibWeb/Layout/TextNode.cpp:556-620`
+(`text_type_for_code_point()`, the 128-entry ASCII table plus `bidirectional_class()` mapped to
+`GlyphRun::TextType`), `LibGfx/TextLayout.cpp:169-190` (`setup_text_shaping` sets the direction from the
+run's text type before `guess_segment_properties`). The reordering itself lives in the Rust layout, which
+is not vendored here — which is why this row is level 1 and 2e2 exists.
+
+## 8. Numbers that were measured
+
+| measurement | value |
+| --- | --- |
+| "abc سلام xyz" through one guessed buffer | 12 glyphs, Arabic in isolated forms, clusters ascending 0-15 |
+| the same string split into ltr / rtl / ltr | **11 glyphs**, RTL run's clusters descending 10, 6, 4 |
+| "سلام عليكم" split | one RTL run, clusters 17 15 13 11 9 8 6 2 0 — nine glyphs, the lam-alef ligature formed |
+| the gate's cost on ASCII | `shape_run` cold 0.0086 -> 0.0058 ms at -O2; a byte test per character and nothing else |
+| rendered "سلام عليكم", ink groups | 30 px on the left, 37 px on the right: the **first** logical word is on the left |
+| rendered "عليكم سلام" | 37 px on the left, 30 px on the right: mirrored, as a logical-order paint of swapped words would be |
+
+That last pair is the row's real finding. `TextLayout::layout` (`text_layout.cpp:20-22`) tokenises a text
+node into **one fragment per word**, and `RenderTree::emit` paints one `DrawText` command per fragment. So
+the shaper now gets each word right and the *line* still reads in logical order: the fix for the line is
+UAX#9 level 2, which needs the line's fragments and a paragraph direction, not a shaper change. Row 2e2.
+
+## 9. The errors, and what each cost
+
+| first reading | what was true | what settled it |
+| --- | --- | --- |
+| "any byte above 0x7F needs bidi processing" | "café" and "١٢٣" are non-ASCII and need none | the test failed on `café`; the gate now asks `bidi_class()` |
+| "a neutral takes the direction of the text before it" | that is N1's same-direction case only; N2 gives the paragraph direction, so the space in "abc سلام xyz" belongs to the Latin side | the failing split assertion: `rtl[سلام ]` instead of `rtl[سلام] ltr[ xyz]` |
+| "the render is wrong: سلام is on the left of سلام عليكم" | the render is right for a *shaper* and wrong for a *line*: the words are separate fragments | measuring the ink groups of each word alone, then of the phrase |
+| "`--render file:///...` will show me the page" | the CLI registers only the HTTP backend, so a local file has no backend at all | `Fetch failed: Resource is not cached and no backend supports the URL`; a 40-line harness against `RenderDocument::create()` instead |
+
+## 10. Open work, in the order I would take it
+
+| row | item | why here |
+| --- | --- | --- |
+| 2e2 | reorder a line's runs into visual order (UAX#9 L2) | the visible half of bidi; needs a paragraph direction, per-fragment levels and a reorder step in `TextLayout::layout` |
+| 2f | line breaking by cluster (`HB_GLYPH_FLAG_UNSAFE_TO_BREAK`) | the break pass still splits on whitespace |
+| 3a6 | `content` as a real list type, with alt text | unchanged |
+| 1g4b | `pushState`/`replaceState`/`history.state` | needs the JS value serialisation decision first |
+| 2g | widen the shaped-run key before letter-spacing | the key has no spacing bits |
+
+## 11. What this batch would do differently
+
+1. **Ask which layer owns the symptom before writing the fix.** "Arabic renders in the wrong order" was
+   two faults in two layers: the shaper had no direction, and the line had no reordering. The row named
+   the first; the render showed both.
+2. **A pixel measurement needs a reference.** Ink widths of each word rendered alone turned an ambiguous
+   screenshot into a number that named the word on the left.
+3. **Check the CLI can see the input before blaming the engine.** `file://` was never registered.

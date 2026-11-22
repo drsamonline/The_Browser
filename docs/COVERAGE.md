@@ -58,7 +58,7 @@ are at the bottom.
 | Kerning | done in the fallback path only (pair table, embedded font); a shaped run gets it from GPOS | `font.cpp` |
 | Shaping (ligatures, Arabic, Indic) | done, 2026-11-18 — HarfBuzz, `shape_run()`; `measure("fi")` 10.0938 -> 10.0781 | `shaper.cpp`, `AetherisShaping` |
 | Shaped-run cache | done, 2026-11-22 — keyed by (font identity, size, text); a cached run is 0.0001 ms at -O2 | `shaper.cpp`, `tools/run-shaping-bench.sh` |
-| Bidi | **absent** — HarfBuzz does no bidi, so runs must be split by direction first | checklist row 2e |
+| Bidi | **level 1** — classification, run splitting and an explicit direction per run, 2026-11-22; a line's runs are still placed in logical order, so a multi-word RTL line reads with its words reversed | checklist rows 2e, 2e2 |
 | Line breaking by cluster | **absent** — breaks on whitespace, not on `HB_GLYPH_FLAG_UNSAFE_TO_BREAK` | checklist row 2f |
 
 ## Scripting, storage, network, safety
