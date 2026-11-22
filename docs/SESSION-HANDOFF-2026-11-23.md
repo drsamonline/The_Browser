@@ -115,3 +115,69 @@ and the LTR paragraphs did not move.
 ### What this row would do differently
 
 Nothing. It was written from the upstream rule with the assertions first, and it took one build.
+
+---
+
+## 8. Third row, same day — 2f: line breaking by cluster
+
+| what | where |
+| --- | --- |
+| `ShapedGlyph` carries HarfBuzz's flags | `src/rendering/shaper.hpp`, `shaper.cpp` |
+| `safe_break_offsets()`: cluster starts not flagged `HB_GLYPH_FLAG_UNSAFE_TO_BREAK`, ascending, end of text last | `src/rendering/shaper.cpp` |
+| `break_word()` + `allows_breaking_inside_words()`: a word too long for a line breaks at those offsets, only under `overflow-wrap: break-word\|anywhere` or `word-break: break-all` | `src/rendering/text_layout.cpp` |
+| Assertions for the ligature, the kerned pair, the combining mark, and overflow-by-default vs break-word | `Tests/AetherisRendering/TestShaping.cpp` |
+
+Upstream: `Libraries/LibWeb/Rust/src/layout/text_chunker.rs` splits chunks with an ICU `LineSegmenter` and a
+`GraphemeSegmenter`; neither is available here, and HarfBuzz's own unsafe-to-break flags answer the same
+question for the positions this engine can break at. `hb_glyph_info_get_glyph_flags()` needs no buffer flag
+in HarfBuzz 15 — the flags are produced by default (the old `HB_BUFFER_FLAG_PRODUCE_UNSAFE_TO_BREAK` no
+longer exists).
+
+### Numbers
+
+Embedded font, 16 px, offsets in bytes (`!` = unsafe to break at that cluster):
+
+| text | clusters | safe offsets |
+| --- | --- | --- |
+| `office` | `0 1 4 5` — the ffi ligature covers bytes 1-3 | **1, 4, 5, 6**; never 2 or 3 |
+| `To` | `0 1!` — a kerned pair | **2** (the end) |
+| `AV` | `0 1!` | **2** |
+| `fi` | `0` — one glyph | **2** |
+| `e` + U+0301 + `x` | `0 0 3` | **4**; never 1 |
+
+Control: `ox`, `To` and `AV` carry the flag; `ll`, `ab` and `of` do not — so the `To` assertion discriminates
+kerning rather than passing on every input.
+
+Suite **65/65 twice**, 122.91 s and 123.00 s. The new assertions sit inside `AetherisShaping`, so the count
+stays 65.
+
+### The environment died mid-row, and the row was verified twice
+
+While linking, this session's environment exhausted its process table — 17,879 zombie processes parented to
+PID 1 against a `ulimit -u` of 4096 — and every compiler invocation afterwards failed with
+`failed to spawn: SystemResources`, down to `int main(){}`. `git` needed `-c core.preloadIndex=false` (its
+threaded lstat failed). The tree was reverted to `3f00eaaa` and the work saved as
+`/scratch/work/row-2f-cluster-breaking.patch` plus copies in `/scratch/work/row-2f-copy/`.
+
+The patch was then verified in a **fresh sandbox**: applied with no fuzz to `3f00eaaa`, built (8 `ninja`
+calls, 287 targets), `AetherisShaping` green, `ctest -j2` 65/65 twice (123.48 s, 128.74 s), and the probe
+above returning exactly those offsets.
+
+Then this session came back on a new environment, the patch applied cleanly a second time, and the suite ran
+here as well: `AetherisShaping` green, 65/65 twice, 122.91 s and 123.00 s. Two environments, same result.
+
+### Corrections to earlier notes
+
+The 2e and 2e2 notes said "the reordering is in `Rust/src/layout`, which this tree does not vendor". **The
+Rust layout is vendored** at `Libraries/LibWeb/Rust/src/layout/` — I looked in the wrong place (`Rust/src` at
+the repo root). What that directory does *not* contain is a bidi reordering pass: `text_chunker.rs` splits
+chunks by `text_type`, and `inline_level_iterator.rs:168` only decides whether a block is unidirectional
+left-to-right. So the conclusion (the ordering had to be written here) was right; the reason given for it
+was wrong.
+
+### What this row would do differently
+
+1. **Check the environment before trusting a failure.** `ps` would have shown the zombie wall before three
+   failed links looked like a compiler bug.
+2. **A patch file is a cheap insurance policy.** `git diff` into `/scratch/work` took ten seconds and made
+   the whole row recoverable when the tree had to be reverted.

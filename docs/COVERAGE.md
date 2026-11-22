@@ -59,7 +59,7 @@ are at the bottom.
 | Shaping (ligatures, Arabic, Indic) | done, 2026-11-18 — HarfBuzz, `shape_run()`; `measure("fi")` 10.0938 -> 10.0781 | `shaper.cpp`, `AetherisShaping` |
 | Shaped-run cache | done, 2026-11-22 — keyed by (font identity, size, text); a cached run is 0.0001 ms at -O2 | `shaper.cpp`, `tools/run-shaping-bench.sh` |
 | Bidi | **levels 1-2**, 2026-11-22 — classification, run splitting, an explicit direction per run, and the line's fragments reordered into visual order; `direction: rtl` is honoured and inherited. Not done: `unicode-bidi`, the `dir` attribute, embeddings/isolates, and `text-align: justify` | checklist rows 2e, 2e2, 2e3 |
-| Line breaking by cluster | **absent** — breaks on whitespace, not on `HB_GLYPH_FLAG_UNSAFE_TO_BREAK` | checklist row 2f |
+| Line breaking by cluster | done, 2026-11-23 — breaks only at cluster starts the shaper says are safe (`HB_GLYPH_FLAG_UNSAFE_TO_BREAK`), and inside a word only under `overflow-wrap: break-word|anywhere` / `word-break: break-all`. No UAX#14 segmenter: the opportunities are whitespace plus those offsets | checklist row 2f |
 
 ## Scripting, storage, network, safety
 

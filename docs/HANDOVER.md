@@ -65,6 +65,10 @@ All credited in `CREDITS.md`.
 - **Row 2e3 closed** (2026-11-23): `text-align: start`/`end` resolve against `direction`, and an unset
   value is `start` — so a `direction: rtl` block is right-aligned, as a browser does it. `justify` is still
   treated as `start`.
+- **Row 2f closed** (2026-11-23): line breaking by cluster. `safe_break_offsets()` returns the byte offsets
+  HarfBuzz does not flag `HB_GLYPH_FLAG_UNSAFE_TO_BREAK`, and a word too long for a line is broken there —
+  only when `overflow-wrap: break-word|anywhere` or `word-break: break-all` asks, and never inside a
+  ligature, a kerned pair or a letter-plus-mark cluster.
 
 ## 2. Current state
 

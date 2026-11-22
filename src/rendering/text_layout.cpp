@@ -1,6 +1,8 @@
 #include "text_layout.hpp"
 #include "bidi.hpp"
 #include "font.hpp"
+#include "font_library.hpp"
+#include "shaper.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -10,6 +12,67 @@ namespace { float parse_px(std::string const* value,float fallback){ if(!value||
 std::string TextLayout::collapse_whitespace(std::string_view text,bool preserve){ if(preserve) return std::string(text); std::string result; bool pending=false; for(unsigned char c:text){ if(std::isspace(c)){ pending=!result.empty(); continue;} if(pending){result+=' ';pending=false;} result+=char(c);} return result; }
 float TextLayout::font_size(StyleProperties const& style){ return Font::from_style(style).metrics().size; }
 float TextLayout::line_height(StyleProperties const& style){ auto size=font_size(style); auto value=style.get("line-height"); if(!value||*value=="normal") return size*1.2f; char* end=nullptr; auto parsed=std::strtof(value->c_str(),&end); if(end==value->c_str()) return size*1.2f; if(end&&*end=='\0') return parsed*size; return parsed; }
+namespace {
+
+// Whether the page asked for a word to be broken rather than allowed to overflow. Browsers overflow a word
+// that cannot fit a line; `overflow-wrap: break-word|anywhere` and `word-break: break-all` ask for the
+// other behaviour, and that is the only case this file breaks inside a word (row 2f).
+bool allows_breaking_inside_words(StyleProperties const& style)
+{
+    if (auto const wrap = style.get("overflow-wrap"); wrap && (*wrap == "break-word" || *wrap == "anywhere"))
+        return true;
+    if (auto const word_break = style.get("word-break"); word_break && (*word_break == "break-all" || *word_break == "break-word"))
+        return true;
+    return false;
+}
+
+// Splits a word that cannot fit a line of its own into pieces that each fit, cutting only where the shaper
+// says a break is safe. A combining mark, a ligature and a kerned pair are never cut, because none of them
+// offers an offset inside itself. Without a font there are no clusters, so the word stays whole.
+std::vector<std::string> break_word(std::string_view word, float available_width, float size, StyleProperties const& style)
+{
+    std::vector<std::string> pieces;
+    auto const* font = active_font();
+    if (!font) {
+        pieces.emplace_back(word);
+        return pieces;
+    }
+    auto const offsets = safe_break_offsets(font->data(), word, size, font->identity());
+    if (offsets.size() < 2) {
+        pieces.emplace_back(word);
+        return pieces;
+    }
+
+    std::size_t start = 0;
+    while (start < word.size()) {
+        // The furthest offset that still fits. Offsets ascend, so the first one that does not fit ends the
+        // search: everything after it is wider still.
+        std::size_t best = 0;
+        for (auto const offset : offsets) {
+            if (offset <= start)
+                continue;
+            if (TextLayout::measure_text(word.substr(start, offset - start), size, style) > available_width)
+                break;
+            best = offset;
+        }
+        if (best == 0) {
+            // Not even the first cluster fits. Emit it anyway: a line has to hold something, and the loop
+            // must always advance or a word narrower than one cluster would hang the layout.
+            for (auto const offset : offsets) {
+                if (offset > start) {
+                    best = offset;
+                    break;
+                }
+            }
+        }
+        pieces.emplace_back(word.substr(start, best - start));
+        start = best;
+    }
+    return pieces;
+}
+
+} // namespace
+
 float TextLayout::measure_text(std::string_view text,float,StyleProperties const& style){ auto font=Font::from_style(style); auto letter=parse_px(style.get("letter-spacing"),0); auto word=parse_px(style.get("word-spacing"),0);
     // The width the pen will draw, not the sum of the code points' advances. Those are not the same: the
     // shaped width carries kerning, and it carries the ligature that turns two characters into one glyph.
@@ -78,6 +141,18 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
                 line.clear();
                 w = 0;
                 sp = 0;
+            }
+            // A word that does not fit a line of its own. Browsers leave it overflowing; the properties
+            // above ask for it to be broken instead, at offsets the shaper says are safe.
+            if (!nowrap && !prewrap && line.empty() && ww > available_width && allows_breaking_inside_words(style)) {
+                auto const pieces = break_word(word, available_width, size, style);
+                if (pieces.size() > 1) {
+                    for (std::size_t index = 0; index + 1 < pieces.size(); ++index)
+                        wrapped.push_back({ pieces[index] });
+                    w = measure_text(pieces.back(), size, style);
+                    line.push_back(pieces.back());
+                    continue;
+                }
             }
             if (!line.empty() && word != " ") {
                 line.push_back(" ");

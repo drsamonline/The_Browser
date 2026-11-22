@@ -10,6 +10,7 @@
 #include <text_layout.hpp>
 #include <ttf_font.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -133,6 +134,48 @@ int main()
         for (auto const& glyph : first)
             narrow += glyph.advance;
         require(wide > narrow * 1.5f, "the size is in the cache key: 32 px advances are not the 16 px ones");
+    }
+
+// Cluster-safe breaking (row 2f). A break offset is a byte position a line may break at without
+    // changing what is drawn; the end of the text is always one.
+    {
+        auto const has = [](std::vector<std::size_t> const& offsets, std::size_t value) {
+            return std::find(offsets.begin(), offsets.end(), value) != offsets.end();
+        };
+
+        // "office" is 6 bytes. The ffi ligature means the clusters are 0, 1, 4, 5 - so a break after "of"
+        // is at byte 4, and bytes 2 and 3 are inside the ligature and never offered.
+        auto const office = safe_break_offsets(font.data(), "office", 16.0f, font.identity());
+        require(!has(office, 2) && !has(office, 3), "no break inside the ffi ligature");
+        require(has(office, 4), "a break after \"of\" is offered");
+        require(!office.empty() && office.back() == 6, "the end of the text is the last offset");
+
+        // A kerned pair: breaking before "o" would change the spacing, so only the end is offered.
+        auto const to = safe_break_offsets(font.data(), "To", 16.0f, font.identity());
+        require(to.size() == 1 && to.front() == 2, "a kerned pair is not split");
+
+        // A combining mark shares its base's cluster, so byte 1 is inside a cluster and never offered.
+        auto const combining = safe_break_offsets(font.data(), "e\xcc\x81x", 16.0f, font.identity());
+        require(!has(combining, 1), "no break between a letter and its combining mark");
+
+        // The wiring: a word that cannot fit is broken only when the page asks, and only at those offsets.
+        StyleProperties overflow_style;
+        overflow_style.set("font-size", "16px");
+        auto const overflowing = TextLayout::layout("officeoffice", 0, 0, 40, overflow_style);
+        require(overflowing.size() == 1, "by default a long word overflows rather than breaking, as a browser does");
+
+        StyleProperties break_style;
+        break_style.set("font-size", "16px");
+        break_style.set("overflow-wrap", "break-word");
+        auto const broken = TextLayout::layout("officeoffice", 0, 0, 40, break_style);
+        require(broken.size() > 1, "overflow-wrap: break-word breaks it instead");
+        std::size_t rejoined = 0;
+        for (auto const& fragment : broken) {
+            require(TextLayout::measure_text(fragment.text, 16.0f, break_style) <= 40.0f + 0.01f,
+                "every piece fits the line");
+            rejoined += fragment.text.size();
+        }
+        require(rejoined == 12, "the pieces are the word, all of it and nothing else");
     }
 
     std::cout << "shaping: " << latin.size() << " latin glyphs, " << fi.size() << " for \"fi\", clusters are byte offsets\n";

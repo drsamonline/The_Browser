@@ -125,6 +125,7 @@ void shape_into(hb_font_t* font, std::string_view text, std::size_t begin, std::
             static_cast<float>(positions[i].x_advance) / 64.0f,
             static_cast<float>(positions[i].x_offset) / 64.0f,
             static_cast<float>(-positions[i].y_offset) / 64.0f,
+            hb_glyph_info_get_glyph_flags(&info[i]),
         });
     }
     hb_buffer_destroy(buffer);
@@ -212,11 +213,39 @@ std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const& font_data, std::s
     return glyphs;
 }
 
+std::vector<std::size_t> safe_break_offsets(std::vector<uint8_t> const& font_data, std::string_view text, float size, uint64_t font_identity)
+{
+    std::vector<std::size_t> offsets;
+    if (text.empty())
+        return offsets;
+
+    auto const glyphs = shape_run(font_data, text, size, font_identity);
+    if (glyphs.empty())
+        return offsets; // no shaper or no font: the caller keeps the word whole
+
+    // Per cluster rather than per glyph, because the flag means "a break at the start of this cluster is
+    // unsafe" and one cluster can be several glyphs. A cluster is unsafe if any of its glyphs says so.
+    std::map<std::size_t, bool> unsafe_by_cluster;
+    for (auto const& glyph : glyphs)
+        unsafe_by_cluster[glyph.cluster] |= (glyph.flags & HB_GLYPH_FLAG_UNSAFE_TO_BREAK) != 0;
+
+    // A std::map iterates in key order, so the offsets come out ascending whatever order the glyphs were
+    // in - which matters because an RTL run arrives in visual order, i.e. descending.
+    for (auto const& [cluster, unsafe] : unsafe_by_cluster) {
+        if (cluster > 0 && !unsafe)
+            offsets.push_back(cluster);
+    }
+    offsets.push_back(text.size());
+    return offsets;
+}
+
 #else
 
 bool shaping_available() { return false; }
 
 std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const&, std::string_view, float, uint64_t) { return {}; }
+
+std::vector<std::size_t> safe_break_offsets(std::vector<uint8_t> const&, std::string_view, float, uint64_t) { return {}; }
 
 #endif
 
