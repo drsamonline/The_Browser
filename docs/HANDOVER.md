@@ -3,7 +3,7 @@
 **For:** any session or agent picking this up
 **Repo:** `drsamonline/The_Browser`
 **Owner:** Dr Sohil Momin
-**Date:** 22 November 2026
+**Date:** 23 November 2026
 **Latest tag:** v0.6.2
 
 Read this before changing anything. It records what works, what does not, and
@@ -58,6 +58,10 @@ All credited in `CREDITS.md`.
   expects them; `direction: rtl` now reaches text through the cascade (`direction` added to the inherited
   list, as `CSS/Properties.json` says). Rows 2e3 (`text-align: start`/`end`) and 2h (layout measures per
   code point, paint draws shaped glyphs) added from what this batch exposed.
+- **Row 2h closed** (2026-11-23): one metric for layout and paint. `TextLayout::measure_text` returned the
+  sum of code point advances, which skips kerning entirely — "To" measured 19.5625 px against the 16.8594 px
+  the pen drew at 16 px — so every fragment's box was wider than its glyphs and centred or wrapped text sat
+  off by half the error. It now returns `Font::measure()`, the shaped width, plus spacing.
 
 ## 2. Current state
 

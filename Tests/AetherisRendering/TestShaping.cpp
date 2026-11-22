@@ -7,8 +7,10 @@
 #include <font.hpp>
 #include <font_library.hpp>
 #include <shaper.hpp>
+#include <text_layout.hpp>
 #include <ttf_font.hpp>
 
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -94,6 +96,19 @@ int main()
         // shaped one is the smaller - the size of the gap belongs to the font, not to the test.
         require(fi < f_plus_i, "Font::measure reflects the ligature: shaped \"fi\" is narrower than \"f\" + \"i\"");
         require(fi_glyphs == 1, "and it is narrower because the two characters became one glyph");
+
+        // Row 2h: layout must measure what the pen draws. measure_text() used to sum code point advances
+        // and skip kerning entirely, so a fragment's box was wider than its glyphs and the next fragment
+        // started where the text was not. "To" is the sharpest case in this font: 19.5625 px summed
+        // against 16.8594 px shaped at 16 px.
+        StyleProperties layout_style;
+        layout_style.set("font-size", "16px");
+        float const layout_to = TextLayout::measure_text("To", 16.0f, layout_style);
+        float const shaped_to = font_style.measure("To");
+        require(std::abs(layout_to - shaped_to) < 0.01f, "layout measures the shaped width of a kerned pair");
+        float const layout_t_plus_o = TextLayout::measure_text("T", 16.0f, layout_style) + TextLayout::measure_text("o", 16.0f, layout_style);
+        require(layout_to < layout_t_plus_o - 0.5f, "and that width carries the kerning, not just the advances");
+
     }
 
     // The shaped-run cache must be invisible. The same call twice returns the same glyphs, and the size

@@ -1,6 +1,6 @@
 # Coverage — what this engine does and does not do
 
-**Snapshot, 2026-11-22.** Every row was checked against the code on that date; the evidence column says
+**Snapshot, 2026-11-23.** Every row was checked against the code on that date; the evidence column says
 where. This is a *snapshot*, not an instrument: it does not move on its own, and it says nothing about how
 many real pages are affected by each gap.
 
@@ -54,8 +54,8 @@ are at the bottom.
 | --- | --- | --- |
 | TTF parsing | done | `ttf_font.cpp` |
 | Glyph rasteriser | done | `glyph_rasterizer.cpp` |
-| Rasteriser wired into layout and paint | **partial** — `draw_text` rasterises the glyphs of a shaped run; the no-font fallback still advances per code point | `software_surface.cpp` |
-| Kerning | done in the fallback path only (pair table, embedded font); a shaped run gets it from GPOS | `font.cpp` |
+| Rasteriser wired into layout and paint | done, 2026-11-23 — layout measures the shaped width (`Font::measure`) and the pen advances by the same one; the no-font fallback keeps per-code-point advances on both sides | `text_layout.cpp`, `software_surface.cpp` |
+| Kerning | done, 2026-11-23 — a shaped run gets it from GPOS and layout now measures it ("To" 19.5625 -> 16.8594 px at 16 px); the fallback path uses the embedded pair table | `font.cpp`, `text_layout.cpp` |
 | Shaping (ligatures, Arabic, Indic) | done, 2026-11-18 — HarfBuzz, `shape_run()`; `measure("fi")` 10.0938 -> 10.0781 | `shaper.cpp`, `AetherisShaping` |
 | Shaped-run cache | done, 2026-11-22 — keyed by (font identity, size, text); a cached run is 0.0001 ms at -O2 | `shaper.cpp`, `tools/run-shaping-bench.sh` |
 | Bidi | **levels 1-2**, 2026-11-22 — classification, run splitting, an explicit direction per run, and the line's fragments reordered into visual order; `direction: rtl` is honoured and inherited. Not done: `unicode-bidi`, the `dir` attribute, embeddings/isolates, and `text-align: start`/`end` still ignoring direction | checklist rows 2e, 2e2, 2e3 |

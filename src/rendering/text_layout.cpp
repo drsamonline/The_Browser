@@ -10,12 +10,17 @@ namespace { float parse_px(std::string const* value,float fallback){ if(!value||
 std::string TextLayout::collapse_whitespace(std::string_view text,bool preserve){ if(preserve) return std::string(text); std::string result; bool pending=false; for(unsigned char c:text){ if(std::isspace(c)){ pending=!result.empty(); continue;} if(pending){result+=' ';pending=false;} result+=char(c);} return result; }
 float TextLayout::font_size(StyleProperties const& style){ return Font::from_style(style).metrics().size; }
 float TextLayout::line_height(StyleProperties const& style){ auto size=font_size(style); auto value=style.get("line-height"); if(!value||*value=="normal") return size*1.2f; char* end=nullptr; auto parsed=std::strtof(value->c_str(),&end); if(end==value->c_str()) return size*1.2f; if(end&&*end=='\0') return parsed*size; return parsed; }
-float TextLayout::measure_text(std::string_view text,float,StyleProperties const& style){ float width=0; auto font=Font::from_style(style); auto letter=parse_px(style.get("letter-spacing"),0); auto word=parse_px(style.get("word-spacing"),0);
-    // Code points, not bytes. Upstream measures shaped glyphs and applies letter-spacing once per
-    // cluster (LibGfx/TextLayout.cpp, measure_text_width); without shaping a cluster is one code point,
-    // so this adds it once per code point. Iterating bytes made every non-ASCII character two to four
-    // glyphs wide.
-    for(std::size_t index=0;index<text.size();){ auto const code_point=utf8_next(text,index); width+=font.metrics().advance_for_code_point(code_point); if(code_point==' ') width+=word; width+=letter;}
+float TextLayout::measure_text(std::string_view text,float,StyleProperties const& style){ auto font=Font::from_style(style); auto letter=parse_px(style.get("letter-spacing"),0); auto word=parse_px(style.get("word-spacing"),0);
+    // The width the pen will draw, not the sum of the code points' advances. Those are not the same: the
+    // shaped width carries kerning, and it carries the ligature that turns two characters into one glyph.
+    // Summing advances skipped kerning entirely, so a fragment's box was up to 2.7 px wide of its text at
+    // 16 px ("To" 19.5625 px against 16.8594 px shaped) and the next fragment started where the glyphs
+    // were not (row 2h). Font::measure() is the shaped path and the fallback for builds without a shaper.
+    float width=font.measure(text);
+    // Spacing is per character, not per glyph: upstream applies letter-spacing once per cluster
+    // (LibGfx/TextLayout.cpp, measure_text_width) and word-spacing once per word separator. Iterating
+    // bytes made every non-ASCII character two to four glyphs wide.
+    for(std::size_t index=0;index<text.size();){ auto const code_point=utf8_next(text,index); if(code_point==' ') width+=word; width+=letter;}
     return std::max(0.0f,width); }
 std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, float y, float available_width, StyleProperties const& style)
 {
