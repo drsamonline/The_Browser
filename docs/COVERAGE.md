@@ -1,6 +1,6 @@
 # Coverage — what this engine does and does not do
 
-**Snapshot, 2026-11-17.** Every row was checked against the code on that date; the evidence column says
+**Snapshot, 2026-11-22.** Every row was checked against the code on that date; the evidence column says
 where. This is a *snapshot*, not an instrument: it does not move on its own, and it says nothing about how
 many real pages are affected by each gap.
 
@@ -54,9 +54,12 @@ are at the bottom.
 | --- | --- | --- |
 | TTF parsing | done | `ttf_font.cpp` |
 | Glyph rasteriser | done | `glyph_rasterizer.cpp` |
-| Rasteriser wired into layout and paint | **absent** — layout measures `advance(char)` | `font.hpp`, `text_layout.cpp:12` |
-| Kerning | **absent** | — |
-| Shaping (ligatures, Arabic, Indic) | **absent** | — |
+| Rasteriser wired into layout and paint | **partial** — `draw_text` rasterises the glyphs of a shaped run; the no-font fallback still advances per code point | `software_surface.cpp` |
+| Kerning | done in the fallback path only (pair table, embedded font); a shaped run gets it from GPOS | `font.cpp` |
+| Shaping (ligatures, Arabic, Indic) | done, 2026-11-18 — HarfBuzz, `shape_run()`; `measure("fi")` 10.0938 -> 10.0781 | `shaper.cpp`, `AetherisShaping` |
+| Shaped-run cache | done, 2026-11-22 — keyed by (font identity, size, text); a cached run is 0.0001 ms at -O2 | `shaper.cpp`, `tools/run-shaping-bench.sh` |
+| Bidi | **absent** — HarfBuzz does no bidi, so runs must be split by direction first | checklist row 2e |
+| Line breaking by cluster | **absent** — breaks on whitespace, not on `HB_GLYPH_FLAG_UNSAFE_TO_BREAK` | checklist row 2f |
 
 ## Scripting, storage, network, safety
 

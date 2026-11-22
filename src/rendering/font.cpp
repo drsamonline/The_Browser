@@ -19,7 +19,7 @@ namespace aetheris::rendering { static float num(std::string const* v,float f){i
     // measures it as two. Kerning, mark positioning and Arabic joining are the same argument. The
     // fallback below is the pre-shaping behaviour and is kept for builds without a shaper.
     if (auto* shaped_font = active_font(); shaped_font && shaping_available()) {
-        auto const glyphs = shape_run(shaped_font->data(), v, m_metrics.size);
+        auto const glyphs = shape_run(shaped_font->data(), v, m_metrics.size, shaped_font->identity());
         if (!glyphs.empty()) {
             float total = 0;
             for (auto const& glyph : glyphs)

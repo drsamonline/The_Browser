@@ -1,5 +1,9 @@
 # START PROMPT — Aetheris / The_Browser, resume 2026-11-18 (evening)
 
+> **Superseded for state, kept for the build recipe and the traps.** Row 2d4 landed on 2026-11-22; read
+> `docs/SESSION-HANDOFF-2026-11-22.md` for the current tip, the numbers and the new build facts (configure
+> twice on a fresh build dir, `ninja -C build-rel AetherisRendering` as the short path, `tools/run-shaping-bench.sh`).
+
 Paste this as the first message of a new session. It is self-contained: the repo, the state, the rules, and the
 traps that cost time today.
 

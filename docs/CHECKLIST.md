@@ -71,8 +71,11 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | 2c | Kerning | `[ ]` | — |
 | 2d | Text shaping | `[x]` | `15c6496e`; `shape_run()` returns glyphs, clusters and advances from the font tables, and `AetherisShaping` pins the contract (fi -> one glyph, clusters as byte offsets) |
 | 2d2 | Use the shaper in the text path | `[x]` | `6d8ca43c`; `measure` and the drawing pen both use shaped advances, `measure("fi")` 10.0938 -> 10.0781 |
-| 2d3 | Cache the face per font | `[x]` | `perf` commit; keyed by a hash of the font data, not the buffer address. Worth ~7%: 0.075 ms of 1.043 ms per shaped run |
-| 2d4 | Shaping costs 1.043 ms per 24-character run at -O0 | `[ ]` | measure in a release build before optimising; if it stays high, cache shaped runs by (text, size) |
+| 2d3 | Cache the face per font | `[x]` | `perf` commit; keyed by a hash of the font data, not the buffer address. **Corrected 2026-11-22**: the cache was right, but taking that hash on every call cost 1.2331 ms of a 1.2571 ms run at -O2. The 0.075 ms in this cell was the face creation the cache removed, not the hash it added. Hash moved to load time in 2d4 |
+| 2d4 | Shaping cost, measured in a release build | `[x]` | at -O2 a 24-character run cost **1.2571 ms**: HarfBuzz itself 0.0046 ms, the font-file hash the face cache took on every call **1.2331 ms (98%)**. Hash moved to load time (`TtfFont::identity()`, once per load) and shaped runs cached by (font identity, size, text): **0.0001 ms cached, 0.0086 ms cold** at -O2; 0.0027 / 0.1863 at -O0. `tools/run-shaping-bench.sh`; `AetherisShaping` pins the key |
+| 2e | Bidi: split runs by direction before shaping | `[ ]` | HarfBuzz does no bidi, so an RTL run inside LTR text is shaped in the wrong order. Was a "known gap, not a row" until 2026-11-22 |
+| 2f | Line breaking by cluster (`HB_GLYPH_FLAG_UNSAFE_TO_BREAK`) | `[ ]` | the break pass uses whitespace, so a break can land inside a cluster. Was a "known gap, not a row" until 2026-11-22 |
+| 2g | Widen the shaped-run key before adding letter-spacing | `[ ]` | the key is (font identity, size, text) because the engine has no letter- or word-spacing; upstream carries both in `ShapingCacheKey` as bit patterns. Add the bits with the property, not after it |
 
 ## Tier 3 — layout completeness
 

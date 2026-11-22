@@ -201,7 +201,7 @@ void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, f
         // measured as one glyph and drawn as two, which overlaps. Same fallback as measure().
         std::vector<ShapedGlyph> shaped;
         if (shaping_available())
-            shaped = shape_run(font->data(), text, font_size);
+            shaped = shape_run(font->data(), text, font_size, font->identity());
         std::vector<std::pair<uint16_t, float>> to_draw;
         if (!shaped.empty()) {
             for (auto const& glyph : shaped)

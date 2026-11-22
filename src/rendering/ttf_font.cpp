@@ -12,6 +12,20 @@ constexpr uint32_t tag_of(char a, char b, char c, char d)
         | (static_cast<uint32_t>(c) << 8) | static_cast<uint32_t>(d);
 }
 
+// FNV-1a over the whole file. This ran on every shaped run while the shaper keyed its face cache on
+// a hash of the bytes: 1.23 ms of a 1.26 ms run at -O2, 29 ms of a 34 ms run at -O0 (row 2d4). The
+// value is the same here, the frequency is not - once per load, not once per run.
+uint64_t content_hash(std::vector<uint8_t> const& data)
+{
+    uint64_t hash = 1469598103934665603ull;
+    for (auto byte : data) {
+        hash ^= byte;
+        hash *= 1099511628211ull;
+    }
+    // 0 is reserved for "not loaded", so a file whose hash lands there gets its neighbour's id.
+    return hash == 0 ? 1 : hash;
+}
+
 } // namespace
 
 uint16_t TtfFont::u16(std::size_t offset) const
@@ -56,6 +70,7 @@ std::size_t TtfFont::table(std::string const& name) const
 bool TtfFont::load(std::vector<uint8_t> const& data)
 {
     m_data = data;
+    m_identity = 0;
     m_error.clear();
     if (m_data.size() < 12) {
         m_error = "file too small to be a font";
@@ -96,6 +111,9 @@ bool TtfFont::load(std::vector<uint8_t> const& data)
         m_data.clear();
         return false;
     }
+    // Computed last, over the bytes that survived parsing, so a font that failed above never gets an
+    // identity and never enters the shaper's caches.
+    m_identity = content_hash(m_data);
     return true;
 }
 

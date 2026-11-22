@@ -36,6 +36,11 @@ public:
     std::vector<uint8_t> const& data() const { return m_data; }
     std::string const& error() const { return m_error; }
 
+    // Identifies this font file to the shaper's caches. A content hash, computed once in load(), not
+    // the object's address: an address is reused when a font is reloaded into the same buffer, and a
+    // cache keyed on it would serve the previous font's glyphs. 0 means "not loaded".
+    uint64_t identity() const { return m_identity; }
+
     uint16_t units_per_em() const { return m_units_per_em; }
     uint16_t glyph_count() const { return m_num_glyphs; }
     int16_t ascender() const { return m_ascender; }
@@ -59,6 +64,7 @@ private:
 
     std::vector<uint8_t> m_data;
     std::string m_error;
+    uint64_t m_identity { 0 };
 
     std::size_t m_head { 0 };
     std::size_t m_hhea { 0 };

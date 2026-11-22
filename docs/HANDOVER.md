@@ -3,7 +3,7 @@
 **For:** any session or agent picking this up
 **Repo:** `drsamonline/The_Browser`
 **Owner:** Dr Sohil Momin
-**Date:** 16 November 2026
+**Date:** 22 November 2026
 **Latest tag:** v0.6.2
 
 Read this before changing anything. It records what works, what does not, and
@@ -28,7 +28,7 @@ a Chromium/Gecko/WebKit wrapper.
 | Licence | MIT |
 | Language | C++20 |
 | Size profile | ~2.5 MB stripped (report-only, never enforced) |
-| Tests | 58 CTest suites, all passing |
+| Tests | 64 CTest suites, all passing (`ctest -j2`; two cores, never `-j4`) |
 | Platforms | Linux (verified), Windows (verified at runtime 16 Nov) |
 
 Vendored: `third_party/gumbo` (Apache-2.0, HTML5 parsing),
@@ -36,6 +36,18 @@ Vendored: `third_party/gumbo` (Apache-2.0, HTML5 parsing),
 All credited in `CREDITS.md`.
 
 ---
+
+## 1a. What changed on 2026-11-22
+
+- **Row 2d4 closed.** Shaping was not slow: the *hash* was. The face cache keyed on a content hash of
+  the font file, and that hash ran on every shaped run — 1.2331 ms of a 1.2571 ms run at -O2 (98%),
+  30.6 ms of a 34 ms run at -O0. HarfBuzz itself was 0.0046 ms. The hash now runs once per load
+  (`TtfFont::identity()`), and shaped runs are cached the way upstream caches them
+  (`Libraries/LibGfx/Font/Font.h`, `ShapingCache`): **0.0001 ms cached, 0.0086 ms cold** at -O2.
+- The suite got faster for the same reason: 210 s -> 126 s at `ctest -j2`, because every measured
+  string used to pay that hash.
+- `tools/shaping-bench.cpp` and `tools/run-shaping-bench.sh` exist so the next claim about shaping cost
+  is a measurement, not a memory of one.
 
 ## 2. Current state
 
@@ -58,7 +70,9 @@ All credited in `CREDITS.md`.
 - Navigation: **`location.href`/`assign()`/`reload()`, and a click follows a link** (no `replace()`,
   no `history`, no realm isolation — see the rows below)
 - Text: TrueType parsing, anti-aliased rasteriser, glyph cache, embedded font,
-  1,218 kerning pairs
+  1,218 kerning pairs, **HarfBuzz shaping** (ligatures, Arabic joining, GPOS kerning and mark
+  positioning) behind a **shaped-run cache** keyed by (font identity, size, text) — a cached run is
+  0.0001 ms at -O2, measured by `tools/run-shaping-bench.sh`
 - Networking: keep-alive, cookies, TLS with **bundled CA file**, CSP for inline
   scripts, `SecureResourceLoader` on every fetch
 - UI: 34 px chrome strip, tab session, input router, SDL2 window
