@@ -92,9 +92,23 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
     // Place the fragments. The line's total width is the same whatever order its words end up in, so the
     // alignment offset is computed once and the visual order only decides which fragment gets which slot
     // - which is what UAX#9 level 2 asks for (bidi.cpp, visual_order()).
+    // `text-align` resolves against the block's direction (CSS/Properties.json: initial `start`; the
+    // mapping is the one upstream writes out for canvas, LibWeb/HTML/Canvas/Canvas2DContextBase.cpp:445):
+    // `start` is the left edge in a left-to-right block and the right edge in a right-to-left one, `end`
+    // is the other way round, and `left`/`right` ignore direction. An unset value is `start`.
     auto const align = style.get("text-align");
     auto const direction = style.get("direction");
     bool const paragraph_right_to_left = direction && *direction == "rtl";
+    bool const centred = align && *align == "center";
+    bool align_to_right = paragraph_right_to_left; // `start`, and the default
+    if (align && *align == "right")
+        align_to_right = true;
+    else if (align && *align == "left")
+        align_to_right = false;
+    else if (align && *align == "end")
+        align_to_right = !paragraph_right_to_left;
+    else if (centred)
+        align_to_right = false;
     float cy = y;
     for (auto const& line : wrapped) {
         std::vector<float> widths;
@@ -106,9 +120,9 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
             width += w;
         }
         float cx = x;
-        if (align && *align == "center")
+        if (centred)
             cx = x + std::max(0.f, (available_width - width) / 2);
-        else if (align && (*align == "right" || *align == "end"))
+        else if (align_to_right)
             cx = x + std::max(0.f, available_width - width);
 
         std::vector<std::string_view> items;

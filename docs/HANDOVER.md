@@ -62,6 +62,9 @@ All credited in `CREDITS.md`.
   sum of code point advances, which skips kerning entirely — "To" measured 19.5625 px against the 16.8594 px
   the pen drew at 16 px — so every fragment's box was wider than its glyphs and centred or wrapped text sat
   off by half the error. It now returns `Font::measure()`, the shaped width, plus spacing.
+- **Row 2e3 closed** (2026-11-23): `text-align: start`/`end` resolve against `direction`, and an unset
+  value is `start` — so a `direction: rtl` block is right-aligned, as a browser does it. `justify` is still
+  treated as `start`.
 
 ## 2. Current state
 

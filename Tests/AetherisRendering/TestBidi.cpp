@@ -13,6 +13,7 @@
 #include <text_layout.hpp>
 #include <ttf_font.hpp>
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <string>

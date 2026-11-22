@@ -1,6 +1,7 @@
 # Session handover — 2026-11-23
 
-One row closed: **2h, one metric for layout and paint**. Suite **65 tests, 65/65, twice**, 127.55 s and
+Two rows closed: **2h, one metric for layout and paint**, and **2e3, `text-align: start`/`end` follow
+`direction`**. Suite **65 tests, 65/65, twice**, 127.55 s and
 126.95 s at `ctest -j2`. No new test binary: the assertion went into `AetherisShaping`, which already owns
 "a font is loaded and measure reflects shaping".
 
@@ -59,7 +60,6 @@ probe's own comment.
 
 | row | item | why here |
 | --- | --- | --- |
-| 2e3 | `text-align: start`/`end` follow `direction` | small, and the direction work of 2026-11-22 is fresh in the file |
 | 2f | line breaking by cluster (`HB_GLYPH_FLAG_UNSAFE_TO_BREAK`) | the break pass still splits on whitespace |
 | 2g | widen the shaped-run key before letter-spacing | the key has no spacing bits, so letter-spacing is measured but not shaped |
 | 3a6 | `content` as a real list type, with alt text | unchanged |
@@ -75,3 +75,43 @@ probe's own comment.
 3. **A row found while doing another row is worth writing down immediately.** 2h was visible on 2026-11-22
    and cost one function the next day; had it not been written down it would have been rediscovered as
    "Arabic text sits slightly wrong in its box".
+
+---
+
+## 7. Second row, same day — 2e3: `text-align: start`/`end` follow `direction`
+
+| what | where |
+| --- | --- |
+| `start` is the left edge in LTR and the right in RTL; `end` the reverse; `left`/`right` ignore direction; an unset value is `start` | `src/rendering/text_layout.cpp` |
+| Eight assertions on exact positions | `Tests/AetherisRendering/TestBidi.cpp` |
+
+Upstream's rule, read rather than guessed: `LibWeb/HTML/Canvas/Canvas2DContextBase.cpp:445-470` writes it out
+for canvas ("In RTL, `start` means right-aligned", "Explicit `left` and `right` alignments ignore direction"),
+and `CSS/ComputedValues.h:447` gives the initial value as `TextAlign::Start`.
+
+### Numbers
+
+The bitmap fallback makes the assertions exact — 10 px per character at 16 px, so "abc" is 30 px in a
+200 px line:
+
+| text-align | direction | fragment x |
+| --- | --- | --- |
+| unset | ltr | 0 |
+| unset | rtl | **170** |
+| `start` | rtl | 170 |
+| `end` | rtl | 0 |
+| `end` | ltr | 170 |
+| `left` | rtl | 0 |
+| `right` | ltr | 170 |
+| `center` | rtl | 85 |
+
+Rendered: the `direction: rtl` paragraphs of the bidi fixture moved from the left margin to the right one,
+and the LTR paragraphs did not move.
+
+### What is still not there
+
+`text-align: justify` is treated as `start`. Nothing else changed, and the suite's pixel tests did not move.
+
+### What this row would do differently
+
+Nothing. It was written from the upstream rule with the assertions first, and it took one build.
