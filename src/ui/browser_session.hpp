@@ -15,6 +15,11 @@ struct HistoryEntry {
     float scroll_x { 0 };
     float scroll_y { 0 };
     ScrollRestoration scroll_restoration { ScrollRestoration::Auto };
+    // `history.state`, as the text the JS layer serialised. Empty means "no state", which is what `history.state`
+    // reports as null. Upstream stores a structured clone (HTML/History.cpp:177, StructuredSerializeForStorage);
+    // this engine has no structured clone, so the binding writes JSON and says so (row 1g4b).
+    std::string state;
+    bool has_state { false };
 };
 
 // What the browser is showing: the tabs, which one is active, and the state the
@@ -70,6 +75,14 @@ public:
     // After a traversal, the offset the new entry wants restored, if its mode is Auto and it has one. Answers
     // once: a second call says no, so a repaint cannot re-apply an old offset.
     bool take_scroll_restore(float& x, float& y);
+
+    // `history.pushState(data, unused, url)` and `history.replaceState(...)`. No document is loaded: the URL and the
+    // history move, the page stays. Returns false when `url` is not same-origin with the current entry, which is the
+    // case upstream throws a SecurityError for (HTML/History.cpp:169-223).
+    bool push_state(std::string const& url, std::string serialized_state, bool replace);
+
+    // The current entry's serialized state, empty when it has none.
+    std::string const& current_state() const;
 
 private:
     bool m_pending_scroll_restore { false };

@@ -204,6 +204,88 @@ bool BrowserSession::take_scroll_restore(float& x, float& y)
     return true;
 }
 
+namespace {
+
+// Scheme and authority, lowercased. The session is deliberately free of the rendering layer, so it does not reach
+// for SecurityPolicy::is_same_origin(); this is the same question asked in eight lines, and it is the only thing
+// this layer needs from it.
+std::string origin_of(std::string const& url)
+{
+    auto const scheme_end = url.find("://");
+    if (scheme_end == std::string::npos)
+        return {};
+    auto const path_start = url.find('/', scheme_end + 3);
+    auto origin = url.substr(0, path_start == std::string::npos ? std::string::npos : path_start);
+    for (auto& c : origin)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return origin;
+}
+
+// A `pushState` URL is resolved against the document, as the spec's "parse url, relative to the relevant settings
+// object" does: an absolute URL stands alone, "//host/p" takes the current scheme, "/path" the current origin, and
+// anything else the current directory.
+std::string resolve_against(std::string const& base, std::string const& target)
+{
+    if (target.find("://") != std::string::npos)
+        return target;
+    auto const scheme_end = base.find("://");
+    if (scheme_end == std::string::npos)
+        return target;
+    if (target.rfind("//", 0) == 0)
+        return base.substr(0, scheme_end) + ":" + target;
+    auto const origin = origin_of(base);
+    if (target.empty())
+        return base;
+    if (target.front() == '/')
+        return origin + target;
+    auto const path_start = base.find('/', scheme_end + 3);
+    if (path_start == std::string::npos)
+        return origin + "/" + target;
+    auto const last_slash = base.rfind('/');
+    return base.substr(0, last_slash + 1) + target;
+}
+
+} // namespace
+
+bool BrowserSession::push_state(std::string const& url, std::string serialized_state, bool replace)
+{
+    auto* tab = active();
+    if (!tab || tab->entries.empty())
+        return false;
+
+    auto const& current_url = tab->entries[tab->index].url;
+    auto target = url.empty() ? current_url : resolve_against(current_url, url);
+    if (origin_of(target) != origin_of(current_url))
+        return false;
+
+    tab->url = target;
+    if (replace) {
+        tab->entries[tab->index].url = target;
+        tab->entries[tab->index].state = std::move(serialized_state);
+        tab->entries[tab->index].has_state = true;
+        return true;
+    }
+
+    tab->entries.resize(tab->index + 1);
+    HistoryEntry entry;
+    entry.url = target;
+    entry.state = std::move(serialized_state);
+    entry.has_state = true;
+    tab->entries.push_back(std::move(entry));
+    tab->index = tab->entries.size() - 1;
+    return true;
+}
+
+std::string const& BrowserSession::current_state() const
+{
+    static const std::string empty;
+    auto const* tab = m_tabs.empty() ? nullptr : &m_tabs[m_active];
+    if (!tab || tab->entries.empty())
+        return empty;
+    auto const& entry = tab->entries[tab->index];
+    return entry.has_state ? entry.state : empty;
+}
+
 std::string const& BrowserSession::current_url() const
 {
     static const std::string empty;

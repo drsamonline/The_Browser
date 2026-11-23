@@ -491,5 +491,65 @@ int main()
         require(h.has_error(), "parse error detected");
     }
 
+// Row 1g4b: `history.state`, `pushState`, `replaceState` and `scrollRestoration`, driven through the same hooks
+    // the app installs. The store here is a string, which is what the session layer is.
+    {
+        struct Store {
+            std::string url { "https://a.test/start" };
+            std::string state;
+            int scroll_restoration { 0 };
+            int pushes { 0 };
+            bool reject_next { false };
+        } store;
+
+        set_history_state_hooks(
+            [&store](std::string const& url, std::string state, bool replace) {
+                (void)replace;
+                if (store.reject_next)
+                    return false;
+                if (!url.empty())
+                    store.url = url;
+                store.state = std::move(state);
+                store.pushes++;
+                return true;
+            },
+            [&store] { return store.state; },
+            [&store] { return store.scroll_restoration; },
+            [&store](int mode) { store.scroll_restoration = mode; });
+
+        Harness h;
+        h.run("console.log(JSON.stringify(history.state));");
+        require(h.output == "null\n", "an entry with no state reports null");
+
+        h.run("history.pushState({ n: 2 }, '', '/two');");
+        require(store.pushes == 1, "pushState reached the host");
+        require(store.url == "/two", "with the url it was given");
+        require(store.state == "{\"n\":2}", "and the state serialised to JSON");
+
+        h.output.clear();
+        h.run("console.log(history.state.n); console.log(JSON.stringify(history.state));");
+        require(h.output == "2\n{\"n\":2}\n", "history.state parses back to the value that was pushed");
+
+        h.run("history.replaceState('text', '');");
+        require(store.state == "\"text\"", "replaceState serialises a string too");
+
+        // A value JSON cannot carry becomes null, which is what upstream substitutes when its serialiser refuses.
+        h.run("history.pushState(function () {}, '');");
+        require(store.state == "null", "a function is stored as null rather than throwing");
+
+        // A refused URL surfaces as an exception a script can catch.
+        store.reject_next = true;
+        h.output.clear();
+        h.run("try { history.pushState({}, '', 'https://b.test/'); } catch (e) { console.log('refused'); }");
+        require(h.output == "refused\n", "a cross-origin pushState throws where a script can see it");
+        store.reject_next = false;
+
+        h.output.clear();
+        h.run("console.log(history.scrollRestoration); history.scrollRestoration = 'manual';"
+              " console.log(history.scrollRestoration);");
+        require(h.output == "auto\nmanual\n", "scrollRestoration reads and writes the entry's mode");
+        require(store.scroll_restoration == 1, "and the host was told");
+    }
+
     return 0;
 }

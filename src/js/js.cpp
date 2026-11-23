@@ -600,6 +600,10 @@ static std::function<std::size_t()> g_history_length;
 static std::function<bool()> g_history_back;
 static std::function<bool()> g_history_forward;
 static std::function<bool(int)> g_history_go;
+static std::function<bool(std::string const&, std::string, bool)> g_history_push_state;
+static std::function<std::string()> g_history_state;
+static std::function<int()> g_history_scroll_restoration;
+static std::function<void(int)> g_history_set_scroll_restoration;
 
 void set_navigation_hooks(std::function<std::string()> current_url,
     std::function<void(std::string)> set_current_url,
@@ -616,6 +620,18 @@ void set_navigation_hooks(std::function<std::string()> current_url,
     g_history_back = std::move(history_back);
     g_history_forward = std::move(history_forward);
     g_history_go = std::move(history_go);
+}
+
+void set_history_state_hooks(
+    std::function<bool(std::string const&, std::string, bool)> push_state,
+    std::function<std::string()> current_state,
+    std::function<int()> scroll_restoration,
+    std::function<void(int)> set_scroll_restoration)
+{
+    g_history_push_state = std::move(push_state);
+    g_history_state = std::move(current_state);
+    g_history_scroll_restoration = std::move(scroll_restoration);
+    g_history_set_scroll_restoration = std::move(set_scroll_restoration);
 }
 
 // The session store's six members. Same shape as the local ones, a different map.
@@ -867,6 +883,91 @@ static JSValue js_history_go(JSContext* context, JSValueConst, int argc, JSValue
     return JS_UNDEFINED;
 }
 
+// `history.pushState(data, unused, url)` / `replaceState`: the URL and the session history move, nothing is loaded
+// (HTML/History.cpp:169-223). The state is serialised to JSON here because this engine has no structured clone; a
+// value JSON cannot represent - a function, a cycle - becomes null, which is the same substitute upstream makes
+// when its serialiser refuses (History.cpp:177).
+static JSValue js_history_push_replace_state(JSContext* context, JSValueConst, int argc, JSValueConst* argv, bool replace)
+{
+    std::string serialized = "null";
+    if (argc >= 1 && !JS_IsUndefined(argv[0])) {
+        JSValue json = JS_JSONStringify(context, argv[0], JS_UNDEFINED, JS_UNDEFINED);
+        if (JS_IsException(json)) {
+            JS_FreeValue(context, JS_GetException(context));
+        } else if (JS_IsString(json)) {
+            auto const* text = JS_ToCString(context, json);
+            if (text) {
+                serialized = text;
+                JS_FreeCString(context, text);
+            }
+        }
+        JS_FreeValue(context, json);
+    }
+
+    std::string url;
+    if (argc >= 3 && JS_IsString(argv[2])) {
+        auto const* text = JS_ToCString(context, argv[2]);
+        if (text) {
+            url = text;
+            JS_FreeCString(context, text);
+        }
+    }
+
+    if (!g_history_push_state || !g_history_push_state(url, std::move(serialized), replace)) {
+        // Upstream throws a SecurityError DOMException for a cross-origin URL; this engine has no DOMException, so a
+        // TypeError carries the same message and a script can still see that it failed.
+        return JS_ThrowTypeError(context, "Cannot pushState or replaceState to a cross-origin URL");
+    }
+    return JS_UNDEFINED;
+}
+
+static JSValue js_history_push_state(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    return js_history_push_replace_state(context, this_value, argc, argv, false);
+}
+
+static JSValue js_history_replace_state(JSContext* context, JSValueConst this_value, int argc, JSValueConst* argv)
+{
+    return js_history_push_replace_state(context, this_value, argc, argv, true);
+}
+
+// `history.state`: the serialised state of the current entry, parsed back. Null when there is none, or when the text
+// is not JSON this engine can parse.
+static JSValue js_history_state(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    if (!g_history_state)
+        return JS_NULL;
+    auto const serialized = g_history_state();
+    if (serialized.empty())
+        return JS_NULL;
+    JSValue parsed = JS_ParseJSON(context, serialized.c_str(), serialized.size(), "<state>");
+    if (JS_IsException(parsed)) {
+        JS_FreeValue(context, JS_GetException(context));
+        return JS_NULL;
+    }
+    return parsed;
+}
+
+static JSValue js_history_scroll_restoration(JSContext* context, JSValueConst, int, JSValueConst*)
+{
+    int const mode = g_history_scroll_restoration ? g_history_scroll_restoration() : 0;
+    return JS_NewString(context, mode == 1 ? "manual" : "auto");
+}
+
+static JSValue js_history_set_scroll_restoration(JSContext* context, JSValueConst, int argc, JSValueConst* argv)
+{
+    if (argc < 1 || !g_history_set_scroll_restoration)
+        return JS_UNDEFINED;
+    auto const* text = JS_ToCString(context, argv[0]);
+    if (!text)
+        return JS_UNDEFINED;
+    std::string value(text);
+    JS_FreeCString(context, text);
+    // Anything that is not "manual" is "auto", which is the enum's only other member (HTML/History.idl).
+    g_history_set_scroll_restoration(value == "manual" ? 1 : 0);
+    return JS_UNDEFINED;
+}
+
 void Interpreter::setup_globals()
 {
     g_active_interpreter = this;
@@ -975,6 +1076,19 @@ void Interpreter::setup_globals()
     JS_DefinePropertyGetSet(m_context, history, history_length_atom,
         JS_NewCFunction(m_context, js_history_length, "length", 0), JS_UNDEFINED, 0);
     JS_FreeAtom(m_context, history_length_atom);
+    define_function(m_context, history, "pushState", js_history_push_state);
+    define_function(m_context, history, "replaceState", js_history_replace_state);
+    {
+        JSAtom state_atom = JS_NewAtom(m_context, "state");
+        JS_DefinePropertyGetSet(m_context, history, state_atom,
+            JS_NewCFunction(m_context, js_history_state, "state", 0), JS_UNDEFINED, 0);
+        JS_FreeAtom(m_context, state_atom);
+        JSAtom restoration_atom = JS_NewAtom(m_context, "scrollRestoration");
+        JS_DefinePropertyGetSet(m_context, history, restoration_atom,
+            JS_NewCFunction(m_context, js_history_scroll_restoration, "scrollRestoration", 0),
+            JS_NewCFunction(m_context, js_history_set_scroll_restoration, "scrollRestoration", 1), 0);
+        JS_FreeAtom(m_context, restoration_atom);
+    }
     JS_SetPropertyStr(m_context, global, "history", history);
 
     // window

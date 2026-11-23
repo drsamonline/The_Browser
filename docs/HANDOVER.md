@@ -127,6 +127,10 @@ All credited in `CREDITS.md`.
   through — now maps a request context to its directive and refuses on a mismatch. Source lists cover `'self'`, `*`,
   `'none'`, scheme, host, subdomain and port; a path in a source is not matched, and nonces, hashes and header
   delivery are not implemented — all three are in the row.
+- **Row 1g4b closed** (2026-11-23): `pushState`/`replaceState`/`history.state`, and the `window.history` binding that
+  row 1g4c owed. `BrowserSession::push_state` resolves the URL against the document, refuses a cross-origin one, and
+  never loads anything; the state is JSON rather than a structured clone, and a value JSON cannot carry becomes
+  `null` — the same substitute upstream makes when its serialiser refuses.
 
 ## 2. Current state
 

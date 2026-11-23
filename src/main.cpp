@@ -2270,6 +2270,18 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         });
 
 
+    // `history.state`, `pushState`/`replaceState` and `scrollRestoration` (rows 1g4b, 1g4c). The session owns the
+    // state text; the binding serialises to JSON because this engine has no structured clone.
+    aetheris::js::set_history_state_hooks(
+        [&session](std::string const& url, std::string state, bool replace) {
+            return session.push_state(url, std::move(state), replace);
+        },
+        [&session] { return session.current_state(); },
+        [&session] { return session.scroll_restoration() == ui::ScrollRestoration::Manual ? 1 : 0; },
+        [&session](int mode) {
+            session.set_scroll_restoration(mode == 1 ? ui::ScrollRestoration::Manual : ui::ScrollRestoration::Auto);
+        });
+
     // The loaded page is kept between frames. Before this, every repaint
     // refetched the document over the network, which made a scroll a download.
     // The page's JavaScript and DOM host live as long as the window: the host

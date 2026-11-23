@@ -835,3 +835,51 @@ Three compile errors in a row were all mine and all ordering: the fetcher is not
 installed, the default argument was written on both the declaration and the definition, and the superseded helper
 became an unused function under `-Werror`. `tools/check-build.py` reported 67/67 binaries current before both suite
 runs, so neither pass was against a stale binary.
+
+---
+
+## 25. Twentieth commit — row 1g4b: `pushState`, `replaceState`, `history.state`
+
+Upstream's shape (`HTML/History.cpp:169-223`): one shared path for push and replace that serialises the state, resolves
+an optional URL against the document, refuses a URL the document cannot be rewritten to, and updates the session
+history entry — **without loading anything**. `pushState` is a history operation, not a navigation.
+
+| what | before | after |
+| --- | --- | --- |
+| `history.pushState` / `replaceState` | did not exist | on `window.history`, wired to the session |
+| `history.state` | did not exist | the current entry's state, parsed back; `null` when there is none |
+| `history.scrollRestoration` | C++ API only (row 1g4c owed the JS half) | on `window.history`, reading and writing the entry's mode |
+| a history entry | url, scroll, mode | plus the serialised state |
+
+`BrowserSession::push_state(url, state, replace)` resolves the URL the way the spec's "parse url, relative to the
+relevant settings object" does — absolute, `//host/p`, `/path`, or a relative path — refuses a different origin, and
+never sets `loading`.
+
+### Evidence
+
+| test | assertions |
+| --- | --- |
+| `AetherisBrowserSession` | push grows the history and moves the URL; an empty url keeps the current one; a cross-origin url is refused and changes nothing; `replaceState` overwrites rather than grows; going back reads **that entry's own** state; the first entry has none; `pushState` never starts a load |
+| `AetherisJs` | no state reports `null`; `{n:2}` round-trips through JSON; a string state works; a **function becomes null** rather than throwing; a cross-origin push throws where a script can catch it; `scrollRestoration` reads `auto` and writes `manual` |
+
+Suite **66/66 twice**, 135.25 s and 131.69 s.
+
+### The honest limit, in the row
+
+The state is **JSON, not a structured clone**. `Map`, `Set`, `Date`, typed arrays and cycles all collapse or become
+`null`. Upstream serialises with `StructuredSerializeForStorage` and — notably — *substitutes `null` itself* when its
+serialiser refuses (`History.cpp:177`), so the failure mode is the same one a real browser shows for a value it cannot
+clone; only the set of clonable values is smaller.
+
+### Two test bugs of mine, not code bugs
+
+1. `pushState` looked like it started a load — because `open()` leaves `loading` true until a page reports back. The
+   fixture now clears it first, which is what a loaded page looks like.
+2. I expected the entry *below* a `replaceState` to carry the replaced state. It carries its own; that is the point of
+   replace.
+
+### One flake worth naming
+
+`WindowGeometry` failed once in a full `-j2` run and passed alone (81 s) and in the two runs after (77 s). It is a
+long test and the pod was busy; both suite runs reported for this commit are clean. If it flakes again, the fix is a
+longer ctest timeout for that test, not a code change.

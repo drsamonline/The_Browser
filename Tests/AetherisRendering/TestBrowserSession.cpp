@@ -122,5 +122,41 @@ int main()
         require(session.scroll_restoration() == ScrollRestoration::Manual, "b's mode is still what it was set to");
     }
 
+// Row 1g4b: `pushState`/`replaceState`. The URL and the history move; nothing is loaded; a cross-origin URL is
+    // refused, which is the SecurityError upstream throws (HTML/History.cpp:169-223).
+    {
+        BrowserSession session;
+        require(session.open("https://a.test/start"), "open a page");
+        session.set_loading(false); // the page has loaded; from here nothing should start a load again
+        require(session.history_length() == 1, "one entry to begin with");
+        require(session.current_state().empty(), "and no state on it");
+
+        require(session.push_state("/two", "{\"n\":2}", false), "pushState to a same-origin path");
+        require(session.history_length() == 2, "the history grew by one");
+        require(session.current_url() == "https://a.test/two", "and the URL moved");
+        require(session.current_state() == "{\"n\":2}", "the state is on the new entry");
+        require(!session.loading(), "nothing was loaded: pushState is a history operation, not a navigation");
+
+        require(session.push_state("", "{\"n\":3}", false), "an empty url keeps the current one");
+        require(session.current_url() == "https://a.test/two", "so the URL is unchanged");
+        require(session.history_length() == 3, "but a new entry was still added");
+
+        require(session.push_state("https://b.test/away", "null", false) == false, "a cross-origin URL is refused");
+        require(session.history_length() == 3, "and nothing was added");
+        require(session.current_url() == "https://a.test/two", "nor did the URL move");
+
+        require(session.push_state("/replaced", "{\"r\":1}", true), "replaceState");
+        require(session.history_length() == 3, "replaces rather than grows");
+        require(session.current_url() == "https://a.test/replaced", "the URL is replaced");
+        require(session.current_state() == "{\"r\":1}", "and so is the state");
+
+        // Going back reads the state of the entry it lands on, not the one it left.
+        require(session.history_back(), "go back");
+        require(session.current_url() == "https://a.test/two", "back to the second entry");
+        require(session.current_state() == "{\"n\":2}", "with that entry's own state, not the one replaced above it");
+        require(session.history_back(), "back again");
+        require(session.current_state().empty(), "the first entry has no state");
+    }
+
     return 0;
 }

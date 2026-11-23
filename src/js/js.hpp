@@ -35,6 +35,17 @@ void set_navigation_hooks(std::function<std::string()> current_url,
     std::function<bool()> history_forward,
     std::function<bool(int)> history_go);
 
+// The state half of `history` (row 1g4b), and `scrollRestoration` (row 1g4c's JS side). Separate from the hooks
+// above so a host that only has navigation does not have to invent empty state handlers.
+//   push_state(url, serialized_state, replace) -> false when the URL is not same-origin
+//   current_state()  -> the serialized state of the entry the page is standing on, empty for none
+//   scroll_restoration() -> 0 auto, 1 manual;  set_scroll_restoration(int) writes it
+void set_history_state_hooks(
+    std::function<bool(std::string const&, std::string, bool)> push_state,
+    std::function<std::string()> current_state,
+    std::function<int()> scroll_restoration,
+    std::function<void(int)> set_scroll_restoration);
+
 class Interpreter {
 public:
     Interpreter();
