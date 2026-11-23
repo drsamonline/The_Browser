@@ -211,6 +211,24 @@ int main()
         require(std::abs(fragments[0].rect.width - spaced_abc) < 0.01f, "the fragment is as wide as the spaced run");
     }
 
+    // Row 2c: kerning, in both paths. A shaped run gets it from GPOS (asserted above: the shaped width of
+    // "To" is narrower than the two characters), and a build without a shaper gets it from the embedded pair
+    // table. That table holds the embedded subset's glyph ids, so it answers only for the active font:
+    // asking the local TtfFont returns 0 for every pair, which is how the first version of this failed.
+    {
+        auto const* active = active_font();
+        require(active != nullptr, "an outline font is active for the pair table");
+        int const kern = kerning_adjustment(*active, active->glyph_index('A'), active->glyph_index('T'));
+        require(kern != 0, "the embedded pair table has a value for A + T");
+
+        StyleProperties kern_style;
+        kern_style.set("font-size", "16px");
+        auto const kern_font = Font::from_style(kern_style);
+        float const shaped_pair = kern_font.measure("AT");
+        float const apart = kern_font.measure("A") + kern_font.measure("T");
+        require(shaped_pair < apart, "and GPOS kerns the same pair in the shaped path");
+    }
+
     std::cout << "shaping: " << latin.size() << " latin glyphs, " << fi.size() << " for \"fi\", clusters are byte offsets\n";
     return 0;
 }

@@ -2,6 +2,7 @@
 // ink present, correct bounding box, anti-aliased edges, and a counter (the
 // hole in 'A') left empty. Skips when no font is available.
 
+#include <font_library.hpp>
 #include <glyph_rasterizer.hpp>
 #include <ttf_font.hpp>
 
@@ -93,6 +94,17 @@ int main()
             if (bigger.at(x, y) == 255)
                 ++solid;
     require(solid > 0, "thick strokes reach full coverage");
+
+    // Row 2b: paint does not call the rasteriser directly, it calls cached_glyph(), so the proof that the
+    // rasteriser is wired into paint is that the two agree value for value.
+    {
+        auto const& cached = cached_glyph(font, glyph, 32.0f);
+        require(cached.width == bitmap.width && cached.height == bitmap.height, "the cached bitmap is the rasterised one");
+        bool same = cached.coverage.size() == bitmap.coverage.size();
+        for (std::size_t i = 0; same && i < cached.coverage.size(); ++i)
+            same = cached.coverage[i] == bitmap.coverage[i];
+        require(same, "every coverage value matches: paint's entry point is the rasteriser");
+    }
 
     std::printf("'A' at 32px: %dx%d, %zu inked, %d partial\n",
         bitmap.width, bitmap.height, inked, partial);

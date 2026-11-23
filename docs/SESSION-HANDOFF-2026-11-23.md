@@ -230,3 +230,31 @@ identical when the output is filtered.
 1. **Read the signature before calling it.** `css_length_px` has three parameters with defaults, and a swapped
    pair compiles silently.
 2. **Check that the build tool exists before trusting a build.** `command -v ninja` is one word.
+
+---
+
+## 10. Fifth commit — rows 2b and 2c: status drift, not new work
+
+Both were ticked `[ ]` and both were done in code. The checklist's own rule is "if a row's status is wrong,
+fix it in the next commit and say so in the message", so this commit ticks them and adds the proofs that were
+missing, rather than claiming anything new was built.
+
+| row | what was already true | what this commit adds |
+| --- | --- | --- |
+| 2b | `draw_text` rasterises through `cached_glyph()` → `rasterize_glyph()` | `AetherisGlyphRasterizer` asserts the cached bitmap equals the rasterised one, value for value ('A' at 32 px: 24x26, 221 inked, 115 partial-coverage pixels) |
+| 2c | GPOS kerns a shaped run; the embedded pair table kerns the fallback (A+T = -159) | `AetherisShaping` asserts both, and that the table answers only for the active font |
+
+### What the proofs cost
+
+| first attempt | what was true | what settled it |
+| --- | --- | --- |
+| `kerning_adjustment(font, 'T', 'o')` on a local `TtfFont` | returns 0 for every pair unless the font *is* `active_font()` — the table holds the embedded subset's glyph ids | a probe over all ASCII pairs printed zero pairs, then 12 the moment it asked the active font |
+| `T + o` as the pair | not in the table; `A + T` is | the probe |
+
+Two more rows' worth of the same lesson as 2h and 2g: the fixture, not the feature, is what fails first.
+
+### One thing found and not fixed
+
+`cached_glyph()` keys on `(glyph, size)` and not on the font. That is correct while `active_font()` is a
+singleton — the only font paint can reach — but it would serve the wrong bitmap the day a second font exists
+(`@font-face`, row 3d). Recorded here rather than in a row, because row 3d is where it becomes reachable.

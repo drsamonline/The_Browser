@@ -67,8 +67,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | --- | --- | --- | --- |
 | 2a | Font API: glyph ids and per-glyph advances | `[x]` | **was already there** — `advance()` asked the TTF; the gap was byte iteration, fixed `+` the commit before this |
 | 2a2 | UTF-8 decoding in measure, measure_text and draw | `[x]` | `utf8_next()`; 5 decode cases + 2 measurement assertions in `AetherisTextLayout` |
-| 2b | Wire `glyph_rasterizer` into paint | `[ ]` | — |
-| 2c | Kerning | `[ ]` | — |
+| 2b | Wire `glyph_rasterizer` into paint | `[x]` | **status drift, fixed 2026-11-23**: done since the rasteriser landed and never ticked. `draw_text` calls `cached_glyph()` (`font_library.cpp:109`) which calls `rasterize_glyph()`; `AetherisGlyphRasterizer` now also asserts the two agree value for value (24x26 for 'A' at 32 px, 115 partial-coverage pixels, so the edges are anti-aliased). Caveat: the glyph cache is keyed on (glyph, size) and not on the font, which is safe only while `active_font()` is a singleton |
+| 2c | Kerning | `[x]` | **status drift, fixed 2026-11-23**: done in both paths. A shaped run gets it from GPOS, and the fallback uses the embedded pair table (`kerning_adjustment`, A+T = -159). `AetherisShaping` now asserts both, and that the table answers only for the active font - a local `TtfFont` returns 0 for every pair, which is what the first version of the assertion tripped over |
 | 2d | Text shaping | `[x]` | `15c6496e`; `shape_run()` returns glyphs, clusters and advances from the font tables, and `AetherisShaping` pins the contract (fi -> one glyph, clusters as byte offsets) |
 | 2d2 | Use the shaper in the text path | `[x]` | `6d8ca43c`; `measure` and the drawing pen both use shaped advances, `measure("fi")` 10.0938 -> 10.0781 |
 | 2d3 | Cache the face per font | `[x]` | `perf` commit; keyed by a hash of the font data, not the buffer address. **Corrected 2026-11-22**: the cache was right, but taking that hash on every call cost 1.2331 ms of a 1.2571 ms run at -O2. The 0.075 ms in this cell was the face creation the cache removed, not the hash it added. Hash moved to load time in 2d4 |

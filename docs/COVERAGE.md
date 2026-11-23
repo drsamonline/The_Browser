@@ -54,8 +54,8 @@ are at the bottom.
 | --- | --- | --- |
 | TTF parsing | done | `ttf_font.cpp` |
 | Glyph rasteriser | done | `glyph_rasterizer.cpp` |
-| Rasteriser wired into layout and paint | done, 2026-11-23 — layout measures the shaped width (`Font::measure`) and the pen advances by the same one; the no-font fallback keeps per-code-point advances on both sides | `text_layout.cpp`, `software_surface.cpp` |
-| Kerning | done, 2026-11-23 — a shaped run gets it from GPOS and layout now measures it ("To" 19.5625 -> 16.8594 px at 16 px); the fallback path uses the embedded pair table | `font.cpp`, `text_layout.cpp` |
+| Rasteriser wired into layout and paint | done — `draw_text` rasterises the glyphs of a shaped run through `cached_glyph()`, asserted to match `rasterize_glyph()` value for value; layout measures the shaped width and the pen advances by the same one | `text_layout.cpp`, `software_surface.cpp`, `AetherisGlyphRasterizer` |
+| Kerning | done, 2026-11-23 — a shaped run gets it from GPOS and layout now measures it ("To" 19.5625 -> 16.8594 px at 16 px); the fallback path uses the embedded pair table (A+T = -159), and both are asserted | `font.cpp`, `text_layout.cpp`, `AetherisShaping` |
 | Shaping (ligatures, Arabic, Indic) | done, 2026-11-18 — HarfBuzz, `shape_run()`; `measure("fi")` 10.0938 -> 10.0781 | `shaper.cpp`, `AetherisShaping` |
 | Shaped-run cache | done, 2026-11-22 — keyed by (font identity, size, letter-spacing, word-spacing, text); a cached run is 0.0001 ms at -O2 | `shaper.cpp`, `tools/run-shaping-bench.sh` |
 | `letter-spacing`, `word-spacing` | done, 2026-11-23 — applied to the glyph advances inside the shaper, so layout and paint share one number; the trailing edge keeps its letter-spacing, as upstream and other browsers do | `shaper.cpp`, `text_layout.cpp`, `render_tree.cpp` |

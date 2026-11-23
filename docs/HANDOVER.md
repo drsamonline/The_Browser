@@ -72,6 +72,10 @@ All credited in `CREDITS.md`.
 - **Row 2g closed** (2026-11-23): `letter-spacing` and `word-spacing` are applied to the glyph advances in
   the shaper, and the shaped-run cache key carries both. Before this, layout counted the spacing and the
   pen drew without it — letter-spaced text was laid out wider than it painted.
+- **Rows 2b and 2c ticked** (2026-11-23): both had been done in code for weeks and never ticked — status
+  drift, not new work. `AetherisGlyphRasterizer` now asserts that paint's entry point (`cached_glyph`) returns
+  exactly what the rasteriser produces, and `AetherisShaping` asserts kerning in both paths (GPOS and the
+  embedded pair table).
 
 ## 2. Current state
 
