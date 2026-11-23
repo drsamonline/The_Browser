@@ -738,3 +738,45 @@ above them. A lambda cannot capture what does not exist yet, and the compiler sa
 
 `history.state` and `pushState` are row 1g4b, still open; `scrollRestoration` currently only has an API, not a
 `window.history` binding — the JS side of it belongs with that row.
+
+---
+
+## 23. Eighteenth commit — row 5c: mixed content, measured rather than assumed
+
+The row said only "Mixed-content blocking". The code was already there: `SecurityPolicy::allows_resource()` behind
+`SecureResourceLoader`, which every fetch in `main.cpp` goes through. So the work was to measure it against upstream's
+rule and fix what the measurement found.
+
+| what upstream asks | what we asked |
+| --- | --- |
+| is the origin *potentially trustworthy*? https, wss, file, loopback (`SecureContexts/AbstractOperations.cpp:15-57`) | is the scheme https? — **only that** |
+| optionally-blockable content (images, audio, video) is allowed; blockable content is not | images allowed, everything else blocked — correct |
+
+### The two things the measurement found
+
+| # | fault | why it matters |
+| --- | --- | --- |
+| 1 | trustworthiness was https-only | a loopback resource (`http://localhost:3000/app.js`) was blocked as mixed content on an https page, and an `http://localhost` document was never treated as secure at all |
+| 2 | the test used `assert` | `assert` disappears under NDEBUG, so the whole security test could have compiled to `main() { return 0; }` and passed forever |
+
+Both fixed. `is_potentially_trustworthy()` now covers https, wss, file, `localhost`, `*.localhost` and 127.0.0.0/8,
+and the loopback check parses four numeric labels so `127.0.0.1.evil.test` is **not** loopback — my first version got
+that wrong and the test said so in one run.
+
+### Evidence — `AetherisSecurityPolicy`, 18 assertions
+
+| group | cases |
+| --- | --- |
+| trustworthiness | https, file, `http://localhost:8080`, `127.0.0.1`, `127.5.6.7`, `a.localhost` — trusted; `http://example.test` and `127.0.0.1.evil.test` — not |
+| blockable content | script, stylesheet, document and form submission refused on an https document |
+| optionally-blockable | an image allowed |
+| schemes | `data:` refused outright |
+| the other direction | http-over-http allowed; a loopback script on an https page allowed |
+| enforcement | `SecureResourceLoader` lets the image through and refuses the script |
+
+Suite **66/66 twice**, 135.20 s and 144.22 s.
+
+### Still not done in this subject
+
+Audio and video are optionally-blockable per the spec, but this engine fetches neither, so there is no request context
+to classify them with — recorded in the row rather than invented.

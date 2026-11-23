@@ -117,7 +117,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 | --- | --- | --- | --- |
 | 5a | CSP fetch directives (`img-src`, `connect-src`, `style-src`, …) | `[ ]` | meta policy and inline-script gating already exist |
 | 5b | Same-origin enforcement in the bindings | `[ ]` | — |
-| 5c | Mixed-content blocking | `[ ]` | — |
+| 5c | Mixed-content blocking | `[x]` | 2026-11-23; the policy and its enforcement were already there (`SecurityPolicy::allows_resource` behind `SecureResourceLoader`, which every fetch goes through), so the row's work was to measure it and fix what the measurement found. Two divergences from upstream's rule (`LibWeb/SecureContexts/AbstractOperations.cpp:15-57`): **trustworthiness was https-only**, so a loopback resource was blocked as mixed content and an `http://localhost` document was not treated as secure at all - now `is_potentially_trustworthy()` covers https, wss, file, `localhost`, `*.localhost` and 127.0.0.0/8 (four numeric labels, so `127.0.0.1.evil.test` is not loopback); and the test used `assert`, which disappears under NDEBUG, so a security test could have vanished silently - it now uses `require`. `AetherisSecurityPolicy` pins 18 cases: trustworthiness for six URLs and two near-misses, blockable content (script, style, document, form) refused, an image allowed, an unsupported scheme refused, http-over-http and loopback-script allowed, and the loader itself enforcing both directions. **Not done:** audio and video are optionally-blockable per the spec but this engine fetches neither, so they have no request context to classify |
 | 5d | Process and site isolation | `[-]` | out of scope, `e10caf02` |
 
 ## Closed — 2026-11-17, second session

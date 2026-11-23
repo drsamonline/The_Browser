@@ -118,6 +118,10 @@ All credited in `CREDITS.md`.
   the session history entry (`HTML/History.cpp:229-242`). The app records the scroll before a traversal, and the load
   path applies the restore instead of always scrolling to zero. `AetherisBrowserSession` pins both modes and the
   per-entry ownership.
+- **Row 5c closed** (2026-11-23): mixed content. The policy and its enforcement already existed, so this row was a
+  measurement — and the measurement found two things: trustworthiness was https-only, which blocked loopback
+  resources as mixed content and never treated `http://localhost` as secure; and the test was written with `assert`,
+  which disappears under NDEBUG. Both fixed; `AetherisSecurityPolicy` now pins 18 cases with `require`.
 
 ## 2. Current state
 
