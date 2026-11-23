@@ -152,6 +152,12 @@ All credited in `CREDITS.md`.
   objects, so the previous document's globals, listeners and timers are unreachable while storage survives. Emptying
   the global object does not work — a top-level `var` is non-configurable — which is why the realm is replaced rather
   than cleared. **This closes the checklist: 66 of 69 rows done, 1 blocked, 2 out of scope.**
+- **Row 0.1 advanced, and it found the engine's biggest problem** (2026-11-23): the corpus tool exists and runs
+  (`tools/run-corpus.sh`), and `--render file:///…` works now that the CLI registers the file backend. The corpus
+  itself is blocked by the sandbox's egress allowlist — only a couple of hosts answer — but the two reachable sites
+  were enough: wikipedia's 417 KB does not finish in 280 s, layout costs ~0.8 ms per element on synthetic pages, and a
+  2.5× larger document took 9,000× longer to lay out. Rows **3j** (layout cost) and **0.3** (no proxy support) came out
+  of it. Full numbers in `docs/COVERAGE-CORPUS.md`.
 
 ## 2. Current state
 

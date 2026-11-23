@@ -16,6 +16,7 @@
 #include "image_output.hpp"
 #include "http_resource_backend.hpp"
 #include "resource_backend.hpp"
+#include "file_resource_backend.hpp"
 #include "resource_loader.hpp"
 #include "secure_resource_loader.hpp"
 #include "ui/browser_session.hpp"
@@ -182,8 +183,11 @@ struct SecureFetcher {
                 out.headers[header.name] = header.value;
             return out;
         });
+        // The file backend is registered alongside HTTP so a local document renders the same way a fetched one does -
+        // which is what the coverage corpus needs: fetch with curl, render with the engine (row 0.1).
         loader = std::make_shared<rendering::ResourceLoader>(cache,
-            std::vector<std::shared_ptr<rendering::ResourceBackend>> { backend });
+            std::vector<std::shared_ptr<rendering::ResourceBackend>> {
+                std::make_shared<rendering::FileResourceBackend>(), backend });
         secure = std::make_shared<rendering::SecureResourceLoader>(*loader, document_url);
     }
 

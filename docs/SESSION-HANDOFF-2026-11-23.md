@@ -1109,3 +1109,59 @@ installed and a script runs. Suite **66/66 twice**, 140.19 s and 161.79 s.
 | blocked | 1 — `0.1`, the coverage corpus, needs open internet |
 | out of scope | 2 — `3i` (a non-divergence), `5d` (process isolation) |
 | open | **0** |
+
+---
+
+## 31. Twenty-sixth commit — row 0.1: the corpus, and the finding that pays for it
+
+Row 0.1 was blocked as "no open internet". That was **wrong about itself** — the network is reachable, through an
+HTTP proxy. The precise blocker is a short egress allowlist, and finding that out took one call.
+
+| what | state |
+| --- | --- |
+| `tools/run-corpus.sh` + `tools/corpus-urls.txt` (20 sites) | built, runs, records a TSV summary |
+| `--render file:///…` | **works now** — the CLI registers `FileResourceBackend`, so a local document renders at all. It did not before this commit |
+| fetching | curl's job: the engine's client has no proxy support (row **0.3**) |
+| the 20-site list | blocked: only `example.com` and `en.wikipedia.org` answer; seven others measured at 502 |
+
+### What two reachable sites already found
+
+| site | bytes | result |
+| --- | --- | --- |
+| `example.com` | 577 | rendered |
+| `en.wikipedia.org/wiki/Web_browser` | 416,975 | **did not finish in 280 s**, with scripts and without |
+
+Two measurements narrowed it to layout:
+
+| document | parse | style + layout |
+| --- | --- | --- |
+| wikipedia, 8,339 bytes | 10 ms | 13 ms |
+| wikipedia, 20,848 bytes | 25 ms | **121,972 ms** |
+
+| elements | empty divs | divs with text | inline spans |
+| --- | --- | --- | --- |
+| 100 | 78 ms | 161 ms | 170 ms |
+| 200 | 144 ms | 299 ms | 291 ms |
+| 400 | 316 ms | 636 ms | 544 ms |
+
+Parse is linear. Layout is linear too on synthetic pages — but at **~0.8 ms per element**, three orders of magnitude
+slower than a browser, and real markup is worse than the synthetic shapes predict. Row **3j** carries that; the full
+report is `docs/COVERAGE-CORPUS.md`.
+
+### What this row was for
+
+This is the first time the engine was pointed at a real page, and it immediately produced the largest performance
+problem in the project — one no unit test could have found, because every test page is small. That is the whole
+argument for row 0.1 existing.
+
+### The suite, run after the commit rather than before it
+
+The commit was written before the suite ran, and its message said the suite was unchanged - which was a claim, not a
+measurement. The suite was run immediately afterwards: **66/66 twice, 142.22 s and 164.02 s**, so the claim turned out
+true. The order was still wrong, and the commit message was amended to carry the real times. A claim that happens to be
+right is not the same as a check.
+
+### A note on row ids
+
+The new rows were first written as `3e` and `0.2`, both of which already exist. The checklist has no uniqueness check,
+so the collision was caught by grepping the file before committing — worth doing every time a row is added.

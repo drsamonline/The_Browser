@@ -1,0 +1,22 @@
+# The fixed corpus for row 0.1. Twenty sites, chosen to spread across the features this engine implements: plain
+# text, tables, lists, forms, long documents, old-school HTML, and a few that lean hard on CSS and JavaScript.
+https://example.com/
+https://en.wikipedia.org/wiki/Web_browser
+https://news.ycombinator.com/
+https://www.python.org/
+https://lite.cnn.com/
+https://motherfuckingwebsite.com/
+https://text.npr.org/
+https://www.gnu.org/
+https://kernel.org/
+https://www.w3.org/TR/html52/
+https://docs.python.org/3/
+https://sqlite.org/
+https://www.debian.org/
+https://lwn.net/
+https://old.reddit.com/
+https://danluu.com/
+https://developer.mozilla.org/en-US/
+https://www.bbc.co.uk/news
+https://blog.cloudflare.com/
+https://www.rfc-editor.org/rfc/rfc2616.txt
