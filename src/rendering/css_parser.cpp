@@ -207,20 +207,15 @@ void CssParser::parse_block(std::vector<CssToken> const& tokens, size_t& positio
                 ++position;
 
             auto value = trim(join_value(tokens, value_begin, position));
-            // `content` keeps its quotes. Upstream models content as a list of items
-            // (CSS/StyleValues/ContentStyleValue.h: a StyleValueList, plus an optional alt-text list)
-            // and asks the tree builder for one of three kinds - ComputedContentType::Normal, None or
-            // List (Rust/src/layout/tree_builder.rs). `content: ''` is a List holding one empty string
-            // and generates a box; a bare value loses the distinction, because `''` and "no
-            // declaration" both arrive here as the empty string.
-            if (property == "content") {
-                for (size_t i = value_begin; i < position; ++i) {
-                    if (tokens[i].type == CssTokenType::String) {
-                        value = "'" + value + "'";
-                        break;
-                    }
-                }
-            }
+            // `content` keeps the quotes of *each* string item, because the item list is what the property
+            // means: `content: "a" "b"` is two items and renders "ab", not "a b". Upstream models it as a
+            // StyleValueList plus an optional alt-text list (CSS/StyleValues/ContentStyleValue.h) and asks
+            // the tree builder for Normal, None or List (Rust/src/layout/tree_builder.rs:1714);
+            // ContentValue in content_value.hpp is that shape, and this is the one place the quotes are
+            // written down. `content: ''` therefore arrives as `''` - a list holding one empty string -
+            // which is how it stays distinguishable from no declaration at all.
+            if (property == "content")
+                value = trim(quote_string_items(tokens, value_begin, position));
             if (!property.empty())
                 rule.declarations.push_back({ std::move(property), std::move(value) });
 
@@ -256,6 +251,28 @@ std::string CssParser::join_value(std::vector<CssToken> const& tokens, size_t be
     std::string value;
     for (size_t i = begin; i < end; ++i)
         value += tokens[i].value;
+    return value;
+}
+
+// `content` values, with each string token written back as a quoted run so the item boundaries survive into
+// the declaration string. Quotes and backslashes inside an item are escaped, so `content: "it's"` comes back
+// out of ContentValue intact.
+std::string CssParser::quote_string_items(std::vector<CssToken> const& tokens, size_t begin, size_t end)
+{
+    std::string value;
+    for (size_t i = begin; i < end; ++i) {
+        if (tokens[i].type != CssTokenType::String) {
+            value += tokens[i].value;
+            continue;
+        }
+        value += '\'';
+        for (char c : tokens[i].value) {
+            if (c == '\'' || c == '\\')
+                value += '\\';
+            value += c;
+        }
+        value += '\'';
+    }
     return value;
 }
 

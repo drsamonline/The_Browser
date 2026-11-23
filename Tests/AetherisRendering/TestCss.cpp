@@ -1,4 +1,5 @@
 #include <color.hpp>
+#include <content_value.hpp>
 #include <css_parser.hpp>
 #include <document.hpp>
 #include <style.hpp>
@@ -109,6 +110,30 @@ int main()
                 require(selector.rfind("@media", 0) != 0, "media blocks do not leak as selectors");
                 require(selector.find('}') == std::string::npos, "block braces do not leak into selectors");
             }
+    }
+
+// Row 3a6: `content` is a list of items with optional alt text, not a string. The item boundaries are what
+    // make `content: "a" "b"` render "ab" rather than "a b", and everything after `/` is alternative text
+    // rather than page text (upstream: ContentStyleValue holds a StyleValueList plus an alt-text list).
+    {
+        auto const list = parse_content_value("'a' 'b' / 'alt'");
+        require(list.generates_box(), "two items generate a box");
+        require(list.items.size() == 2, "two items are two items");
+        require(list.text() == "ab", "and they concatenate with no separator of their own");
+        require(list.alt() == "alt", "the part after the slash is the alt text");
+
+        require(parse_content_value("none").kind == ContentValue::Kind::None, "`none` is None");
+        require(!parse_content_value("normal").generates_box(), "`normal` generates no box");
+
+        // `content: ''` is a list holding one empty string: a box, with nothing in it.
+        auto const empty = parse_content_value("''");
+        require(empty.generates_box() && empty.items.size() == 1 && empty.text().empty(),
+            "an empty string item still generates a box");
+
+        // A function this engine cannot express is counted, not rendered as its own source text.
+        auto const unsupported = parse_content_value("attr(title)");
+        require(unsupported.unsupported_items == 1 && unsupported.text().empty(),
+            "attr() is unsupported and renders nothing rather than \"attr(title)\"");
     }
 
     return 0;

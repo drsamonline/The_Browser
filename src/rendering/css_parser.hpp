@@ -24,6 +24,7 @@ private:
     static void skip_block(std::vector<CssToken> const& tokens, size_t& position);
     static std::string trim(std::string value);
     static std::string join_value(std::vector<CssToken> const& tokens, size_t begin, size_t end);
+    static std::string quote_string_items(std::vector<CssToken> const& tokens, size_t begin, size_t end);
     static bool is_significant(CssToken const& token);
 };
 

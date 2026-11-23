@@ -1,4 +1,5 @@
 #include "layout.hpp"
+#include "content_value.hpp"
 
 #include <vector>
 
@@ -80,12 +81,15 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
         auto pseudo_style = StyleResolver {}.resolve_pseudo_element(node, sheet, pseudo_element,
             &layout_node->style, interaction_state);
         auto const* content = pseudo_style.get("content");
-        if (!content || content->empty() || *content == "none" || *content == "normal")
+        if (!content)
             return nullptr;
-        // A quoted value is a string item, which generates a box even when the string is empty.
-        std::string text = *content;
-        if (text.size() >= 2 && text.front() == '\'' && text.back() == '\'')
-            text = text.substr(1, text.size() - 2);
+        // The declaration is a list of items plus optional alt text, not a string: `content: "a" "b"`
+        // renders "ab", and everything after `/` is alternative text rather than page text. Upstream asks
+        // the same question of a ContentStyleValue (CSS/StyleValues/ContentStyleValue.h) and gets back
+        // Normal, None or List (Rust/src/layout/tree_builder.rs:1714).
+        auto const content_value = parse_content_value(*content);
+        if (!content_value.generates_box())
+            return nullptr;
         auto generated = std::make_unique<LayoutNode>();
         generated->parent = layout_node.get();
         generated->style = pseudo_style;
@@ -106,7 +110,10 @@ std::unique_ptr<LayoutNode> LayoutTreeBuilder::build_node(DomNode const& node, C
                 generated->display = LayoutDisplay::Grid;
         }
         generated->is_generated = true;
-        generated->generated_text = std::move(text);
+        generated->generated_text = content_value.text();
+        // Nothing consumes this yet: there is no accessibility tree (tier 4). It is kept on the node so the
+        // alt text is not thrown away between the parser and the day something asks for it.
+        generated->generated_alt_text = content_value.alt();
         return generated;
     };
 

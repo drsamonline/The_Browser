@@ -76,6 +76,10 @@ All credited in `CREDITS.md`.
   drift, not new work. `AetherisGlyphRasterizer` now asserts that paint's entry point (`cached_glyph`) returns
   exactly what the rasteriser produces, and `AetherisShaping` asserts kerning in both paths (GPOS and the
   embedded pair table).
+- **Row 3a6 closed** (2026-11-23): `content` is a `ContentValue` — a kind (Normal/None/List), a list of items
+  and an optional alt-text list — instead of a quoted string. `content: "a" "b"` now renders "ab" rather than
+  "a b", `content: "x" / "alt"` keeps the alt text on the layout node, and an item this engine cannot express
+  (`attr()`) renders nothing instead of its own source text.
 
 ## 2. Current state
 

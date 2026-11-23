@@ -258,3 +258,45 @@ Two more rows' worth of the same lesson as 2h and 2g: the fixture, not the featu
 `cached_glyph()` keys on `(glyph, size)` and not on the font. That is correct while `active_font()` is a
 singleton — the only font paint can reach — but it would serve the wrong bitmap the day a second font exists
 (`@font-face`, row 3d). Recorded here rather than in a row, because row 3d is where it becomes reachable.
+
+---
+
+## 11. Sixth commit — row 3a6: `content` as a list, with alt text
+
+| what | where |
+| --- | --- |
+| `ContentValue`: kind (Normal/None/List), `items`, `alt_text`, `unsupported_items`, `text()`, `alt()` | `src/rendering/content_value.{hpp,cpp}` |
+| The parser quotes **each** string item instead of wrapping the whole value, so item boundaries survive into the declaration string | `src/rendering/css_parser.cpp` (`quote_string_items`) |
+| `make_generated_box` asks `ContentValue` instead of stripping quotes by hand; the alt text lands on `LayoutNode::generated_alt_text` | `src/rendering/layout.{hpp,cpp}` |
+| Parsing assertions: two items, alt text, `none`, `normal`, empty item, unsupported item | `Tests/AetherisRendering/TestCss.cpp` |
+
+Upstream's shape: `ContentStyleValue` holds a `StyleValueList` plus an optional alt-text list
+(`LibWeb/CSS/StyleValues/ContentStyleValue.h:16-45`), and the tree builder asks it for Normal, None or List
+(`Rust/src/layout/tree_builder.rs:1714`, `FfiComputedContentType`). Same three kinds here.
+
+### What changed in behaviour
+
+| declaration | before | after |
+| --- | --- | --- |
+| `content: 'a' 'b'` | text "a b", two fragments (the space came from the whitespace token) | **"ab"**, one fragment |
+| `content: 'a b'` | "a b", two fragments | unchanged |
+| `content: 'C' / 'alt text'` | text "'C' / 'alt text'" — the slash rendered on the page | text "C", alt "alt text" kept on the node |
+| `content: ''` | empty box | empty box, unchanged (row 3a4 holds) |
+| `content: attr(title)` | rendered the literal text "attr(title)" | renders nothing, and counts the item as unsupported |
+
+Verified end to end with a probe that walks the layout tree: `[ab]`, `[a b]`, `[C] alt=[alt text]`, and an
+empty box with no fragments.
+
+### What is still not there
+
+Nothing reads `generated_alt_text` yet — there is no accessibility tree, and that is tier 4. It is on the node
+so the parser's work is not thrown away between here and there. `attr()`, `counter()`, `open-quote` and the
+`/`-less forms of those are counted in `unsupported_items` rather than implemented.
+
+### What this row would do differently
+
+1. **Trim after quoting, not before.** The first version wrapped the trimmed value but then built the quoted
+   string from the untrimmed tokens, so `content: 'C'` came back as ` 'C'` and the existing CSS test failed on
+   a leading space.
+2. **A pure function is a cheap test.** `parse_content_value` took six assertions and no font, no document and
+   no pixels; the layout wiring needed one probe to confirm, and both found real mistakes.

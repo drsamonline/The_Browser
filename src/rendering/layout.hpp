@@ -75,6 +75,8 @@ struct LayoutNode {
     // text, and using the text as the marker made that box invisible.
     bool is_generated { false };
     std::string generated_text;
+    // `content: "x" / "alt"` - the part after the slash. Nothing reads it yet; see layout.cpp.
+    std::string generated_alt_text;
 
     std::shared_ptr<Image const> image;
     std::shared_ptr<Image const> background_image;
