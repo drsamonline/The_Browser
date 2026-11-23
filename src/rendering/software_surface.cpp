@@ -182,7 +182,7 @@ void SoftwareSurface::stroke_rounded_rect(LayoutRect const& rect, float radius, 
     }
 }
 
-void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, float font_size, Color color, std::optional<RoundedRect> clip)
+void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, float font_size, Color color, std::optional<RoundedRect> clip, float letter_spacing, float word_spacing)
 {
     if (text.empty() || font_size <= 0)
         return;
@@ -201,7 +201,7 @@ void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, f
         // measured as one glyph and drawn as two, which overlaps. Same fallback as measure().
         std::vector<ShapedGlyph> shaped;
         if (shaping_available())
-            shaped = shape_run(font->data(), text, font_size, font->identity());
+            shaped = shape_run(font->data(), text, font_size, font->identity(), letter_spacing, word_spacing);
         std::vector<std::pair<uint16_t, float>> to_draw;
         if (!shaped.empty()) {
             for (auto const& glyph : shaped)

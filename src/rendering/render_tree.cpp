@@ -169,6 +169,8 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
             command.text = fragment.text;
             command.opacity = opacity;
             command.font_size = css_length_px(node.style.get("font-size"), 16.0f, 16.0f);
+            command.letter_spacing = css_length_px(node.style.get("letter-spacing"), command.font_size, 0.0f);
+            command.word_spacing = css_length_px(node.style.get("word-spacing"), command.font_size, 0.0f);
             if (auto color = node.style.get("color"))
                 command.color = *color;
             commands.push_back(command);

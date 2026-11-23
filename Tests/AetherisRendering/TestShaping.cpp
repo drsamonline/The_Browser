@@ -178,6 +178,39 @@ int main()
         require(rejoined == 12, "the pieces are the word, all of it and nothing else");
     }
 
+// Spacing reaches the advances, and the cache key separates spaced from unspaced (row 2g). The bitmap
+    // fallback makes the arithmetic exact: 10 px per character at 16 px, so "abc" is 30 px.
+    {
+        StyleProperties plain;
+        plain.set("font-size", "16px");
+        StyleProperties spaced;
+        spaced.set("font-size", "16px");
+        spaced.set("letter-spacing", "2px");
+        StyleProperties wide;
+        wide.set("font-size", "16px");
+        wide.set("word-spacing", "5px");
+
+        float const plain_abc = TextLayout::measure_text("abc", 16.0f, plain);
+        float const spaced_abc = TextLayout::measure_text("abc", 16.0f, spaced);
+        require(std::abs((spaced_abc - plain_abc) - 6.0f) < 0.01f, "letter-spacing adds once per glyph: 3 glyphs x 2 px");
+
+        float const plain_pair = TextLayout::measure_text("a b", 16.0f, plain);
+        float const wide_pair = TextLayout::measure_text("a b", 16.0f, wide);
+        require(std::abs((wide_pair - plain_pair) - 5.0f) < 0.01f, "word-spacing adds once, at the space");
+
+        // The cache must not serve a spaced run to an unspaced request: ask for the spaced width first, then
+        // the plain one, and both must still be right.
+        require(std::abs(TextLayout::measure_text("abc", 16.0f, plain) - plain_abc) < 0.01f,
+            "a run shaped with spacing is not served to a request without it");
+        require(std::abs(TextLayout::measure_text("abc", 16.0f, spaced) - spaced_abc) < 0.01f,
+            "and the other way round");
+
+        // Layout and paint must agree: the fragment's box is the width the pen will advance by.
+        auto const fragments = TextLayout::layout("abc", 0, 0, 200, spaced);
+        require(fragments.size() == 1, "one word, one fragment");
+        require(std::abs(fragments[0].rect.width - spaced_abc) < 0.01f, "the fragment is as wide as the spaced run");
+    }
+
     std::cout << "shaping: " << latin.size() << " latin glyphs, " << fi.size() << " for \"fi\", clusters are byte offsets\n";
     return 0;
 }

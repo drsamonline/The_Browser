@@ -31,6 +31,10 @@ struct PaintCommand {
     std::string border_style { "solid" };
     float baseline { 0 };
     float font_size { 16 };
+    // Carried so the pen advances by what layout measured: the shaper applies spacing to the glyph
+    // advances, and a run shaped without it would draw tighter than its box (row 2g).
+    float letter_spacing { 0 };
+    float word_spacing { 0 };
     std::string text_decoration { "none" };
     float radius { 0 };
     std::shared_ptr<Image const> image;

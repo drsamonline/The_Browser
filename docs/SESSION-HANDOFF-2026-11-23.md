@@ -181,3 +181,52 @@ was wrong.
    failed links looked like a compiler bug.
 2. **A patch file is a cheap insurance policy.** `git diff` into `/scratch/work` took ten seconds and made
    the whole row recoverable when the tree had to be reverted.
+
+---
+
+## 9. Fourth row, same day — 2g: letter- and word-spacing
+
+| what | where |
+| --- | --- |
+| `shape_run()` takes `letter_spacing` and `word_spacing`, adds them to each glyph's advance and keys the cache on both | `src/rendering/shaper.{hpp,cpp}` |
+| `Font::measure(text, letter, word)`; `TextLayout::measure_text` stops adding spacing itself | `font.{hpp,cpp}`, `text_layout.cpp` |
+| `PaintCommand` carries the two values and `draw_text` passes them to the shaper | `render_tree.{hpp,cpp}`, `paint_executor.cpp`, `software_surface.{hpp,cpp}` |
+| Assertions: spacing reaches the advances, the cache separates spaced from unspaced, the fragment is as wide as the run | `Tests/AetherisRendering/TestShaping.cpp` |
+
+Upstream applies spacing while building the glyphs, not while measuring: `LibGfx/TextLayout.cpp:283-292` adds
+`letter_spacing` to every glyph and `word_spacing` to glyphs whose cluster starts at a word separator
+(`is_word_separator()`: space, no-break space, line feed), and its `ShapingCacheKey` carries both as bit
+patterns. That is what this does — the key was widened in the same commit as the property, which is what row
+2g asked for.
+
+### Numbers
+
+| case | before | after |
+| --- | --- | --- |
+| `"abc"`, `letter-spacing: 2px` | layout +6 px, pen +0 | both +6 px (3 glyphs) |
+| `"a b"`, `word-spacing: 5px` | layout +5 px, pen +0 | both +5 px, at the space |
+| fragment width vs shaped run | box wider than the ink | equal within 0.01 px |
+| shaped-run cache | one entry per (font, size, text) — a spaced request could be served an unspaced run | one entry per (font, size, letter bits, word bits) |
+
+Rendered: 32 px text, `letter-spacing: 8px`, centred in a 400 px page — ink 79-309 (231 px), centre 194. The
+6 px offset from the page centre is the trailing letter-spacing: the box carries a gap after the last glyph
+that has no ink, exactly as upstream notes it does ("the spec says that we 'really should not' apply
+letter-spacing to the trailing edge of a line but other browsers do so we will as well").
+
+Suite **65/65 twice**, 129.99 s and 135.76 s.
+
+### What I got wrong
+
+| First reading | What was true | What settled it |
+| --- | --- | --- |
+| "`css_length_px(value, 0, size)` reads the fallback as the size" | its signature is `(value, reference, fallback)` — I passed them swapped, so a *missing* `letter-spacing` became 16 px | the 2h assertion failed: `measure_text("To")` no longer matched the shaped width |
+| "the build is clean" | `ninja` had not run: the pip-installed `ninja` vanished with the previous environment, and a `grep` over its empty output read as success | `ninja -n` printing nothing and `ninja: command not found` in the next call |
+
+That second one is the hazard in row 4d wearing a different hat: an absent tool and a clean build look
+identical when the output is filtered.
+
+### What this row would do differently
+
+1. **Read the signature before calling it.** `css_length_px` has three parameters with defaults, and a swapped
+   pair compiles silently.
+2. **Check that the build tool exists before trusting a build.** `command -v ninja` is one word.

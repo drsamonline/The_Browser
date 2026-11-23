@@ -1,5 +1,6 @@
 #include "text_layout.hpp"
 #include "bidi.hpp"
+#include "css_units.hpp"
 #include "font.hpp"
 #include "font_library.hpp"
 #include "shaper.hpp"
@@ -8,7 +9,6 @@
 #include <cstdlib>
 #include <sstream>
 namespace aetheris::rendering {
-namespace { float parse_px(std::string const* value,float fallback){ if(!value||value->empty()||*value=="normal") return fallback; char* end=nullptr; auto parsed=std::strtof(value->c_str(),&end); return end!=value->c_str()?parsed:fallback; } }
 std::string TextLayout::collapse_whitespace(std::string_view text,bool preserve){ if(preserve) return std::string(text); std::string result; bool pending=false; for(unsigned char c:text){ if(std::isspace(c)){ pending=!result.empty(); continue;} if(pending){result+=' ';pending=false;} result+=char(c);} return result; }
 float TextLayout::font_size(StyleProperties const& style){ return Font::from_style(style).metrics().size; }
 float TextLayout::line_height(StyleProperties const& style){ auto size=font_size(style); auto value=style.get("line-height"); if(!value||*value=="normal") return size*1.2f; char* end=nullptr; auto parsed=std::strtof(value->c_str(),&end); if(end==value->c_str()) return size*1.2f; if(end&&*end=='\0') return parsed*size; return parsed; }
@@ -73,17 +73,16 @@ std::vector<std::string> break_word(std::string_view word, float available_width
 
 } // namespace
 
-float TextLayout::measure_text(std::string_view text,float,StyleProperties const& style){ auto font=Font::from_style(style); auto letter=parse_px(style.get("letter-spacing"),0); auto word=parse_px(style.get("word-spacing"),0);
+float TextLayout::measure_text(std::string_view text,float,StyleProperties const& style){ auto font=Font::from_style(style); auto letter=css_length_px(style.get("letter-spacing"),font.metrics().size,0.0f); auto word=css_length_px(style.get("word-spacing"),font.metrics().size,0.0f);
     // The width the pen will draw, not the sum of the code points' advances. Those are not the same: the
     // shaped width carries kerning, and it carries the ligature that turns two characters into one glyph.
     // Summing advances skipped kerning entirely, so a fragment's box was up to 2.7 px wide of its text at
     // 16 px ("To" 19.5625 px against 16.8594 px shaped) and the next fragment started where the glyphs
     // were not (row 2h). Font::measure() is the shaped path and the fallback for builds without a shaper.
-    float width=font.measure(text);
-    // Spacing is per character, not per glyph: upstream applies letter-spacing once per cluster
-    // (LibGfx/TextLayout.cpp, measure_text_width) and word-spacing once per word separator. Iterating
-    // bytes made every non-ASCII character two to four glyphs wide.
-    for(std::size_t index=0;index<text.size();){ auto const code_point=utf8_next(text,index); if(code_point==' ') width+=word; width+=letter;}
+    float width=font.measure(text,letter,word);
+    // Spacing is not added here: the shaper applies it to the glyph advances (row 2g), so the width the
+    // pen advances by and the width layout measures are one number rather than two that have to be kept
+    // in step. Iterating bytes here made every non-ASCII character two to four glyphs wide.
     return std::max(0.0f,width); }
 std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, float y, float available_width, StyleProperties const& style)
 {

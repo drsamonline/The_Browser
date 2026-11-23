@@ -32,9 +32,15 @@ bool shaping_available();
 // because hashing the file on every call cost 1.23 ms of a 1.26 ms run at -O2 (row 2d4); pass 0 when
 // the bytes belong to nothing that can supply one, and the run is shaped without either cache.
 //
+// `letter_spacing` is added to every glyph's advance and `word_spacing` to every glyph whose cluster
+// starts at a word separator, which is upstream's rule (LibGfx/TextLayout.cpp:280-292, where the note
+// says letter-spacing is applied per glyph and deliberately to the trailing edge too). Both are part of
+// the cache key: the same string at the same size with different spacing is a different run.
+//
 // Returns an empty vector when shaping is unavailable or the font cannot be read, so a caller can
 // fall back to per-code-point advances without a second code path to test.
-std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const& font_data, std::string_view text, float size, uint64_t font_identity);
+std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const& font_data, std::string_view text, float size, uint64_t font_identity,
+    float letter_spacing = 0, float word_spacing = 0);
 
 // Byte offsets in `text` where a line may break without changing what is drawn: every cluster start that
 // HarfBuzz does not flag HB_GLYPH_FLAG_UNSAFE_TO_BREAK, ascending, with the end of the text last.

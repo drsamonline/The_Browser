@@ -69,6 +69,9 @@ All credited in `CREDITS.md`.
   HarfBuzz does not flag `HB_GLYPH_FLAG_UNSAFE_TO_BREAK`, and a word too long for a line is broken there —
   only when `overflow-wrap: break-word|anywhere` or `word-break: break-all` asks, and never inside a
   ligature, a kerned pair or a letter-plus-mark cluster.
+- **Row 2g closed** (2026-11-23): `letter-spacing` and `word-spacing` are applied to the glyph advances in
+  the shaper, and the shaped-run cache key carries both. Before this, layout counted the spacing and the
+  pen drew without it — letter-spaced text was laid out wider than it painted.
 
 ## 2. Current state
 

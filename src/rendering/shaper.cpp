@@ -6,6 +6,7 @@
 #include <cstring>
 #include <map>
 #include <optional>
+#include <tuple>
 #include <string>
 #include <utility>
 #include <vector>
@@ -74,9 +75,14 @@ struct SizeCache {
     std::map<std::string, std::vector<ShapedGlyph>, std::less<>> runs;
 };
 
-std::map<std::pair<uint64_t, uint32_t>, SizeCache>& size_caches()
+// (font identity, size, letter-spacing, word-spacing), each float as its bit pattern. The spacing belongs
+// in the key because it changes every advance: without it a run shaped with letter-spacing 2 would be
+// served to a request for letter-spacing 0, and the text would be laid out at the wrong width (row 2g).
+using SizeKey = std::tuple<uint64_t, uint32_t, uint32_t, uint32_t>;
+
+std::map<SizeKey, SizeCache>& size_caches()
 {
-    static std::map<std::pair<uint64_t, uint32_t>, SizeCache> caches;
+    static std::map<SizeKey, SizeCache> caches;
     return caches;
 }
 
@@ -99,10 +105,22 @@ uint32_t bits_of(float value)
     return bits;
 }
 
+// A word separator as CSS means it for word-spacing (css-text-4): space, no-break space and the line feed.
+// Compared as bytes rather than decoded, so this file needs no UTF-8 decoder for three fixed sequences.
+bool is_word_separator_at(std::string_view text, std::size_t offset)
+{
+    if (offset >= text.size())
+        return false;
+    auto const byte = static_cast<unsigned char>(text[offset]);
+    if (byte == ' ' || byte == '\n')
+        return true;
+    return byte == 0xC2 && offset + 1 < text.size() && static_cast<unsigned char>(text[offset + 1]) == 0xA0;
+}
+
 // Shapes one run into `out`. Clusters stay byte offsets into the whole text because the buffer is told
 // the item's offset within it: a caller that stitches runs together still sees one coordinate space.
 void shape_into(hb_font_t* font, std::string_view text, std::size_t begin, std::size_t length,
-    std::optional<hb_direction_t> direction, std::vector<ShapedGlyph>& out)
+    std::optional<hb_direction_t> direction, float letter_spacing, float word_spacing, std::vector<ShapedGlyph>& out)
 {
     hb_buffer_t* buffer = hb_buffer_create();
     hb_buffer_add_utf8(buffer, text.data(), static_cast<int>(text.size()), static_cast<unsigned>(begin),
@@ -119,10 +137,15 @@ void shape_into(hb_font_t* font, std::string_view text, std::size_t begin, std::
     hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buffer, nullptr);
     out.reserve(out.size() + count);
     for (unsigned i = 0; i < count; ++i) {
+        // Upstream's rule, per glyph: letter-spacing always, word-spacing when the glyph's cluster starts
+        // at a word separator (LibGfx/TextLayout.cpp:283-286, is_word_separator()).
+        float extra = letter_spacing;
+        if (info[i].cluster < text.size() && is_word_separator_at(text, info[i].cluster))
+            extra += word_spacing;
         out.push_back(ShapedGlyph {
             info[i].codepoint,
             info[i].cluster,
-            static_cast<float>(positions[i].x_advance) / 64.0f,
+            static_cast<float>(positions[i].x_advance) / 64.0f + extra,
             static_cast<float>(positions[i].x_offset) / 64.0f,
             static_cast<float>(-positions[i].y_offset) / 64.0f,
             hb_glyph_info_get_glyph_flags(&info[i]),
@@ -135,13 +158,14 @@ void shape_into(hb_font_t* font, std::string_view text, std::size_t begin, std::
 
 bool shaping_available() { return true; }
 
-std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const& font_data, std::string_view text, float size, uint64_t font_identity)
+std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const& font_data, std::string_view text, float size, uint64_t font_identity,
+    float letter_spacing, float word_spacing)
 {
     if (font_data.empty() || text.empty())
         return {};
 
-    uint32_t const size_bits = bits_of(size);
-    SizeCache* cache = font_identity != 0 ? &size_caches()[{ font_identity, size_bits }] : nullptr;
+    SizeKey const key { font_identity, bits_of(size), bits_of(letter_spacing), bits_of(word_spacing) };
+    SizeCache* cache = font_identity != 0 ? &size_caches()[key] : nullptr;
 
     if (cache) {
         if (auto found = cache->runs.find(text); found != cache->runs.end())
@@ -181,11 +205,11 @@ std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const& font_data, std::s
     std::vector<ShapedGlyph> glyphs;
     auto const runs = split_directional_runs(text);
     if (runs.empty()) {
-        shape_into(font, text, 0, text.size(), std::nullopt, glyphs);
+        shape_into(font, text, 0, text.size(), std::nullopt, letter_spacing, word_spacing, glyphs);
     } else {
         for (auto const& run : runs)
             shape_into(font, text, run.begin, run.end - run.begin,
-                run.right_to_left ? HB_DIRECTION_RTL : HB_DIRECTION_LTR, glyphs);
+                run.right_to_left ? HB_DIRECTION_RTL : HB_DIRECTION_LTR, letter_spacing, word_spacing, glyphs);
     }
 
     if (!cache) {
@@ -205,7 +229,7 @@ std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const& font_data, std::s
             }
             size_caches().clear();
             cached_run_count() = 0;
-            cache = &size_caches()[{ font_identity, size_bits }];
+            cache = &size_caches()[key];
         }
         cache->runs.emplace(std::string(text), glyphs);
         ++cached_run_count();
@@ -243,7 +267,7 @@ std::vector<std::size_t> safe_break_offsets(std::vector<uint8_t> const& font_dat
 
 bool shaping_available() { return false; }
 
-std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const&, std::string_view, float, uint64_t) { return {}; }
+std::vector<ShapedGlyph> shape_run(std::vector<uint8_t> const&, std::string_view, float, uint64_t, float, float) { return {}; }
 
 std::vector<std::size_t> safe_break_offsets(std::vector<uint8_t> const&, std::string_view, float, uint64_t) { return {}; }
 
