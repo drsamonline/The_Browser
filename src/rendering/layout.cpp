@@ -466,10 +466,19 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
             continue;
         }
 
-        // Measured against the whole line: an inline box shrinks to fit what it is given, so laying it
-        // out against the space left clamps its width to exactly that and the fit test never fires.
-        layout_node(*child, cursor_x, cursor_y, available_width);
-        float const natural_width = child->rect.width;
+        // Only an inline-level child has a natural width to discover: it shrinks to fit. A block-level
+        // child fills whatever line it is on, so its natural width *is* the available width and there
+        // is nothing to measure - and measuring it laid its whole subtree out twice at every level,
+        // which is what made deep nesting exponential (row 3k).
+        bool const child_is_inline_level = child->display == LayoutDisplay::Inline
+            || child->display == LayoutDisplay::InlineBlock;
+        float natural_width = available_width;
+        if (child_is_inline_level) {
+            // Measured against the whole line: an inline box shrinks to fit what it is given, so laying it
+            // out against the space left clamps its width to exactly that and the fit test never fires.
+            layout_node(*child, cursor_x, cursor_y, available_width);
+            natural_width = child->rect.width;
+        }
         bool const child_starts_with_whitespace = child->dom_node && child->dom_node->type == DomNodeType::Text
             && !child->dom_node->data.empty()
             && std::isspace(static_cast<unsigned char>(child->dom_node->data.front()));
@@ -480,10 +489,21 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
         if (may_break && cursor_x > x && natural_width > x + available_width - cursor_x) {
             cursor_x = x;
             cursor_y = max_bottom;
+            // The break moved the child, so its geometry has to be produced again at the new origin.
             layout_node(*child, cursor_x, cursor_y, available_width);
-        } else {
+        } else if (natural_width > x + available_width - cursor_x) {
+            // It fits nowhere on this line without shrinking: place it against what is left.
+            layout_node(*child, cursor_x, cursor_y, x + available_width - cursor_x);
+        } else if (!child_is_inline_level) {
+            // A block child that was not measured has not been placed either.
             layout_node(*child, cursor_x, cursor_y, x + available_width - cursor_x);
         }
+        // Otherwise the measuring pass above already placed it: it was laid out at this origin with
+        // a whole line to fill, it used less than that, and a shrink-to-fit box given more room than
+        // it needs produces exactly the geometry it produced with the whole line. Laying it out a
+        // second time to be told the same thing is what made deep nesting exponential (row 3k):
+        // every inline box measured its subtree once and then laid it out again, so a document
+        // nested d deep cost 2^d passes over the same nodes.
         cursor_x = child->rect.x + child->rect.width;
         max_bottom = std::max(max_bottom, child->rect.y + child->rect.height);
         line_ends_in_whitespace = false;

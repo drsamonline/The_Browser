@@ -480,6 +480,22 @@ there.
 
 ---
 
+## 7e. Layout — measure once, place once
+
+`LayoutEngine::layout_inline_children` used to lay every child out twice: once at the whole line to
+find its natural width, once to place it. That is 2^depth work on a nested document — 40 elements
+nested 12 deep cost 22,526 layout steps, and a 14 KB wikipedia prefix cost 1.16M.
+
+- **Only inline-level children need measuring.** A block fills the line, so its natural width is the
+  available width and measuring it lays out a subtree for nothing.
+- **A fitting child needs no second layout.** It was measured at this origin with a whole line to
+  fill; a shrink-to-fit box given more room than it needs produces the same geometry.
+- **When a test disagrees with the engine, check which one is wrong.** The first version of the
+  regression test asserted that each nested block sits below its parent; the engine legitimately
+  places a nested block on its parent's line, so the assertion was rewritten.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.

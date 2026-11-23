@@ -1416,3 +1416,81 @@ was the point of the run: the output simply had no line for the file. Fixed to `
 
 The lesson is the one this row keeps teaching: a probe that prints nothing looks like a probe that
 had nothing to print.
+
+## 36. Thirty-first commit — row 3k: layout was doing every node twice, 2^depth times
+
+Section 35 left this row with a bisect to run. The bisect found something better than one bad element.
+
+### The bisect said "not a step function"
+
+Nodes grew smoothly and superlinearly with document size, which rules out a single construct:
+
+| bytes | elements | nodes laid out | layout |
+| --- | --- | --- | --- |
+| 10,000 | 22 | 461 | 1.5 ms |
+| 12,000 | 72 | 401,293 | 1,920 ms |
+| 14,000 | 134 | 1,157,981 | 5,717 ms |
+
+Stripping `class`, `<style>`, `<svg>` or `<img>` changed nothing. Stripping the container `div`s
+collapsed it to 97 nodes. So it needed containers *and* inline content.
+
+### A 40-element reproducer
+
+`<div><span>level</span>` repeated d times, then closed. Work **doubles per level of nesting**:
+
+| depth | elements | nodes laid out |
+| --- | --- | --- |
+| 4 | 16 | 86 |
+| 6 | 22 | 350 |
+| 8 | 28 | 1,406 |
+| 10 | 34 | 5,630 |
+| 12 | 40 | 22,526 |
+
+That is 2^d, which means a call that re-lays-out a subtree once per level.
+
+### The cause
+
+`LayoutEngine::layout_inline_children` laid **every child out twice**: once at the whole line width to
+discover its natural width, then again to place it. The comment there explains the first call — an
+inline box shrinks to fit what it is given, so measuring it against the space left clamps it to exactly
+that and the fit test never fires. The second call is what re-places it.
+
+Two things were wrong with that:
+
+1. The second layout is **redundant whenever the child fits**. It was measured at this origin with a
+   whole line to fill and it used less than that; a shrink-to-fit box given more room than it needs
+   produces exactly the geometry it produced with the whole line. So it was laid out again to be told
+   the same thing.
+2. **Block-level children were measured too**, and a block has no natural width to discover — it fills
+   the line. Measuring one laid out its whole subtree for nothing, then the placement pass laid it out
+   again. That is the doubling that survived the first fix.
+
+### The fix
+
+| change | why |
+| --- | --- |
+| measure only inline-level children | a block fills the line, so its natural width *is* the available width |
+| skip the second layout when the child fits | the measuring pass already produced that geometry |
+| place a block-level child once | it was never measured, so it has not been placed |
+
+### The result
+
+| case | before | after |
+| --- | --- | --- |
+| nesting reproducer, 40 elements | 22,526 nodes | **40 nodes** |
+| wikipedia 14 KB prefix, `-O2` | 1,157,981 nodes / 5,717 ms | **139 nodes / 0.8 ms** |
+| wikipedia 416,975-byte page, `-O2` | did not finish in 280 s | **67.9 ms** of layout |
+
+The whole page now renders in the Debug app in **57.8 s**, and the PPM was inspected rather than
+trusted: it shows the real page structure — "Jump to content", the navigation list, the blue links,
+"Search" — so the change is cheaper *and* correct.
+
+### The assertion was wrong, not the layout
+
+`AetherisAdvancedLayout` now pins the shape: 40 elements nested 12 deep must lay out at most 100
+nodes, every level must still be in the tree, and the innermost box must have a height.
+
+The first version of that test also required each nested block to sit below the one that contains it.
+It failed — and the engine is right: a nested block placed on its parent's line legitimately shares
+its origin. The test was rewritten to assert what the engine actually promises. A failing assertion
+means one of the two is wrong, and it is worth checking which before "fixing" the code.
