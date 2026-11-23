@@ -584,5 +584,44 @@ int main()
         require(h.output == "null\n", "http://a.test is a different origin from https://a.test");
     }
 
+// Row 1g2: a navigation is a new realm. The window keeps one Interpreter for its whole life, so without a reset
+    // the previous document's globals, listeners and timers are all still there - which the probe for this row showed
+    // before it was fixed. Storage is the one thing that must survive.
+    {
+        Harness h;
+        h.interpreter.set_storage_origin("https://a.test");
+        h.run("var leaked = 'page one'; window.onPageOne = function () { return 1; };"
+              "localStorage.setItem('kept', 'yes');"
+              "document.addEventListener('click', function () { console.log('listener from page one'); });"
+              "setInterval(function () { }, 1000);");
+        require(h.interpreter.has_timers(), "page one started a timer");
+
+        h.interpreter.reset_realm();
+
+        // The previous document's names are gone.
+        h.output.clear();
+        h.run("console.log(typeof leaked); console.log(typeof window.onPageOne);");
+        require(h.output == "undefined\nundefined\n", "globals from the previous document are gone");
+
+        // Its listeners are gone: dispatching the event runs nothing.
+        h.output.clear();
+        h.interpreter.dispatch_event("click");
+        require(h.output.empty(), "a listener from the previous document no longer fires");
+
+        // Its timers are gone.
+        require(!h.interpreter.has_timers(), "timers from the previous document are gone");
+
+        // Storage survives, because it is keyed by origin and outlives the document.
+        h.output.clear();
+        h.run("console.log(localStorage.getItem('kept'));");
+        require(h.output == "yes\n", "localStorage survives the navigation");
+
+        // And the new realm works: the host objects are back and a script can run.
+        h.output.clear();
+        h.run("document.write('ok'); console.log(typeof document.getElementById);");
+        require(h.written == "ok", "the new document is usable");
+        require(h.output == "function\n", "and its host objects are installed");
+    }
+
     return 0;
 }

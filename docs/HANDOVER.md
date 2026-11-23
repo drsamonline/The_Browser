@@ -148,6 +148,10 @@ All credited in `CREDITS.md`.
   gained a bookmark list with a toggle, and the panels are built as ordinary documents of real links — so a click
   navigates through the path a page's own links use rather than a second hit-testing path. Ctrl+H, Ctrl+B, Ctrl+D.
   Nothing is persisted to disk; the row says so.
+- **Row 1g2 closed** (2026-11-23): realm isolation. A navigation now replaces the JS context and rebuilds the host
+  objects, so the previous document's globals, listeners and timers are unreachable while storage survives. Emptying
+  the global object does not work — a top-level `var` is non-configurable — which is why the realm is replaced rather
+  than cleared. **This closes the checklist: 66 of 69 rows done, 1 blocked, 2 out of scope.**
 
 ## 2. Current state
 

@@ -1060,3 +1060,52 @@ lives; that is a row of its own, not a corner of this one.
 Three compile errors, all includes or namespaces: `LibraryPage` unknown in `main.cpp`, then in the test, then the test
 needing `<ui/library_page.hpp>` rather than the bare name. The pattern is consistent enough to name: this codebase's
 tests include by angle-bracket path, and every new module costs one of these.
+
+---
+
+## 30. Twenty-fifth commit — row 1g2: realm isolation, and the checklist closes
+
+The probe confirmed the row's premise before any code was written:
+
+| after a "navigation" | before | after |
+| --- | --- | --- |
+| `var leaked` from page one | still a `string` | `undefined` |
+| `window.onPageOne` | still a `function` | `undefined` |
+| a listener from page one | still fired | does not fire |
+| `has_timers` | 1 | 0 |
+| `localStorage` | survives | **survives** — correct, it is keyed by origin |
+
+### The fix, and the approach that did not work
+
+`Interpreter::reset_realm()` **replaces the context** and rebuilds the host objects. The first attempt emptied the
+global object instead, and it failed for a reason worth recording: a top-level `var` creates a **non-configurable**
+property on the global object, so `JS_DeleteProperty` cannot remove it and `typeof leaked` stayed `string`. The only
+honest way to make the previous document's names unreachable is to replace the realm that owns them — which is exactly
+what upstream does by building a new `Window` and `Realm` per document.
+
+The app calls it on every navigation, together with `DomHost::release()`, because the host's handles point into the
+context that is going away.
+
+### Two leaks the runtime found for me
+
+| leak | how it surfaced |
+| --- | --- |
+| timer callbacks dropped without `JS_FreeValue` | `JS_FreeRuntime: Assertion 'list_empty(&rt->gc_obj_list)' failed` at teardown |
+| `m_window` / `m_document` overwritten without being freed | the same assertion, after the first fix |
+
+Both are the kind of thing a leak checker finds and a reader does not; the assertion is the reason the realm reset is
+believed rather than assumed.
+
+### Evidence — `AetherisJs`
+
+globals gone · a listener no longer fires · timers gone · `localStorage` survives · the new realm's host objects are
+installed and a script runs. Suite **66/66 twice**, 140.19 s and 161.79 s.
+
+### The checklist, closed
+
+| | count |
+| --- | --- |
+| rows done | **66** |
+| blocked | 1 — `0.1`, the coverage corpus, needs open internet |
+| out of scope | 2 — `3i` (a non-divergence), `5d` (process isolation) |
+| open | **0** |

@@ -58,6 +58,15 @@ public:
     // Evaluates a script. Returns false when it threw (see error()).
     bool run(std::string const& source);
 
+    // A new document, and therefore a new realm: globals a page defined, the listeners it registered and the timers
+    // it started all go away. Storage does not - it is keyed by origin and outlives the document, which is the one
+    // thing that must survive a navigation (row 1g2).
+    //
+    // Upstream gets this by building a new Window and Realm per document, so the old global object is simply
+    // unreachable. Here the global object is emptied and rebuilt by setup_globals(), which is the same rule observed
+    // from outside: after a navigation, the previous page's names are not there.
+    void reset_realm();
+
     // True when the most recent dispatch had preventDefault() called on it.
     bool last_event_prevented() const { return m_last_event_prevented; }
 

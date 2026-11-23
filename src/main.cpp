@@ -2343,6 +2343,11 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             // One definition of "origin" for the whole engine: SecurityPolicy's, which lowercases scheme and host and
             // drops the path. Hand-rolling it here meant two spellings of one host could get two storage buckets.
             page_js.set_storage_origin(rendering::SecurityPolicy::origin(rendering::Url::parse(g_current_url)));
+            // A navigation is a new realm: the previous document's globals, listeners and timers go, and the DOM
+            // host's handles go with the context that owned them (row 1g2). Storage survives - it is keyed by origin.
+            page_dom.release();
+            page_js.reset_realm();
+            page_dom.initialize(page_js.context());
             if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "DOC style begin\n");
             auto style = collect_page_style(body, session.current_url(), fetcher);
             if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "DOC style done\n");

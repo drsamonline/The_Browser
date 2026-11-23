@@ -968,6 +968,40 @@ static JSValue js_history_set_scroll_restoration(JSContext* context, JSValueCons
     return JS_UNDEFINED;
 }
 
+void Interpreter::reset_realm()
+{
+    if (!m_runtime || !m_context)
+        return;
+
+    // Timers belong to the document that started them, and each holds a reference to its callback - the same loop the
+    // destructor runs, because a leaked callback keeps the whole realm alive.
+    for (auto& timer : m_timers)
+        JS_FreeValue(m_context, timer.callback);
+    m_timers.clear();
+    m_next_timer_id = 1;
+    m_virtual_time = 0.0;
+    m_has_error = false;
+    m_last_event_prevented = false;
+    m_error.clear();
+    m_event_key.clear();
+
+    // The realm itself: the window and document references go, then the context. A page's `var` at top level creates
+    // a *non-configurable* property on the global object, so emptying the object cannot remove it - the only honest
+    // way to make the previous document's names unreachable is to replace the context that owns them, which is what
+    // a browser does by building a new Window and Realm per document (row 1g2).
+    JS_FreeValue(m_context, m_window);
+    JS_FreeValue(m_context, m_document);
+    m_window = JS_UNDEFINED;
+    m_document = JS_UNDEFINED;
+
+    JS_FreeContext(m_context);
+    m_context = JS_NewContext(m_runtime);
+    if (!m_context)
+        return;
+    JS_SetContextOpaque(m_context, this);
+    setup_globals();
+}
+
 void Interpreter::setup_globals()
 {
     g_active_interpreter = this;
