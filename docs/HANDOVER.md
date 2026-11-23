@@ -95,6 +95,10 @@ All credited in `CREDITS.md`.
 - **Row 3c1 closed** (2026-11-23): flex completeness. The `flex` shorthand is parsed (`flex: 1` = `1 1 0%`, which is
   what real pages mean by it), `flex-basis` feeds the base size, and an overflowing row shrinks items in proportion
   to `flex-shrink x base`. Grid areas are row 3c2, split out because they are a different algorithm.
+- **Row 3c2 closed** (2026-11-23): grid placement. `grid-template-areas` is parsed into a name grid, `grid-area`
+  puts an item in that name's bounding box, `grid-column`/`grid-row` take a 1-based line or `start / end`, and
+  auto-placed items take the first free cell. The parser had to keep the quotes on `grid-template-areas` first —
+  the same fault `content` had in 3a6.
 
 ## 2. Current state
 

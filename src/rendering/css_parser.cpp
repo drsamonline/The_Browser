@@ -214,7 +214,9 @@ void CssParser::parse_block(std::vector<CssToken> const& tokens, size_t& positio
             // ContentValue in content_value.hpp is that shape, and this is the one place the quotes are
             // written down. `content: ''` therefore arrives as `''` - a list holding one empty string -
             // which is how it stays distinguishable from no declaration at all.
-            if (property == "content")
+            // `grid-template-areas` is a list of quoted rows for the same reason `content` is a list of quoted
+            // items: the quotes are the structure, and joining the tokens throws it away (row 3c2).
+            if (property == "content" || property == "grid-template-areas")
                 value = trim(quote_string_items(tokens, value_begin, position));
             if (!property.empty())
                 rule.declarations.push_back({ std::move(property), std::move(value) });

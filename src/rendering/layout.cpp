@@ -624,19 +624,207 @@ void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width,
     };
 
     auto columns = parse_tracks(node.style.get("grid-template-columns"));
-    if (columns.empty()) columns.push_back(available_width);
+
+    // `grid-template-areas`: each quoted string is a row of names, `.` is an empty cell.
+    auto split_tokens = [](std::string const& value) {
+        std::vector<std::string> out;
+        std::string token;
+        for (char c : value) {
+            if (c == ' ' || c == '\t' || c == '\n') {
+                if (!token.empty()) { out.push_back(token); token.clear(); }
+            } else {
+                token += c;
+            }
+        }
+        if (!token.empty())
+            out.push_back(token);
+        return out;
+    };
+    auto parse_areas = [&](std::string const* value) {
+        std::vector<std::vector<std::string>> grid;
+        if (!value)
+            return grid;
+        // The parser hands these over with single quotes around each row (the tokenizer's strings are
+        // re-quoted on the way out), but a hand-written value may use double quotes; both are rows.
+        std::size_t index = 0;
+        while (index < value->size()) {
+            if ((*value)[index] != '"' && (*value)[index] != '\'') { ++index; continue; }
+            auto const quote = (*value)[index];
+            auto const close = value->find(quote, index + 1);
+            if (close == std::string::npos)
+                break;
+            std::vector<std::string> row;
+            for (auto const& token : split_tokens(value->substr(index + 1, close - index - 1)))
+                row.push_back(token == "." ? std::string() : token);
+            grid.push_back(std::move(row));
+            index = close + 1;
+        }
+        return grid;
+    };
+    auto const areas = parse_areas(node.style.get("grid-template-areas"));
+
+    // A track count that can hold both the declared columns and the declared areas.
+    std::size_t area_columns = 0;
+    for (auto const& row : areas)
+        area_columns = std::max(area_columns, row.size());
+    if (columns.empty())
+        columns.push_back(available_width);
+    while (columns.size() < area_columns)
+        columns.push_back(0); // an area column with no declared track: sized by its items below
+    std::size_t const cols = columns.size();
+
     float gap_x = parse_length(node.style.get("column-gap"), parse_length(node.style.get("gap"), 0, available_width), available_width);
     float gap_y = parse_length(node.style.get("row-gap"), parse_length(node.style.get("gap"), 0, available_width), available_width);
-    size_t cols = columns.size(); std::vector<float> row_heights;
-    for (size_t index = 0; index < items.size(); ++index) {
-        size_t col = index % cols, row = index / cols;
-        while (row_heights.size() <= row) row_heights.push_back(0);
-        float x = node.box.content.x; for (size_t c=0;c<col;++c) x += columns[c] + gap_x;
-        float y = node.box.content.y; for (size_t r=0;r<row;++r) y += row_heights[r] + gap_y;
-        layout_node(*items[index], x, y, columns[col]);
-        row_heights[row] = std::max(row_heights[row], items[index]->rect.height);
+
+    // Rows: `grid-template-rows` when it names pixel tracks, otherwise as tall as the tallest item in them.
+    std::vector<float> row_heights;
+    {
+        auto const* declared = node.style.get("grid-template-rows");
+        std::size_t index = 0;
+        while (declared && index < declared->size()) {
+            if ((*declared)[index] == ' ') { ++index; continue; }
+            auto token_end = declared->find(' ', index);
+            auto const token = declared->substr(index, token_end == std::string::npos ? std::string::npos : token_end - index);
+            float const value = parse_length(&token, 0, node.box.content.height);
+            row_heights.push_back(value);
+            if (token_end == std::string::npos)
+                break;
+            index = token_end + 1;
+        }
     }
-    float total = 0; for (float h : row_heights) total += h; total += gap_y * std::max(0, (int)row_heights.size()-1);
+
+    // Explicit placement first, then auto-placement into the first free cell - which is what the spec's
+    // auto-flow does for items with no position, and it keeps a `grid-area` item from being pushed aside by
+    // the ones before it (row 3c2).
+    struct Placement {
+        std::size_t row { 0 };
+        std::size_t column { 0 };
+        std::size_t row_span { 1 };
+        std::size_t column_span { 1 };
+    };
+    std::vector<Placement> placements(items.size());
+    std::vector<std::vector<bool>> occupied;
+
+    auto ensure_rows = [&](std::size_t rows) {
+        while (occupied.size() < rows)
+            occupied.emplace_back(cols, false);
+    };
+    auto is_free = [&](Placement const& p) {
+        ensure_rows(p.row + p.row_span);
+        for (std::size_t r = p.row; r < p.row + p.row_span; ++r)
+            for (std::size_t c = p.column; c < p.column + p.column_span && c < cols; ++c)
+                if (occupied[r][c])
+                    return false;
+        return true;
+    };
+    auto take = [&](Placement const& p) {
+        ensure_rows(p.row + p.row_span);
+        for (std::size_t r = p.row; r < p.row + p.row_span; ++r)
+            for (std::size_t c = p.column; c < p.column + p.column_span && c < cols; ++c)
+                occupied[r][c] = true;
+    };
+    // `grid-column: 2` or `grid-column: 2 / 4` - 1-based, as the spec counts them. `span n` is not read.
+    auto line_range = [&](std::string const* value, std::size_t& start, std::size_t& span) {
+        if (!value || value->empty())
+            return false;
+        auto const slash = value->find('/');
+        auto first = split_tokens(slash == std::string::npos ? *value : value->substr(0, slash));
+        if (first.empty())
+            return false;
+        float const begin = std::strtof(first.front().c_str(), nullptr);
+        if (begin <= 0)
+            return false;
+        start = static_cast<std::size_t>(begin) - 1;
+        span = 1;
+        if (slash != std::string::npos) {
+            auto second = split_tokens(value->substr(slash + 1));
+            if (!second.empty()) {
+                float const end_line = std::strtof(second.front().c_str(), nullptr);
+                if (end_line > begin)
+                    span = static_cast<std::size_t>(end_line - begin);
+            }
+        }
+        return true;
+    };
+
+    std::vector<bool> placed(items.size(), false);
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        Placement p;
+        bool explicit_placement = false;
+        if (auto const* area = items[index]->style.get("grid-area"); area && !area->empty()) {
+            // The name's bounding box in `grid-template-areas` is the item's cell.
+            std::size_t min_row = SIZE_MAX, max_row = 0, min_column = SIZE_MAX, max_column = 0;
+            for (std::size_t r = 0; r < areas.size(); ++r)
+                for (std::size_t c = 0; c < areas[r].size(); ++c) {
+                    if (areas[r][c] != *area)
+                        continue;
+                    min_row = std::min(min_row, r); max_row = std::max(max_row, r);
+                    min_column = std::min(min_column, c); max_column = std::max(max_column, c);
+                }
+            if (min_row != SIZE_MAX) {
+                p.row = min_row;
+                p.column = min_column;
+                p.row_span = max_row - min_row + 1;
+                p.column_span = max_column - min_column + 1;
+                explicit_placement = true;
+            }
+        }
+        std::size_t column_start = 0, column_span = 1, row_start = 0, row_span = 1;
+        bool const has_column = line_range(items[index]->style.get("grid-column"), column_start, column_span);
+        bool const has_row = line_range(items[index]->style.get("grid-row"), row_start, row_span);
+        if (!explicit_placement && (has_column || has_row)) {
+            p.column = has_column ? column_start : 0;
+            p.row = has_row ? row_start : 0;
+            p.column_span = has_column ? column_span : 1;
+            p.row_span = has_row ? row_span : 1;
+            explicit_placement = true;
+        }
+        if (explicit_placement) {
+            p.column = std::min(p.column, cols - 1);
+            take(p);
+            placements[index] = p;
+            placed[index] = true;
+        }
+    }
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        if (placed[index])
+            continue;
+        Placement p;
+        bool found = false;
+        for (std::size_t row = 0; row < 1000 && !found; ++row) {
+            ensure_rows(row + 1);
+            for (std::size_t column = 0; column < cols; ++column) {
+                Placement candidate { row, column, 1, 1 };
+                if (is_free(candidate)) {
+                    p = candidate;
+                    found = true;
+                    break;
+                }
+            }
+        }
+        take(p);
+        placements[index] = p;
+    }
+
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        auto const& p = placements[index];
+        while (row_heights.size() <= p.row + p.row_span - 1)
+            row_heights.push_back(0);
+        float x = node.box.content.x;
+        for (std::size_t c = 0; c < p.column; ++c)
+            x += columns[c] + gap_x;
+        float width = gap_x * static_cast<float>(p.column_span - 1);
+        for (std::size_t c = p.column; c < p.column + p.column_span && c < cols; ++c)
+            width += columns[c];
+        float y = node.box.content.y;
+        for (std::size_t r = 0; r < p.row; ++r)
+            y += row_heights[r] + gap_y;
+        layout_node(*items[index], x, y, width);
+        row_heights[p.row] = std::max(row_heights[p.row], items[index]->rect.height);
+    }
+    float total = 0;
+    for (float h : row_heights) total += h;
+    total += gap_y * std::max(0, static_cast<int>(row_heights.size()) - 1);
     cursor_y = node.box.content.y + total;
 }
 

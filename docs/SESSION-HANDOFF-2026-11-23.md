@@ -456,3 +456,42 @@ underneath the build tree.
 
 **Rule for the next session: compare `git log --oneline -1` against `git fetch && git log --oneline -1
 origin/main` before the first commit, not after the first rejected push.**
+
+---
+
+## 16. Eleventh commit — row 3c2: grid placement
+
+| what | before | after |
+| --- | --- | --- |
+| `grid-template-areas` | not parsed at all | a name grid; `.` is an empty cell |
+| `grid-area: <name>` | ignored — the item landed wherever document order put it | the name's bounding box, spans included |
+| `grid-column` / `grid-row` | ignored | a 1-based line, or `start / end` |
+| auto-placed items | index ÷ columns | the first free cell, so an explicit item does not shove them |
+
+Upstream: `Libraries/LibWeb/Rust/src/layout/grid_formatting_context.rs:746` (`find_unoccupied_grid_area`) — an
+occupation grid scanned along the auto-flow axis. This is that shape with one axis: row-major, single-cell items
+auto-placed, spans only for explicit placement.
+
+### Numbers, 300 px container, three 100 px columns
+
+| case | result |
+| --- | --- |
+| `grid-template-areas: 'h h h' 'l . r'`, `grid-area: h` | x=0, y=0, **w=300** |
+| the same, `grid-area: l` / `r` | x=0 y=20 / x=200 y=20 — the `.` cell is skipped |
+| `grid-column: 2 / 4` | x=100, **w=200** |
+| explicit `grid-column: 2`, then two auto items | x=100, x=0, x=200 |
+| plain auto row-major (control) | 0, 100, 200, then the next row at y=20 — unchanged |
+
+`AetherisLayout` pins all of them. Suite **65/65 twice**, 154.66 s and 159.66 s.
+
+### The bug that hid the whole feature
+
+The first version placed nothing: the tokenizer strips quotes from string tokens, so `grid-template-areas: 'h h h'`
+arrived as `h h h` and the parser found no rows. The parser now re-quotes `grid-template-areas` the same way it
+re-quotes `content` (3a6) — and then the areas parser had to accept **single** quotes, because that is what the
+re-quoting writes. Two faults, both invisible from the outside: the grid looked like it ignored areas.
+
+### Still not read
+
+Named lines (`[name]`), `span n`, `auto-fit`/`minmax`, `grid-auto-flow: column`, and `grid-template-rows` only
+understands pixel tracks (an `fr` row falls back to the tallest item).

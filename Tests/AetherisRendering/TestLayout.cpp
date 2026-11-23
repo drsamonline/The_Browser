@@ -121,5 +121,52 @@ int main()
             require(std::abs(width - 150.0f) < 0.01f, "flex: 0 0 150px gives each item exactly 150 px");
     }
 
+// Row 3c2: explicit grid placement. `grid-template-areas` names cells, `grid-area` puts an item in one, and
+    // an item with `grid-column: 2 / 4` spans columns - with auto-placed items filling the cells that are left.
+    {
+        auto cells = [](std::string const& html, std::string const& css) {
+            auto rendered = RenderDocument::create(html, css, 300);
+            std::vector<LayoutRect> rects;
+            std::function<void(LayoutNode const&)> walk = [&](LayoutNode const& node) {
+                if (node.dom_node && node.dom_node->type == DomNodeType::Element && node.style.get("background-color"))
+                    rects.push_back(node.rect);
+                for (auto const& child : node.children)
+                    walk(*child);
+            };
+            walk(rendered.layout_root());
+            return rects;
+        };
+        std::string const tracks = ".g { display: grid; width: 300px; grid-template-columns: 100px 100px 100px; }"
+                                    ".a { background: #f00; height: 20px; }";
+
+        // 'h h h' / 'l . r': the header spans the row, and the two named cells sit either side of an empty one.
+        auto const areas = cells("<div class='g'>"
+                                 "<div class='a' style='grid-area: h'></div>"
+                                 "<div class='a' style='grid-area: l'></div>"
+                                 "<div class='a' style='grid-area: r'></div></div>",
+            tracks + ".g { grid-template-areas: 'h h h' 'l . r'; }");
+        require(areas.size() == 3, "three area items");
+        require(std::abs(areas[0].width - 300.0f) < 0.01f && std::abs(areas[0].y) < 0.01f,
+            "the area that spans three columns is 300 px wide on the first row");
+        require(std::abs(areas[1].x) < 0.01f && std::abs(areas[1].y - 20.0f) < 0.01f, "'l' sits in the first column of the second row");
+        require(std::abs(areas[2].x - 200.0f) < 0.01f && std::abs(areas[2].y - 20.0f) < 0.01f,
+            "'r' skips the empty middle cell and lands in the third column");
+
+        // `grid-column: 2 / 4` starts at the second line and ends at the fourth: columns 2 and 3.
+        auto const span = cells("<div class='g'><div class='a' style='grid-column: 2 / 4'></div></div>", tracks);
+        require(span.size() == 1 && std::abs(span[0].x - 100.0f) < 0.01f && std::abs(span[0].width - 200.0f) < 0.01f,
+            "grid-column: 2 / 4 spans the second and third columns");
+
+        // Auto-placement fills the first free cell, so an item placed in column 2 pushes the next one to column 1.
+        auto const filled = cells("<div class='g'>"
+                                  "<div class='a' style='grid-column: 2'></div>"
+                                  "<div class='a'></div><div class='a'></div></div>",
+            tracks);
+        require(filled.size() == 3, "three items");
+        require(std::abs(filled[0].x - 100.0f) < 0.01f, "the explicit item is in the second column");
+        require(std::abs(filled[1].x) < 0.01f, "the first auto-placed item takes the free cell before it");
+        require(std::abs(filled[2].x - 200.0f) < 0.01f, "the next one takes the third column");
+    }
+
     return 0;
 }
