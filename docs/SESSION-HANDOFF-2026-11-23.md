@@ -931,3 +931,44 @@ carries its trigger as an open tail.
 Only numeric properties are sampled — `opacity` is the one paint applies. `animation-direction`, `fill-mode`,
 `play-state` and comma lists are unread, and colour or transform keyframes would need a value type this engine does
 not have yet.
+
+---
+
+## 27. Twenty-second commit — row 5b: same-origin, measured before it was enforced
+
+The row said "Same-origin enforcement in the bindings". The measurement found there is nothing to enforce: this engine
+has **no `fetch`, no `XMLHttpRequest` and no frames**, so no binding can reach across an origin. That is the same shape
+as row 3i — the row was wrong about its own premise — except that the measurement turned up one real bug underneath.
+
+| what | state before | after |
+| --- | --- | --- |
+| `localStorage` / `sessionStorage` keyed per origin | yes, but on a key the app computed by hand | keyed on `SecurityPolicy::origin()` |
+| `https://A.test` vs `https://a.test` | **two separate buckets** — a same-origin bug | one bucket; `set_storage_origin()` lowercases |
+| definitions of "origin" in the engine | two (`SecurityPolicy::origin` and an inline substring in `main.cpp`) | one |
+
+### Evidence — `AetherisJs`
+
+| assertion |
+| --- |
+| a second origin sees neither `localStorage` nor `sessionStorage` |
+| its writes do not reach the first origin's data |
+| the first origin's data survives the visit |
+| `https://A.TEST` is the same origin as `https://a.test` |
+| `http://a.test` is **not** — the scheme is part of the origin |
+
+Probe before the fix, for the record: `b sees: null`, `a sees: from-a`, **`A.test sees: null`**. After: `A.test sees:
+from-a`.
+
+Suite **66/66 twice**, 125.93 s and 128.85 s.
+
+### What this row deliberately did not invent
+
+Nothing enforces an origin *across* documents because there is only ever one document. When a `fetch` or an iframe
+arrives, the check belongs in that binding, and the assertions above are what would catch it going wrong. The row says
+so rather than claiming an enforcement that has no subject.
+
+### The stale-probe trap, hit again
+
+The first re-run of the storage probe printed the **old** results, because a probe links the static library and had not
+been relinked. That trap is in the handover's build facts and it still caught me; relinking is not optional after a
+library rebuild.

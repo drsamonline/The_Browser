@@ -3,6 +3,7 @@
 #include "quickjs.h"
 
 #include <functional>
+#include <cctype>
 #include <map>
 #include <string>
 #include <vector>
@@ -63,7 +64,15 @@ public:
     // The origin `localStorage` is scoped to. Upstream keeps a Storage object per origin in the
     // document's local storage holder (HTML/Storage.idl, DOM/Document.h); here the store is a map on
     // the interpreter, which lives as long as the window, so it survives a navigation.
-    void set_storage_origin(std::string origin) { m_storage_origin = std::move(origin); }
+    // The origin the storage buckets are keyed on. Hosts are case-insensitive, so it is lowercased here rather than
+    // trusted from the caller: `https://A.test` and `https://a.test` are one origin, and a store that treats them as
+    // two is a same-origin bug (row 5b).
+    void set_storage_origin(std::string origin)
+    {
+        for (auto& c : origin)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        m_storage_origin = std::move(origin);
+    }
     std::string const& storage_origin() const { return m_storage_origin; }
 
     // One origin's key/value pairs. In memory only: upstream persists per profile, this does not.

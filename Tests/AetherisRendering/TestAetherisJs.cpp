@@ -551,5 +551,38 @@ int main()
         require(store.scroll_restoration == 1, "and the host was told");
     }
 
+// Row 5b: the same-origin invariant the bindings must keep. This engine has no cross-origin-capable binding
+    // (no fetch, no XMLHttpRequest, no frames), so the surface to enforce is empty - but storage is per origin and
+    // that is the one place an origin leak would show, so it is pinned here rather than assumed.
+    {
+        Harness h;
+        h.interpreter.set_storage_origin("https://a.test");
+        h.run("localStorage.setItem('k', 'from-a'); sessionStorage.setItem('s', 'session-a');");
+
+        // A different origin sees none of it, and its writes do not reach back.
+        h.interpreter.set_storage_origin("https://b.test");
+        h.output.clear();
+        h.run("console.log(String(localStorage.getItem('k'))); console.log(String(sessionStorage.getItem('s')));"
+              " localStorage.setItem('k', 'from-b');");
+        require(h.output == "null\nnull\n", "another origin sees neither store");
+
+        h.interpreter.set_storage_origin("https://a.test");
+        h.output.clear();
+        h.run("console.log(localStorage.getItem('k'));");
+        require(h.output == "from-a\n", "and the first origin's data survived the visit");
+
+        // Hosts are case-insensitive: a different spelling of the same host is the same origin.
+        h.interpreter.set_storage_origin("https://A.TEST");
+        h.output.clear();
+        h.run("console.log(localStorage.getItem('k'));");
+        require(h.output == "from-a\n", "https://A.TEST is the same origin as https://a.test");
+
+        // A different scheme is a different origin, which is the rule the whole thing rests on.
+        h.interpreter.set_storage_origin("http://a.test");
+        h.output.clear();
+        h.run("console.log(String(localStorage.getItem('k')));");
+        require(h.output == "null\n", "http://a.test is a different origin from https://a.test");
+    }
+
     return 0;
 }

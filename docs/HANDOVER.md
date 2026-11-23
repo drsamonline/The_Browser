@@ -135,6 +135,11 @@ All credited in `CREDITS.md`.
   shorthand is read, and `Animation` samples a numeric property at the document clock. Unlike a transition, an
   animation starts by itself: `RenderDocument` walks the DOM once when it is built. Measured — a red box fades to
   white over one second in five steps, holds the last keyframe after that, and `layout_passes()` never moves.
+- **Row 5b closed** (2026-11-23): same-origin enforcement. Measured first — the engine has no `fetch`, no
+  `XMLHttpRequest` and no frames, so there is no cross-origin-capable binding at all. Storage is the only surface, and
+  it had a real bug: `https://A.test` and `https://a.test` got separate buckets because the origin key was computed by
+  hand in `main.cpp`. It is now lowercased in `set_storage_origin()` and computed by `SecurityPolicy::origin()`, so the
+  engine has one definition of "origin". `AetherisJs` pins the isolation.
 
 ## 2. Current state
 

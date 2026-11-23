@@ -2322,15 +2322,9 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             // The URL and the storage origin are set BEFORE the page is built: its scripts run inside
             // create_scripted_document(), so `location.href` and `localStorage` have to be right by then.
             g_current_url = session.current_url();
-            {
-                std::string origin = g_current_url;
-                auto const scheme_end = origin.find("://");
-                if (scheme_end != std::string::npos) {
-                    auto const host_end = origin.find('/', scheme_end + 3);
-                    origin = host_end == std::string::npos ? origin : origin.substr(0, host_end);
-                }
-                page_js.set_storage_origin(origin);
-            }
+            // One definition of "origin" for the whole engine: SecurityPolicy's, which lowercases scheme and host and
+            // drops the path. Hand-rolling it here meant two spellings of one host could get two storage buckets.
+            page_js.set_storage_origin(rendering::SecurityPolicy::origin(rendering::Url::parse(g_current_url)));
             if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "DOC style begin\n");
             auto style = collect_page_style(body, session.current_url(), fetcher);
             if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "DOC style done\n");
