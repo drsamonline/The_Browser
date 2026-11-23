@@ -106,6 +106,21 @@ int main()
         require(same, "every coverage value matches: paint's entry point is the rasteriser");
     }
 
+// Row 3d1 groundwork: the glyph cache must key on the font, not just the glyph and the size. Two fonts can
+    // share a glyph id and mean different shapes, which is what `@font-face` makes possible. The second font here
+    // is the embedded one with a padding byte changed - a different file, the same glyphs.
+    {
+        std::vector<uint8_t> mutated = data;
+        mutated.back() = static_cast<uint8_t>(mutated.back() ^ 0xFF);
+        TtfFont second;
+        require(second.load(mutated), "the mutated copy still parses");
+        require(second.identity() != font.identity(), "and it is a different font as far as the cache is concerned");
+        auto const& from_first = cached_glyph(font, glyph, 32.0f);
+        auto const& from_second = cached_glyph(second, glyph, 32.0f);
+        require(&from_first != &from_second, "the same glyph id from two fonts is two cache entries");
+        require(from_first.width == from_second.width, "and here they rasterise to the same shape, which is why a shared entry would have gone unnoticed");
+    }
+
     std::printf("'A' at 32px: %dx%d, %zu inked, %d partial\n",
         bitmap.width, bitmap.height, inked, partial);
     return 0;

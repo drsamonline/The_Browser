@@ -136,5 +136,22 @@ int main()
             "attr() is unsupported and renders nothing rather than \"attr(title)\"");
     }
 
+// Row 3d1: `@font-face` is a descriptor block, not a selector rule, and it has to survive parsing with its
+    // family and its source intact.
+    {
+        CssParser face_parser;
+        auto sheet = face_parser.parse(
+            "@font-face { font-family: 'Body'; src: url(https://example.test/body.woff2) format('woff2'); }"
+            "@font-face { font-family: Heading; src: url(/heading.ttf); }"
+            "@font-face { src: url(no-family.ttf); }"
+            "p { color: #123456; }");
+        require(sheet.font_faces.size() == 2, "two faces with a family and a source; the third has no family");
+        require(sheet.font_faces[0].family == "Body", "a quoted family keeps its name");
+        require(sheet.font_faces[0].source == "https://example.test/body.woff2", "the url is taken out of url()");
+        require(sheet.font_faces[1].family == "Heading", "an unquoted family is read too");
+        require(sheet.font_faces[1].source == "/heading.ttf", "and its source");
+        require(sheet.rules.size() == 1, "the rule after the faces is still parsed");
+    }
+
     return 0;
 }

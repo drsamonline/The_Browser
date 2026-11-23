@@ -32,6 +32,7 @@ are at the bottom.
 | `::before` `::after` and other pseudo-elements | done — synthetic boxes; text, background and border all paint, and the box is content-sized (2026-11-23) | `layout.cpp`, `render_tree.cpp`, `AetherisTextLayout` |
 | CSS custom properties `var()` | done, 2026-11-17 — inherited, fallbacks, chains, cycle guard | `substitute_vars()` in `style.cpp` |
 | Media queries | done | `css_parser.cpp` |
+| `@font-face` | **parsed only**, 2026-11-23 — the family and source reach `CssStyleSheet::font_faces`; nothing loads or selects a face yet | `css_parser.cpp`, `css_stylesheet.hpp` |
 | Flexbox: `flex` shorthand, basis, grow, shrink, `justify-content`, `align-items` | done, 2026-11-23 — `auto` basis has no intrinsic-width pass, so an item with neither basis nor width starts at 0 and grows | `layout.cpp`, `style.cpp`, `AetherisLayout` |
 | Grid: tracks, areas, explicit placement | done, 2026-11-23 — `grid-template-columns`/`rows` tracks, `grid-template-areas` + `grid-area`, `grid-column`/`grid-row` with `start / end`, and auto-placement into the first free cell. Not read: named lines, `span n`, `auto-fit`/`minmax`, `grid-auto-flow: column` | `layout.cpp`, `AetherisLayout` |
 | `transform` (translate/scale) | done | paint pass |

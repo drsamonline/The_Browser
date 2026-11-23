@@ -495,3 +495,42 @@ re-quoting writes. Two faults, both invisible from the outside: the grid looked 
 
 Named lines (`[name]`), `span n`, `auto-fit`/`minmax`, `grid-auto-flow: column`, and `grid-template-rows` only
 understands pixel tracks (an `fr` row falls back to the tallest item).
+
+---
+
+## 17. Twelfth commit — row 3d split, and the first half of 3d1
+
+Row 3d was "`@font-face`, transitions, animations": three features that share nothing but a row. Split into
+**3d1** `@font-face`, **3d2** transitions, **3d3** animations, and this commit does the part of 3d1 that stands on
+its own.
+
+| what | before | after |
+| --- | --- | --- |
+| `@font-face { ... }` | skipped with every other unknown at-rule | read into `CssStyleSheet::font_faces` as family + the url inside `src` |
+| `cached_glyph()` key | `(glyph, size)` | `(font identity, glyph, size)` |
+
+The cache key is groundwork, not a bug fix for today: with one active font the identity never varied. It becomes a
+correctness requirement the moment a second font exists, and the pattern is the one row 2g asked for — widen the
+key before the feature that needs it, not after.
+
+### Evidence
+
+| assertion | where |
+| --- | --- |
+| a quoted family keeps its name, `url(...)` yields the source, a block with no family is dropped, the rule after it still parses | `AetherisCss` |
+| the same glyph id from two fonts is two cache entries — the second font is the embedded one with a padding byte flipped, so the shapes are identical and only the key tells them apart | `AetherisGlyphRasterizer` |
+
+Suite **65/65 twice**, 145.21 s and 137.77 s.
+
+### What 3d1 still needs, precisely
+
+1. **Fetch the source.** The resource loader has no `data:` URL support, and nothing calls it for `@font-face`.
+2. **Select the face.** `font-family` is inherited and never read for selection; `Font`, `FontMetrics`, `measure()`
+   and `draw_text()` all go through `active_font()`, which is a singleton. Each would need to carry a face.
+
+That is a second commit's worth of plumbing across five files, and it is written down rather than estimated away.
+
+### What this commit would do differently
+
+Nothing about the code. About the row: "three features" was never one row, and saying so cost nothing once the
+measurement (what does the parser do with `@font-face`? — nothing) was in hand.

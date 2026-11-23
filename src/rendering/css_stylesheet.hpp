@@ -17,8 +17,17 @@ struct CssRule {
     size_t source_order { 0 };
 };
 
+// `@font-face { font-family: X; src: url(...) }`. Only the two declarations this engine can act on are kept:
+// the family name it will be asked for, and where the file is. Upstream keeps a full CSSFontFaceRule with the
+// descriptor set; this is the shape of it at this engine's scale (row 3d1).
+struct CssFontFace {
+    std::string family;
+    std::string source;
+};
+
 struct CssStyleSheet {
     std::vector<CssRule> rules;
+    std::vector<CssFontFace> font_faces;
     bool m_uses_generated_content { false };
     bool empty() const { return rules.empty(); }
 

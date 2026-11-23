@@ -32,6 +32,67 @@ void CssParser::skip_block(std::vector<CssToken> const& tokens, size_t& position
     }
 }
 
+// Reads `@font-face { font-family: X; src: url(...) }` into the stylesheet's face table. The block is consumed
+// whole, whether or not it named a family: a half-read block would leave the token position inside a rule.
+void CssParser::parse_font_face(std::vector<CssToken> const& tokens, size_t& position, CssStyleSheet& sheet)
+{
+    CssFontFace face;
+    int depth = 1;
+    while (position < tokens.size() && tokens[position].type != CssTokenType::EndOfFile) {
+        auto const type = tokens[position].type;
+        if (type == CssTokenType::OpenBrace) {
+            ++depth;
+            ++position;
+            continue;
+        }
+        if (type == CssTokenType::CloseBrace) {
+            if (--depth == 0) {
+                ++position;
+                break;
+            }
+            ++position;
+            continue;
+        }
+        // property ":" value ";"
+        auto property_end = position;
+        while (property_end < tokens.size() && tokens[property_end].type != CssTokenType::Colon
+            && tokens[property_end].type != CssTokenType::Semicolon
+            && tokens[property_end].type != CssTokenType::CloseBrace)
+            ++property_end;
+        std::string property;
+        for (size_t index = position; index < property_end; ++index)
+            if (is_significant(tokens[index]))
+                property += tokens[index].value;
+        position = property_end;
+        if (position < tokens.size() && tokens[position].type == CssTokenType::Colon)
+            ++position;
+        auto value_begin = position;
+        while (position < tokens.size() && tokens[position].type != CssTokenType::Semicolon
+            && tokens[position].type != CssTokenType::CloseBrace)
+            ++position;
+        std::string value;
+        for (size_t index = value_begin; index < position; ++index)
+            value += tokens[index].value;
+        value = trim(value);
+        if (property == "font-family") {
+            // The family may be quoted; the tokenizer already removed the quotes.
+            face.family = value;
+        } else if (property == "src") {
+            // `url(...)` with the file inside, possibly followed by a format hint.
+            auto const open = value.find("url(");
+            if (open != std::string::npos) {
+                auto const close = value.find(')', open);
+                if (close != std::string::npos)
+                    face.source = trim(value.substr(open + 4, close - open - 4));
+            }
+        }
+        if (position < tokens.size() && tokens[position].type == CssTokenType::Semicolon)
+            ++position;
+    }
+    if (!face.family.empty() && !face.source.empty())
+        sheet.font_faces.push_back(std::move(face));
+}
+
 // The renderer always presents a screen viewport of 1024x768, so a media query
 // is resolved against that: unknown features do not match.
 bool CssParser::media_matches(std::string const& query)
@@ -158,6 +219,16 @@ void CssParser::parse_block(std::vector<CssToken> const& tokens, size_t& positio
 
         if (!found_open_brace)
             break;
+
+        // @font-face { ... } — a font descriptor block, not a selector rule. Its declarations are read into the
+        // stylesheet's face table so `font-family` can find them later (row 3d1).
+        if (!selectors.empty() && selectors.front().rfind("@font-face", 0) == 0) {
+            if (include)
+                parse_font_face(tokens, position, sheet);
+            else
+                skip_block(tokens, position);
+            continue;
+        }
 
         // @media <query> { rules } — nested rules, filtered by the viewport.
         if (!selectors.empty() && selectors.front().rfind("@media", 0) == 0) {

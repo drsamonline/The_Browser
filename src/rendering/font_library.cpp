@@ -3,6 +3,7 @@
 #include "glyph_rasterizer.hpp"
 
 #include <map>
+#include <tuple>
 #include <utility>
 
 #include <cstdlib>
@@ -108,10 +109,12 @@ namespace aetheris::rendering {
 
 GlyphBitmap const& cached_glyph(TtfFont const& font, uint16_t glyph, float pixel_size)
 {
-    // Key on the rounded size so 16px and 16.2px share an entry.
+    // Key on the rounded size so 16px and 16.2px share an entry, and on the font's identity so a glyph id from
+    // one font is never served from another's bitmap. With a single active font the identity never varied, which
+    // is why the key did not carry it; `@font-face` makes it vary (row 3d1).
     auto size_key = static_cast<int>(pixel_size * 4.0f + 0.5f);
-    static std::map<std::pair<int, int>, GlyphBitmap> cache;
-    auto key = std::make_pair(static_cast<int>(glyph), size_key);
+    static std::map<std::tuple<uint64_t, int, int>, GlyphBitmap> cache;
+    auto key = std::make_tuple(font.identity(), static_cast<int>(glyph), size_key);
     auto found = cache.find(key);
     if (found != cache.end())
         return found->second;

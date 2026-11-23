@@ -99,6 +99,11 @@ All credited in `CREDITS.md`.
   puts an item in that name's bounding box, `grid-column`/`grid-row` take a 1-based line or `start / end`, and
   auto-placed items take the first free cell. The parser had to keep the quotes on `grid-template-areas` first —
   the same fault `content` had in 3a6.
+- **Row 3d split and started** (2026-11-23): `@font-face` is now parsed into `CssStyleSheet::font_faces` (family
+  plus the url from `src`), and the glyph cache keys on `(font identity, glyph, size)` so a second font cannot be
+  served the first one's bitmaps. What remains for 3d1 is fetching the source and making `font-family` select a
+  face — `active_font()` is the only font the paint path can reach today. 3d2 (transitions) and 3d3 (animations)
+  are separate rows now, because they are separate features.
 
 ## 2. Current state
 
