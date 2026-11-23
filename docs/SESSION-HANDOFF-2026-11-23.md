@@ -1295,3 +1295,68 @@ Identical suite runs measured 126.97 s and 164.79 s back to back, and the same p
 from 0.047 to 0.075 ms across five runs. Any claim smaller than about 20% is not measurable here;
 that is why the reserve decision was taken on an alternating build rather than on one before/after
 pair, and why it was taken in the opposite direction to the one expected.
+
+## 34. Twenty-ninth commit — row 0.3: the client speaks to a proxy
+
+Row 0.3 was created by the corpus run in section 31, which found that the sandbox reaches the internet
+through an HTTP proxy and the engine's client connects directly. `curl` worked and `aetheris --fetch`
+did not. This closes it, and the proof is the same fetch that failed:
+
+```
+$ ./build/bin/aetheris --fetch https://example.com
+OK https://example.com
+  Bytes: 577
+```
+
+577 bytes is exactly what `curl` gets for that page, so the body is the origin's and not the proxy's.
+
+### The shape, read from upstream first
+
+`LibHTTP/Proxy.h` keeps a proxy as a type, a host, a port and the userinfo from the variable;
+`Proxy.cpp:18` parses `[scheme://][user:pass@]host[:port]`; `:149` reads the environment with
+libcurl's precedence; `:186` picks one per URL; `:252` is the `no_proxy` match. Ported at this
+engine's scale: `include/aetheris/network/proxy.hpp`, with `ProxyEndpoint` and `ProxyConfiguration`.
+
+Two upstream decisions worth keeping rather than rediscovering:
+
+| decision | why |
+| --- | --- |
+| `HTTP_PROXY` is **not** read, only `http_proxy` | a CGI environment can populate `HTTP_PROXY` from a request header, so honouring it lets a caller choose the proxy |
+| `no_proxy` matches a `.domain` and its subdomains, and ignores a port in the entry | that is libcurl's behaviour, and it is what the entries people actually write mean |
+
+### The two paths, which are not the same
+
+| request | what happens |
+| --- | --- |
+| `https://` | TCP to the proxy, `CONNECT host:443` with `Proxy-Authorization`, read the 2xx, then TLS **inside** the tunnel. The certificate verified is the origin's |
+| `http://` | TCP to the proxy, and the request line carries the absolute URL (`GET http://host/path`) plus `Proxy-Authorization` |
+
+CONNECT needed something the TLS stream did not have: a handshake over a socket that is already
+connected. `TlsStream::connect_over(fd, host, ca_file)` does it, and works on a **duplicate** of the
+descriptor rather than taking it over, so the `Socket` that owns the tunnel and the `TlsStream`
+inside it each close what they own. The first attempt transferred ownership and broke the stub build
+for a reason worth remembering: the `#else` branch of `tls.cpp` (no OpenSSL) has no `unistd.h`, so
+`::close` there does not compile on every platform.
+
+### What the test proves, and how
+
+`AetherisProxy` runs a **loopback fake proxy** that records the bytes the client sends, so the
+assertions are about the wire and not about the code's intentions:
+
+- `GET http://example.test/page HTTP/1.1` as the request line, with `Proxy-Authorization: Basic …`
+  and `Host: example.test` still present.
+- `CONNECT example.test:443 HTTP/1.1` with the credentials on the tunnel, and the failure that
+  follows being a TLS failure rather than "Could not connect" — which is the distinction row 0.3
+  was about.
+
+Plus the parts that need no server: the parse (socks5 and a bad port are refused rather than
+silently treated as "no proxy"), the precedence, and every `no_proxy` form.
+
+### What is still open
+
+- An `https://` proxy — TLS **to** the proxy — parses and is stored, but no connection goes through
+  it yet; this engine has only ever needed a plain proxy.
+- SOCKS4/SOCKS5 are refused, not implemented.
+- `Proxy-Authorization` is Basic only.
+- Row 0.1 is still blocked, but now on one thing instead of two: the allowlist refuses most of the
+  corpus's hosts. The engine-side gap that made the corpus fetch with `curl` is gone.

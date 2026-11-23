@@ -135,6 +135,33 @@ std::string bundled_ca_file()
 bool TlsStream::connect(std::string const& host, unsigned short port, int timeout_ms, std::string const& ca_file)
 {
     close();
+    Socket socket;
+    if (socket.connect(host, port, timeout_ms) != SocketError::None) {
+        m_error = "could not connect to " + host;
+        return false;
+    }
+    // The socket keeps its descriptor; connect_over() works on a duplicate of it.
+    return connect_over(static_cast<int>(socket.native_handle()), host, ca_file);
+}
+
+// Performs the handshake over a descriptor that is already connected - which is what a proxy
+// tunnel is: the TCP connection goes to the proxy, the proxy answers CONNECT, and the TLS
+// session that follows belongs to the origin host, not to the proxy. Takes ownership of `fd`.
+//
+// The shape is upstream's: LibHTTP establishes the tunnel first and then starts TLS inside it,
+// so the origin hostname is what is verified (LibHTTP/Proxy.cpp, Proxy::resolves_hostnames).
+bool TlsStream::connect_over(int fd, std::string const& host, std::string const& ca_file)
+{
+    close();
+#if defined(_WIN32)
+    m_fd = ::_dup(fd);
+#else
+    m_fd = ::dup(fd);
+#endif
+    if (m_fd < 0) {
+        m_error = "could not duplicate the connected descriptor";
+        return false;
+    }
     OPENSSL_init_ssl(0, nullptr);
     ERR_clear_error();
 
@@ -170,14 +197,6 @@ bool TlsStream::connect(std::string const& host, unsigned short port, int timeou
         return false;
     }
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
-
-    Socket socket;
-    if (socket.connect(host, port, timeout_ms) != SocketError::None) {
-        m_error = "could not connect to " + host;
-        close();
-        return false;
-    }
-    m_fd = static_cast<int>(socket.release());
 
     auto* ssl = SSL_new(ctx);
     if (!ssl) {
@@ -247,6 +266,12 @@ TlsStream::~TlsStream() = default;
 void TlsStream::close() {}
 
 bool TlsStream::connect(std::string const&, unsigned short, int, std::string const&)
+{
+    m_error = "TLS support is not built in";
+    return false;
+}
+
+bool TlsStream::connect_over(int, std::string const&, std::string const&)
 {
     m_error = "TLS support is not built in";
     return false;

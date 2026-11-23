@@ -20,6 +20,10 @@ public:
     // Connects TCP to host:port and performs the TLS handshake. When ca_file is
     // empty the system trust store is used.
     bool connect(std::string const& host, unsigned short port, int timeout_ms = 10000, std::string const& ca_file = {});
+    // Handshakes over a descriptor that is already connected, working on a duplicate of it so the
+    // caller keeps ownership of its socket. This is how TLS runs inside a proxy's CONNECT tunnel:
+    // the socket reaches the proxy, and the certificate verified is the origin's, for `host`.
+    bool connect_over(int fd, std::string const& host, std::string const& ca_file = {});
     bool write(std::string_view data);
     bool read(char* buffer, std::size_t capacity, std::size_t& bytes_read);
     void close();

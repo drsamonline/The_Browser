@@ -306,6 +306,12 @@ public:
     }
     
     /**
+     * The underlying handle, without giving up ownership. A TLS stream over a proxy tunnel dups
+     * this rather than taking it over, so both objects close what they own.
+     */
+    auto native_handle() const noexcept { return m_socket; }
+
+    /**
      * Check if socket is valid
      */
     bool is_valid() const noexcept {

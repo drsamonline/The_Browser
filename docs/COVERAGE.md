@@ -17,6 +17,7 @@ are at the bottom.
 | Feature | State | Evidence |
 | --- | --- | --- |
 | HTML5 parsing (gumbo) | done | `third_party/gumbo` |
+| HTTP and HTTPS through an environment proxy (`http_proxy`, `https_proxy`, `all_proxy`, `no_proxy`) | done, 2026-11-23; CONNECT for https, absolute form for http | `include/aetheris/network/proxy.hpp`, `AetherisProxy` |
 | CSS cascade, specificity | done, incl. `:is`/`:not` greatest-argument and `:where` zero | `src/rendering/style.cpp` |
 | Compound, descendant and child selectors | done, and parsed once per selector since 2026-11-23 | `matches_compound()` in `style.cpp`, `selector.cpp` |
 | Sibling combinators `+` `~` | done, 2026-11-18 | `matches()` walks previous element siblings |

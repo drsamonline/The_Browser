@@ -447,6 +447,23 @@ Measured 2026-11-23 with `tools/layout-cost.cpp`, which times parse, style resol
 
 ---
 
+## 7c. Network — the client goes through a proxy
+
+- **Read from the environment, never hard-coded:** `https_proxy`/`HTTPS_PROXY`, `http_proxy`,
+  `all_proxy`/`ALL_PROXY`, and `no_proxy`/`NO_PROXY`. `HTTP_PROXY` is deliberately ignored, as
+  upstream ignores it: a CGI environment can set it from a request header.
+- **https is tunnelled**, http is sent in absolute form. `Proxy-Authorization` goes on the CONNECT for
+  https and on the request itself for http. Credentials are never printed — errors use
+  `ProxyEndpoint::describe()`, which is `scheme://host:port`.
+- **A local fake proxy is how this is tested** (`AetherisProxy`), because it records the bytes the
+  client sent. Assert on the wire, not on the code's intentions.
+- **`TlsStream::connect_over()`** handshakes over an already-connected socket, working on a duplicate
+  of the descriptor. Anything that transfers ownership of an fd has to compile in the no-OpenSSL
+  branch too, where `unistd.h` is not included.
+- **Still open:** an `https://` proxy, SOCKS4/5, and any `Proxy-Authorization` scheme but Basic.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.

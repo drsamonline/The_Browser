@@ -12,6 +12,7 @@
 #ifndef AETHERIS_HTTP_CLIENT_HPP
 #define AETHERIS_HTTP_CLIENT_HPP
 
+#include "aetheris/network/proxy.hpp"
 #include "aetheris/network/socket_abstraction.hpp"
 #include "aetheris/network/tls.hpp"
 
@@ -450,6 +451,69 @@ struct HttpTransport {
     }
 };
 
+// Asks a proxy to open a tunnel to `host:port` and reads its answer (row 0.3).
+//
+// This is the CONNECT method: the proxy is told the origin, not the path, and after a 2xx the
+// socket carries the origin's bytes untouched, which is where the TLS handshake then goes. A
+// non-2xx is an error, not an empty page: a proxy that refuses is the thing the user needs to see.
+inline bool http_open_proxy_tunnel(Socket& socket, ProxyEndpoint const& proxy, std::string const& host,
+    unsigned short port, int timeout_ms, std::string& error)
+{
+    std::string request = "CONNECT " + host + ":" + std::to_string(port) + " HTTP/1.1\r\n";
+    request += "Host: " + host + ":" + std::to_string(port) + "\r\n";
+    request += "User-Agent: Aetheris/1.0\r\n";
+    auto const authorization = proxy.authorization_header();
+    if (!authorization.empty())
+        request += "Proxy-Authorization: " + authorization + "\r\n";
+    request += "\r\n";
+
+    if (socket.send(request) != SocketError::None) {
+        error = "Could not send CONNECT to proxy " + proxy.describe();
+        return false;
+    }
+
+    // Read until the end of the response headers. A proxy answers CONNECT with headers only.
+    std::string raw;
+    char buffer[1024];
+    auto const deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (raw.find("\r\n\r\n") == std::string::npos) {
+        if (std::chrono::steady_clock::now() > deadline) {
+            error = "Timed out waiting for the proxy to open a tunnel";
+            return false;
+        }
+        std::size_t bytes_read = 0;
+        if (socket.recv(std::span<char>(buffer, sizeof(buffer)), bytes_read) != SocketError::None || bytes_read == 0) {
+            error = "Proxy closed the connection while opening a tunnel";
+            return false;
+        }
+        raw.append(buffer, bytes_read);
+        if (raw.size() > 64 * 1024) {
+            error = "Proxy response to CONNECT was too large";
+            return false;
+        }
+    }
+
+    // "HTTP/1.1 200 Connection established"
+    auto const first_space = raw.find(' ');
+    if (first_space == std::string::npos || raw.size() < first_space + 4) {
+        error = "Malformed response to CONNECT";
+        return false;
+    }
+    int status = 0;
+    auto const parsed = std::from_chars(raw.data() + first_space + 1, raw.data() + first_space + 4, status);
+    if (parsed.ec != std::errc {}) {
+        error = "Malformed status in the response to CONNECT";
+        return false;
+    }
+    if (status < 200 || status > 299) {
+        // The status line, without the headers: a proxy's refusal usually explains itself there.
+        auto const line_end = raw.find("\r\n");
+        error = "Proxy refused the tunnel: " + raw.substr(0, line_end == std::string::npos ? raw.size() : line_end);
+        return false;
+    }
+    return true;
+}
+
 class HttpClient {
 public:
     static HttpResponseData get(std::string const& url, int timeout_ms = 8000)
@@ -507,7 +571,13 @@ private:
             response.error = "Invalid or unsupported URL";
             return response;
         }
-        auto const key = http_origin_key(parsed);
+        // Row 0.3: the proxy is read per request, from the environment, the way libcurl reads it
+        // (upstream's ProxyConfiguration::from_environment, LibHTTP/Proxy.cpp:149).
+        auto const proxy = ProxyConfiguration::from_environment().proxy_for(parsed.scheme, parsed.host);
+
+        // The proxy is part of the connection's identity: a pooled connection opened for a direct
+        // request must never be handed to a proxied one, or the request would go to the wrong place.
+        auto const key = http_origin_key(parsed) + (proxy ? " via " + proxy->describe() : std::string {});
         HttpConnection connection = http_take_connection(key);
 
         // Whether this connection came from the pool, recorded before the probe
@@ -535,15 +605,36 @@ private:
                 // explicit CA bundle; otherwise the system store is used.
                 auto const* ca_file = std::getenv("AETHERIS_CA_FILE");
                 auto tls = std::make_unique<TlsStream>();
-                if (!tls->connect(parsed.host, parsed.port, timeout_ms, ca_file ? ca_file : "")) {
+                bool handshook = false;
+                if (proxy) {
+                    // The socket reaches the proxy; CONNECT opens the tunnel to the origin; TLS
+                    // then runs inside it and verifies the origin's certificate, not the proxy's.
+                    auto socket = std::make_unique<Socket>();
+                    if (socket->connect(proxy->host, proxy->port, timeout_ms) != SocketError::None) {
+                        response.error = "Could not connect to proxy " + proxy->describe();
+                        return response;
+                    }
+                    if (!http_open_proxy_tunnel(*socket, *proxy, parsed.host, parsed.port, timeout_ms, response.error))
+                        return response;
+                    connection.socket = std::move(socket);
+                    handshook = tls->connect_over(static_cast<int>(connection.socket->native_handle()),
+                        parsed.host, ca_file ? ca_file : "");
+                } else {
+                    handshook = tls->connect(parsed.host, parsed.port, timeout_ms, ca_file ? ca_file : "");
+                }
+                if (!handshook) {
                     response.error = tls->error();
                     return response;
                 }
                 connection.tls = std::move(tls);
             } else {
                 auto socket = std::make_unique<Socket>();
-                if (socket->connect(parsed.host, parsed.port, timeout_ms) != SocketError::None) {
-                    response.error = "Could not connect to " + parsed.host;
+                // A plain-http request through a proxy is sent to the proxy, addressed absolutely.
+                auto const& connect_host = proxy ? proxy->host : parsed.host;
+                auto const connect_port = proxy ? proxy->port : parsed.port;
+                if (socket->connect(connect_host, connect_port, timeout_ms) != SocketError::None) {
+                    response.error = proxy ? "Could not connect to proxy " + proxy->describe()
+                                           : "Could not connect to " + parsed.host;
                     return response;
                 }
                 connection.socket = std::move(socket);
@@ -554,8 +645,24 @@ private:
         transport.socket = connection.socket.get();
         transport.tls = connection.tls.get();
 
-        std::string request_text = method + " " + parsed.path + " HTTP/1.1\r\n";
+        // Through a proxy, a plain-http request carries the whole URL as its target, because the
+        // proxy has to know which origin it is for. Inside a CONNECT tunnel the target stays the
+        // path: the tunnel already identifies the origin.
+        std::string target = parsed.path;
+        bool const absolute_form = proxy && parsed.scheme != "https";
+        if (absolute_form) {
+            target = parsed.scheme + "://" + parsed.host;
+            if (parsed.port != 80)
+                target += ":" + std::to_string(parsed.port);
+            target += parsed.path;
+        }
+        std::string request_text = method + " " + target + " HTTP/1.1\r\n";
         request_text += "Host: " + parsed.host + "\r\n";
+        if (absolute_form) {
+            auto const authorization = proxy->authorization_header();
+            if (!authorization.empty())
+                request_text += "Proxy-Authorization: " + authorization + "\r\n";
+        }
         request_text += "User-Agent: Aetheris/1.0\r\n";
         request_text += "Accept: */*\r\n";
         auto cookie_header = http_cookie_header(parsed.host, parsed.path, parsed.scheme == "https");

@@ -28,6 +28,12 @@ add_executable(TestAetherisEasing
 target_link_libraries(TestAetherisEasing PRIVATE AetherisRendering)
 add_test(NAME AetherisEasing COMMAND TestAetherisEasing)
 
+add_executable(TestAetherisProxy
+    TestProxy.cpp
+)
+target_link_libraries(TestAetherisProxy PRIVATE AetherisRuntime Threads::Threads)
+add_test(NAME AetherisProxy COMMAND TestAetherisProxy)
+
 add_executable(TestAetherisCss
     TestCss.cpp
 )
