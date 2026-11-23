@@ -114,6 +114,10 @@ All credited in `CREDITS.md`.
 - **Row 4d closed** (2026-11-23): `tools/check-build.py` fails when ninja has pending steps or when a source is newer
   than the binary, and names the newer files. It exists because twice in one session a build was killed and the next
   suite passed on the previous binary. Run it before trusting a green suite: `python3 tools/check-build.py`.
+- **Row 1g4c closed** (2026-11-23): `history.scrollRestoration`, kept per history entry the way upstream keeps it on
+  the session history entry (`HTML/History.cpp:229-242`). The app records the scroll before a traversal, and the load
+  path applies the restore instead of always scrolling to zero. `AetherisBrowserSession` pins both modes and the
+  per-entry ownership.
 
 ## 2. Current state
 

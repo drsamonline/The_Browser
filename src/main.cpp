@@ -2264,6 +2264,10 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         return 1;
     }
 
+    // Scroll state for the page area. Declared here, above the history hooks, because a traversal has to record
+    // where the page was scrolled before it moves (row 1g4c).
+    rendering::Viewport viewport(static_cast<float>(kWidth), static_cast<float>(content_height));
+
     // `location` asks these two questions and nothing else.
     aetheris::js::set_navigation_hooks(
         [] { return g_current_url; },
@@ -2278,7 +2282,8 @@ static int run_window(std::string const& url, int frames, std::string const& fra
         // A history move changes the tab's URL; the page then has to be reloaded, which is the same
         // request the loop already performs for a scripted navigation. Without this the URL moved and
         // nothing re-rendered - the page stayed on the old document.
-        [&session] {
+        [&session, &viewport] {
+            session.record_scroll(viewport.scroll_x(), viewport.scroll_y());
             if (!session.history_back())
                 return false;
             g_navigation_request = session.current_url();
@@ -2286,7 +2291,8 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             g_navigation_reload = true;
             return true;
         },
-        [&session] {
+        [&session, &viewport] {
+            session.record_scroll(viewport.scroll_x(), viewport.scroll_y());
             if (!session.history_forward())
                 return false;
             g_navigation_request = session.current_url();
@@ -2295,7 +2301,8 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             return true;
         },
         // go(0) is a reload, which is the same request with the reload flag set.
-        [&session](int delta) {
+        [&session, &viewport](int delta) {
+            session.record_scroll(viewport.scroll_x(), viewport.scroll_y());
             if (delta == 0) {
                 g_navigation_request = session.current_url();
                 g_navigation_pending = true;
@@ -2324,9 +2331,6 @@ static int run_window(std::string const& url, int frames, std::string const& fra
     bool page_dirty = true;
     float document_height = static_cast<float>(content_height);
     bool scroll_bar_visible = false;
-    // Scroll state for the page area. The UI session is deliberately free of
-    // rendering, so the viewport lives here, beside the document it scrolls.
-    rendering::Viewport viewport(static_cast<float>(kWidth), static_cast<float>(content_height));
 
     // Loads the active tab and composites a frame. Returns false when the page
     // could not be fetched, which the chrome then shows.
@@ -2380,7 +2384,15 @@ session.set_page_title(document_title(cached_page->document().root()));
             document_height = std::max(cached_page->document_rect().height, static_cast<float>(content_height));
             viewport.set_size(static_cast<float>(kWidth), static_cast<float>(content_height));
             viewport.set_document_size(static_cast<float>(kWidth), document_height);
-            viewport.scroll_to(0, 0);
+            // `history.scrollRestoration`: a traversal puts the scroll back where the entry left it unless the
+            // page asked to do it itself. A fresh navigation has nothing recorded, so this lands on (0, 0) - which
+            // is what it did before the mode existed (row 1g4c).
+            float restore_x = 0;
+            float restore_y = 0;
+            if (session.take_scroll_restore(restore_x, restore_y))
+                viewport.scroll_to(restore_x, restore_y);
+            else
+                viewport.scroll_to(0, 0);
             page_dirty = false;
         }
         if (!cached_page)

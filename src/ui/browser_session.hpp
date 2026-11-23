@@ -5,6 +5,18 @@
 
 namespace aetheris::ui {
 
+enum class ScrollRestoration {
+    Auto,
+    Manual,
+};
+
+struct HistoryEntry {
+    std::string url;
+    float scroll_x { 0 };
+    float scroll_y { 0 };
+    ScrollRestoration scroll_restoration { ScrollRestoration::Auto };
+};
+
 // What the browser is showing: the tabs, which one is active, and the state the
 // chrome needs to draw itself. Deliberately free of rendering and networking, so
 // the behaviour of tabs and navigation can be tested on its own.
@@ -18,7 +30,12 @@ struct BrowserTab {
     // Session history. Upstream keeps a session history on the navigable and `History` reads it
     // (HTML/History.idl: length, go, back, forward). One list and an index, truncated on a new
     // navigation and overwritten in place by `location.replace()`.
-    std::vector<std::string> entries;
+    //
+    // Each entry carries what a traversal has to restore. `scrollRestoration` is per entry, not per document:
+    // upstream stores the mode on the session history entry and `History.scrollRestoration` reads and writes the
+    // current one (HTML/History.cpp:229-242). `Auto` means a traversal puts the scroll back where it was; `Manual`
+    // means the page does it itself (row 1g4c).
+    std::vector<HistoryEntry> entries;
     std::size_t index { 0 };
 };
 
@@ -42,6 +59,24 @@ public:
     // is go(+1), which is how upstream's History is built (HTML/History.cpp, delta_traverse), and
     // go(0) reloads the current document.
     std::size_t history_length() const;
+
+    // `history.scrollRestoration`: the mode of the entry the tab is standing on, as upstream keeps it.
+    ScrollRestoration scroll_restoration() const;
+    void set_scroll_restoration(ScrollRestoration mode);
+
+    // What the page was scrolled to when it was left. A tab calls this before navigating or traversing.
+    void record_scroll(float x, float y);
+
+    // After a traversal, the offset the new entry wants restored, if its mode is Auto and it has one. Answers
+    // once: a second call says no, so a repaint cannot re-apply an old offset.
+    bool take_scroll_restore(float& x, float& y);
+
+private:
+    bool m_pending_scroll_restore { false };
+    float m_pending_scroll_x { 0 };
+    float m_pending_scroll_y { 0 };
+
+public:
     bool history_go(int delta);
     bool history_back() { return history_go(-1); }
     bool history_forward() { return history_go(1); }

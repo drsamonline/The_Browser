@@ -694,3 +694,47 @@ source against the newest binary, and checks ninja's pending steps as well.
 | the trigger | a style change starting a transition: the cache records which nodes are dirty, not which property moved |
 | properties | only `opacity` is interpolated; colour, transform and lengths are next |
 | `transition` shorthand | the first transition in a comma list is read, the rest are not |
+
+---
+
+## 22. Seventeenth commit — row 1g4c: `scrollRestoration`
+
+Upstream first: the mode is a property of the **session history entry**, not of the document. `History.scrollRestoration`
+reads and writes `active_session_history_entry()->scroll_restoration_mode()` (`HTML/History.cpp:229-242`). That shape
+is what this ports — a mode per entry, so one page can ask to do its own scrolling while its neighbour does not.
+
+| what | before | after |
+| --- | --- | --- |
+| history entries | `std::vector<std::string>` of URLs | `std::vector<HistoryEntry>`: url, scroll offset, mode |
+| traversal | URL changed, scroll jumped to 0 | the destination entry's mode decides: `Auto` restores its offset, `Manual` leaves it to the page |
+| the app | `viewport.scroll_to(0, 0)` after every load | `take_scroll_restore()` first, `(0, 0)` only when nothing was recorded |
+
+API: `set_scroll_restoration()` / `scroll_restoration()` / `record_scroll(x, y)` / `take_scroll_restore(x, y)`. The
+last answers **once**, so a repaint cannot re-apply an offset that has already been honoured.
+
+### Evidence — `AetherisBrowserSession`
+
+| assertion |
+| --- |
+| a new entry defaults to `Auto` |
+| a forward navigation restores nothing (nothing was left behind) |
+| back to an `Auto` entry restores **that entry's own** offset — 320, not the 40 the other page had |
+| the restore is answered once |
+| a `Manual` destination restores nothing |
+| the mode is per entry: setting one to `Manual` leaves the other `Auto` |
+
+Suite **66/66 twice**, 135.91 s and 131.35 s.
+
+### Two corrections worth recording
+
+| what I expected | what the spec says |
+| --- | --- |
+| setting `Manual` on the page you are *on* suppresses the restore when you leave | the **destination** entry's mode decides, so the test had to set it on the page being navigated *to* |
+
+And a build-order fact: `viewport` was declared below the history hooks that now need it, so the declaration moved
+above them. A lambda cannot capture what does not exist yet, and the compiler said so plainly.
+
+### Still not done in this subject
+
+`history.state` and `pushState` are row 1g4b, still open; `scrollRestoration` currently only has an API, not a
+`window.history` binding — the JS side of it belongs with that row.

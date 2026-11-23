@@ -61,7 +61,9 @@ bool BrowserSession::open(std::string url)
         return false;
     m_tabs.clear();
     auto normalised = normalise(std::move(url));
-    m_tabs.push_back(BrowserTab { normalised, {}, true, false, {}, { normalised }, 0 });
+    HistoryEntry first;
+    first.url = normalised;
+    m_tabs.push_back(BrowserTab { normalised, {}, true, false, {}, { std::move(first) }, 0 });
     m_active = 0;
     return true;
 }
@@ -74,7 +76,9 @@ bool BrowserSession::navigate_in_place(std::string url)
     tab->url = url;
     // A fragment navigation adds a history entry, and truncates what was ahead.
     tab->entries.resize(tab->index + 1);
-    tab->entries.push_back(tab->url);
+    HistoryEntry entry;
+    entry.url = tab->url;
+    tab->entries.push_back(std::move(entry));
     tab->index = tab->entries.size() - 1;
     tab->loading = false;
     tab->failed = false;
@@ -93,13 +97,19 @@ bool BrowserSession::navigate(std::string url, bool replace)
 
     // History: a navigation after going back discards what was ahead of it, and a replacement
     // overwrites the entry it stands on.
-    if (tab->entries.empty())
-        tab->entries.push_back(tab->url);
-    else if (replace)
-        tab->entries[tab->index] = tab->url;
-    else {
+    if (tab->entries.empty()) {
+        HistoryEntry entry;
+        entry.url = tab->url;
+        tab->entries.push_back(std::move(entry));
+    } else if (replace) {
+        // A replacement keeps the entry's scroll and its restoration mode: the entry is the same entry, pointed
+        // somewhere else, which is what `location.replace()` means.
+        tab->entries[tab->index].url = tab->url;
+    } else {
         tab->entries.resize(tab->index + 1);
-        tab->entries.push_back(tab->url);
+        HistoryEntry entry;
+        entry.url = tab->url;
+        tab->entries.push_back(std::move(entry));
         tab->index = tab->entries.size() - 1;
     }
     tab->loading = true;
@@ -148,10 +158,49 @@ bool BrowserSession::history_go(int delta)
         return false;
 
     tab->index = static_cast<std::size_t>(target);
-    tab->url = tab->entries[tab->index];
+    tab->url = tab->entries[tab->index].url;
+    // A traversal is where `scrollRestoration` earns its name: the entry says whether the scroll comes back.
+    m_pending_scroll_restore = tab->entries[tab->index].scroll_restoration == ScrollRestoration::Auto;
+    m_pending_scroll_x = tab->entries[tab->index].scroll_x;
+    m_pending_scroll_y = tab->entries[tab->index].scroll_y;
     tab->loading = true;
     tab->failed = false;
     tab->error.clear();
+    return true;
+}
+
+ScrollRestoration BrowserSession::scroll_restoration() const
+{
+    auto const* tab = m_tabs.empty() ? nullptr : &m_tabs[m_active];
+    if (!tab || tab->entries.empty())
+        return ScrollRestoration::Auto;
+    return tab->entries[tab->index].scroll_restoration;
+}
+
+void BrowserSession::set_scroll_restoration(ScrollRestoration mode)
+{
+    auto* tab = active();
+    if (!tab || tab->entries.empty())
+        return;
+    tab->entries[tab->index].scroll_restoration = mode;
+}
+
+void BrowserSession::record_scroll(float x, float y)
+{
+    auto* tab = active();
+    if (!tab || tab->entries.empty())
+        return;
+    tab->entries[tab->index].scroll_x = x;
+    tab->entries[tab->index].scroll_y = y;
+}
+
+bool BrowserSession::take_scroll_restore(float& x, float& y)
+{
+    if (!m_pending_scroll_restore)
+        return false;
+    m_pending_scroll_restore = false;
+    x = m_pending_scroll_x;
+    y = m_pending_scroll_y;
     return true;
 }
 
