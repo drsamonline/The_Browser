@@ -367,3 +367,37 @@ ordering. The probe found it by reporting "no magenta" at one scroll offset and 
 bottom edge is untested. Absolute and fixed children still paint in document order rather than after in-flow
 content, which is the same class of bug this row hit; changing it would move pixels this row is not about, so it
 is recorded rather than fixed.
+
+---
+
+## 14. Ninth commit — row 3a3: the generated box paints, both halves of it
+
+The row said "needs a synthetic text node whose `dom_node` is null, which several paths dereference". Measured,
+the text already painted — `::before { content: 'X'; color: #ff00ff }` puts 31 magenta pixels on the page and 109
+at 28 px. What did *not* paint was the box.
+
+| what | before | after |
+| --- | --- | --- |
+| generated box, text only | painted | unchanged |
+| generated box, background + text | **background missing** | background, then the glyph over it |
+| generated box, border + no text | painted | unchanged |
+| generated `inline-block` with text, no width | **200 px wide — the whole line** | 11 px, the same as a real span holding "X" |
+
+Two causes, both one line's worth:
+
+1. In `RenderTree::emit` the background/border/shadow/outline commands were the `else` of `if
+   (!node.text_fragments.empty())`. A normal element never has text fragments of its own (its text is a child
+   text node), so the bug only showed on the one node kind that carries both: a generated box. They are now a
+   `paint_box` lambda called before the text, which is also the CSS painting order.
+2. In `LayoutEngine::layout_node` the text branch never set `box.content.width`, so a generated box kept the
+   whole available width. A normal inline-block gets its width from the parent's shrink-to-fit pass, which
+   measures the child — and a generated node has no DOM node for that pass to measure. It now shrinks to the
+   text's natural width, never growing past a specified one.
+
+### What this row would do differently
+
+1. **"It does not paint" is three claims.** Text, box and sizing are separate; the probe that counted magenta
+   pixels per declaration combination separated them in ten minutes, and the row had conflated them for days.
+2. **Relink the probe.** The first run after the fix still showed the old numbers because the probe is statically
+   linked against `libAetherisRendering.a` — the library had been rebuilt, the probe had not. Same family as the
+   stale-binary trap in the 11-18 handover, one step further down the chain.

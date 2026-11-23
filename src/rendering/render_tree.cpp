@@ -165,31 +165,11 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
             node.generated_text.c_str(), node.text_fragments.size(),
             node.rect.x, node.rect.y, node.rect.width, node.rect.height,
             node.style.get("color") ? node.style.get("color")->c_str() : "<none>");
-    if (!node.text_fragments.empty()) {
-        for (auto const& fragment : node.text_fragments) {
-            PaintCommand command;
-            command.type = PaintCommand::Type::DrawText;
-            command.rect = fragment.rect;
-            command.baseline = fragment.baseline;
-            command.text = fragment.text;
-            command.opacity = opacity;
-            command.font_size = css_length_px(node.style.get("font-size"), 16.0f, 16.0f);
-            command.letter_spacing = css_length_px(node.style.get("letter-spacing"), command.font_size, 0.0f);
-            command.word_spacing = css_length_px(node.style.get("word-spacing"), command.font_size, 0.0f);
-            if (auto color = node.style.get("color"))
-                command.color = *color;
-            commands.push_back(command);
-            if (auto decoration = node.style.get("text-decoration"); decoration && *decoration != "none") {
-                PaintCommand decoration_command;
-                decoration_command.type = PaintCommand::Type::DrawTextDecoration;
-                decoration_command.rect = fragment.rect;
-                decoration_command.text_decoration = *decoration;
-                decoration_command.opacity = opacity;
-                decoration_command.color = command.color;
-                commands.push_back(std::move(decoration_command));
-            }
-        }
-    } else if ((node.dom_node && node.dom_node->type == DomNodeType::Element) || node.is_generated) {
+    // The box paints before its text: a background, border, shadow or outline belongs behind the glyphs.
+    // This used to be an `else` of the text branch, which meant a generated box - the one node kind that
+    // carries its own text and its own background - painted whichever came first in that condition and lost
+    // the other (row 3a3).
+    auto paint_box = [&] {
         // A generated box paints its background, shadow and outline like any other box. It has no DOM
         // node, so gating this on one left a `::before` with a background colour invisible.
         bool const is_element_node = node.dom_node && node.dom_node->type == DomNodeType::Element;
@@ -217,6 +197,33 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
             command.border_style = node.style.get("border-style") ? *node.style.get("border-style") : "solid";
             command.color = node.style.get("border-color") ? *node.style.get("border-color") : "black";
             commands.push_back(std::move(command));
+        }
+    };
+    if ((node.dom_node && node.dom_node->type == DomNodeType::Element) || node.is_generated)
+        paint_box();
+    if (!node.text_fragments.empty()) {
+        for (auto const& fragment : node.text_fragments) {
+            PaintCommand command;
+            command.type = PaintCommand::Type::DrawText;
+            command.rect = fragment.rect;
+            command.baseline = fragment.baseline;
+            command.text = fragment.text;
+            command.opacity = opacity;
+            command.font_size = css_length_px(node.style.get("font-size"), 16.0f, 16.0f);
+            command.letter_spacing = css_length_px(node.style.get("letter-spacing"), command.font_size, 0.0f);
+            command.word_spacing = css_length_px(node.style.get("word-spacing"), command.font_size, 0.0f);
+            if (auto color = node.style.get("color"))
+                command.color = *color;
+            commands.push_back(command);
+            if (auto decoration = node.style.get("text-decoration"); decoration && *decoration != "none") {
+                PaintCommand decoration_command;
+                decoration_command.type = PaintCommand::Type::DrawTextDecoration;
+                decoration_command.rect = fragment.rect;
+                decoration_command.text_decoration = *decoration;
+                decoration_command.opacity = opacity;
+                decoration_command.color = command.color;
+                commands.push_back(std::move(decoration_command));
+            }
         }
     }
 

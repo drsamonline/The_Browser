@@ -88,6 +88,10 @@ All credited in `CREDITS.md`.
   to its containing block, so scrolling stays repaint-only. Sticky children sort above in-flow siblings because
   `position: sticky` creates a stacking context — without that the shifted box was painted underneath the next
   sibling.
+- **Row 3a3 closed** (2026-11-23): a generated box paints its background and its text. The box commands had been
+  in the `else` of the text branch, so the one node kind that carries both painted one of them; they now paint
+  before the text. Found alongside: a generated `inline-block` took the whole line instead of shrinking to its
+  text, because no parent shrink-to-fit pass can measure a node with no DOM node.
 
 ## 2. Current state
 

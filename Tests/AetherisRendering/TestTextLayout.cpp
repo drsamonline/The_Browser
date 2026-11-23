@@ -177,5 +177,45 @@ int main()
         require(plain.render_tree().sticky_regions().empty(), "no sticky box, no region");
     }
 
+// Row 3a3: a generated box paints its background *and* its text, and it is content-sized. Both were wrong:
+    // the box commands sat in the `else` of the text branch, so the one node kind that carries its own text and
+    // its own background painted only one of them, and without a parent shrink-to-fit pass the box took the
+    // whole line.
+    {
+        auto magenta_span = [](SoftwareSurface const& surface) {
+            int min_x = 9999, max_x = -1;
+            for (int y = 0; y < surface.height(); ++y)
+                for (int x = 0; x < surface.width(); ++x) {
+                    auto const color = surface.pixel(x, y);
+                    if (color.red > 200 && color.green < 100 && color.blue > 200) {
+                        min_x = std::min(min_x, x);
+                        max_x = std::max(max_x, x);
+                    }
+                }
+            return max_x < 0 ? 0 : max_x - min_x + 1;
+        };
+
+        auto document = RenderDocument::create("<div style='width:200px'>body</div>",
+            "div::before { content: 'X'; background: #ff00ff; display: inline-block; }", 200);
+        auto surface = document.render_to_surface(200, 60, Color { 255, 255, 255, 255 });
+        require(magenta_span(surface) > 0, "a generated box with text paints its background");
+        require(magenta_span(surface) < 200, "and it is content-sized, not a full-width band");
+        int dark = 0;
+        for (int y = 0; y < surface.height(); ++y)
+            for (int x = 0; x < 200; ++x) {
+                auto const color = surface.pixel(x, y);
+                if (color.red < 100 && color.green < 100 && color.blue < 100)
+                    ++dark;
+            }
+        require(dark > 0, "the glyph is painted over that background");
+
+        // The same box as a normal inline-block, for scale: the two must agree.
+        auto plain = RenderDocument::create("<div style='width:200px'><span class='b'>X</span></div>",
+            ".b { display: inline-block; background: #ff00ff; }", 200);
+        auto plain_surface = plain.render_to_surface(200, 60, Color { 255, 255, 255, 255 });
+        require(magenta_span(surface) == magenta_span(plain_surface),
+            "a generated inline-block is as wide as a real one holding the same text");
+    }
+
     return 0;
 }

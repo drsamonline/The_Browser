@@ -309,6 +309,15 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
         node.box.content.height = specified_height >= 0 ? specified_height : (intrinsic_height > 0 ? intrinsic_height : content_width * ratio);
     } else if (!node.generated_text.empty() || (node.dom_node && node.dom_node->type == DomNodeType::Text)) {
         std::string const& source = node.generated_text.empty() ? node.dom_node->data : node.generated_text;
+        // A generated box is content-sized. A normal inline-block gets that from its parent's shrink-to-fit
+        // pass, which measures the child's natural width; a generated box has no DOM node for that pass to
+        // measure, so it kept the whole line and `::before { content: 'X'; display: inline-block }` painted a
+        // full-width band (row 3a3). Shrink to the text's natural width, never growing past a specified one.
+        if (node.is_generated && content_width > 0) {
+            float const natural = TextLayout::measure_text(source, TextLayout::font_size(node.style), node.style);
+            content_width = std::min(content_width, natural);
+            node.box.content.width = content_width;
+        }
         node.text_fragments = TextLayout::layout(source, node.box.content.x, node.box.content.y, content_width, node.style);
         float line_height = TextLayout::line_height(node.style);
         node.box.content.height = node.text_fragments.empty() ? 0
