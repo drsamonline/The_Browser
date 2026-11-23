@@ -122,7 +122,7 @@ int main(int argc, char** argv)
     }
 
     // Real markup: a prefix of a real page, which is where the synthetic shapes stop predicting.
-    for (int i = 1; i + 1 < argc; ++i) {
+    for (int i = 1; i < argc; ++i) {
         std::ifstream stream(argv[i], std::ios::binary);
         if (!stream) {
             std::printf("cannot open %s\n", argv[i]);

@@ -464,6 +464,22 @@ Measured 2026-11-23 with `tools/layout-cost.cpp`, which times parse, style resol
 
 ---
 
+## 7d. Measure in the build type you mean
+
+Every number in rows 3j and 3k started in a Debug `-O0` build with UBSan, which is **14x** slower on
+resolve and **93x** slower on the style pass than `-O2`. Before drawing a conclusion about cost,
+build `build-rel` (`ninja -C build-rel AetherisRendering`, 137 targets instead of 283) and measure
+there.
+
+- **At `-O2`** a 400-div page is 4.2 ms of style and 1.6 ms of layout — 14.5 us per element. The
+  "0.8 ms per element" that row 3j was written about was the build, not the engine.
+- **The real defect on real markup is layout**, not style: wikipedia at 14 KB lays out **1.16M
+  nodes for 134 elements** and takes 5.7 s. Row 3k carries it.
+- **Probes print nothing when they are broken.** `layout-cost.cpp` ignored a single file argument for
+  a whole session because its loop was `i + 1 < argc`. Read the probe's output, not its exit code.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.

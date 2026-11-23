@@ -1360,3 +1360,59 @@ silently treated as "no proxy"), the precedence, and every `no_proxy` form.
 - `Proxy-Authorization` is Basic only.
 - Row 0.1 is still blocked, but now on one thing instead of two: the allowlist refuses most of the
   corpus's hosts. The engine-side gap that made the corpus fetch with `curl` is gone.
+
+## 35. Thirtieth commit — row 3j closed, and the real defect given its own row
+
+Row 3j had been carried as `[~]` since section 32, with the per-node `StyleProperties` named as what
+remained. Before refactoring it, one question had never been asked of any number in this row: **every
+measurement so far was taken in a Debug `-O0` build with UBSan.** So this session built `build-rel`
+and asked again.
+
+### The headline number was a build-type artifact
+
+| measurement | Debug `-O0` | Release `-O2` | |
+| --- | --- | --- | --- |
+| resolve one element | 0.114 ms | **0.008 ms** | 14x |
+| style pass, 400 empty divs | 392 ms | **4.2 ms** | 93x |
+| style pass, 800 divs with text | 1089 ms | **38.2 ms** | 29x |
+| 800 author rules | 3862 ms | **22.9 ms** | 169x |
+
+The row's headline — "~0.8 ms per element" — is therefore a `-O0`-with-UBSan number. At `-O2` a
+400-div page costs 4.2 ms of style and 1.6 ms of layout, which is **14.5 us per element**. The work
+the row paid for still stands (three terms fixed, each measured, and the suite went from 400 s to
+140 s), but the number that motivated it was the build.
+
+That also settles the `StyleProperties` question without touching it: at `-O2` the map costs 0.004 ms
+per style and the whole property path 0.003 ms of an 0.008 ms resolve. Rewriting every consumer of
+`StyleProperties` to buy a fraction of that is not a trade worth making, and the measurement is what
+says so.
+
+### The row's second clause was true, and it is not style
+
+"Far worse on real markup" survives — but it is **layout**. Measured on prefixes of the wikipedia
+page the corpus used (fetched through the proxy row 0.3 added, so the page is now reachable):
+
+| bytes | elements | nodes laid out | style | layout |
+| --- | --- | --- | --- | --- |
+| 10,000 | 22 | **461** | 0.3 ms | 1.5 ms |
+| 12,000 | 72 | **401,293** | 0.9 ms | 1,920 ms |
+| 14,000 | 134 | **1,157,981** | 1.6 ms | 5,717 ms |
+| 18,000 | 238 | 1,204,549 | 3.0 ms | 5,763 ms |
+
+A 2,500x jump in laid-out nodes between 10 KB and 14 KB, then a plateau at about 1.2M. That is the
+shape of a loop that runs per character or per fragment until it hits a limit, not of a document that
+is simply big. The markup in that range is ordinary — spans, anchors, lists, divs, images, buttons —
+so the trigger is a construct, not a size.
+
+It is a different defect, so it is a different row: **3k**, added in this commit, with the bisect
+range and the hypothesis to test first. Row 3j closes.
+
+### A bug in the probe, found by using it
+
+`tools/layout-cost.cpp` read its file arguments with `for (int i = 1; i + 1 < argc; ++i)`, so with
+exactly one file on the command line the loop body never ran and the probe silently measured nothing.
+Every run in section 32 passed no files, so the bug never showed. It showed the moment a real page
+was the point of the run: the output simply had no line for the file. Fixed to `i < argc`.
+
+The lesson is the one this row keeps teaching: a probe that prints nothing looks like a probe that
+had nothing to print.
