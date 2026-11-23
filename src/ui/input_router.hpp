@@ -34,6 +34,10 @@ struct InputAction {
         Key,           // a key the page should see; `text` holds its name
         FocusNext,     // move focus to the next sequentially focusable element
         ToggleZen,     // hide or show the chrome
+        ShowHistory,   // open the history panel (row 4.2)
+        ShowBookmarks, // open the bookmarks panel
+        ToggleBookmark, // bookmark the current page, or remove it
+        ClosePanel,    // leave a panel and go back to the page
         Quit,
     };
 

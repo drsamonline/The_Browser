@@ -20,6 +20,7 @@
 #include "secure_resource_loader.hpp"
 #include "ui/browser_session.hpp"
 #include "ui/chrome_layout.hpp"
+#include "ui/library_page.hpp"
 #include "ui/input_router.hpp"
 #include "ui/window_host.hpp"
 #include "resource.hpp"
@@ -2402,6 +2403,9 @@ session.set_page_title(document_title(cached_page->document().root()));
         return 1;
     }
 
+    // A panel replaces the page area until it is closed: history (Ctrl+H) or bookmarks (Ctrl+B) (row 4.2).
+    std::optional<ui::LibraryPage::Mode> panel;
+
     rendering::SoftwareSurface window(kWidth, kHeight, rendering::Color { 255, 255, 255, 255 });
     bool need_render = true;
     int handled = 0;
@@ -2458,7 +2462,17 @@ session.set_page_title(document_title(cached_page->document().root()));
                 static_cast<void const*>(cached_page ? &*cached_page : nullptr), done ? 1 : 0);
         if (need_render) {
             window.clear(rendering::Color { 255, 255, 255, 255 });
-            render_frame(window);
+            if (panel) {
+                // A panel is an ordinary document of links, drawn where the page would be, so a click on an entry
+                // navigates through the same path a page's own links use (row 4.2).
+                auto panel_page = rendering::RenderDocument::create(
+                    ui::LibraryPage::build(session, *panel), "", static_cast<float>(kWidth));
+                auto panel_surface = panel_page.render_to_surface(kWidth, content_height,
+                    rendering::Color { 255, 255, 255, 255 });
+                window.blit(panel_surface, 0, kChromeHeight);
+            } else {
+                render_frame(window);
+            }
             // The router only needs to know whether the bar is on screen, so a
             // click at the right edge is routed to the bar instead of the page.
             router.set_scroll_bar(scroll_bar_visible, kWidth, static_cast<int>(rendering::ScrollBar::thickness()));
@@ -2780,6 +2794,26 @@ session.set_page_title(document_title(cached_page->document().root()));
                 if (action.index < session.tab_count() && action.index != session.active_index())
                     session.activate_tab(action.index);
                 session.close_active_tab();
+                need_render = true;
+                break;
+            case ui::InputAction::Kind::ShowHistory:
+                panel = panel == ui::LibraryPage::Mode::History ? std::nullopt
+                                                                : std::optional<ui::LibraryPage::Mode> { ui::LibraryPage::Mode::History };
+                need_render = true;
+                break;
+            case ui::InputAction::Kind::ShowBookmarks:
+                panel = panel == ui::LibraryPage::Mode::Bookmarks ? std::nullopt
+                                                                  : std::optional<ui::LibraryPage::Mode> { ui::LibraryPage::Mode::Bookmarks };
+                need_render = true;
+                break;
+            case ui::InputAction::Kind::ClosePanel:
+                if (panel) {
+                    panel.reset();
+                    need_render = true;
+                }
+                break;
+            case ui::InputAction::Kind::ToggleBookmark:
+                session.toggle_bookmark();
                 need_render = true;
                 break;
             case ui::InputAction::Kind::ToggleZen:

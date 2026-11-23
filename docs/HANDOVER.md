@@ -144,6 +144,10 @@ All credited in `CREDITS.md`.
   the drawing and the input router read it — before this the router had its own copy of every chrome coordinate and
   a comment saying tab activation was not possible yet. Tabs now switch, close and open by click, shrinking from
   190 px to a 56 px minimum as they are added.
+- **Row 4.2 closed** (2026-11-23): history and bookmarks. Entries keep the title they had while current, the session
+  gained a bookmark list with a toggle, and the panels are built as ordinary documents of real links — so a click
+  navigates through the path a page's own links use rather than a second hit-testing path. Ctrl+H, Ctrl+B, Ctrl+D.
+  Nothing is persisted to disk; the row says so.
 
 ## 2. Current state
 

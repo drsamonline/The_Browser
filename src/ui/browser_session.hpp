@@ -20,6 +20,9 @@ struct HistoryEntry {
     // this engine has no structured clone, so the binding writes JSON and says so (row 1g4b).
     std::string state;
     bool has_state { false };
+    // The page title as it was when the entry was current. A history list needs it: the tab's title only describes
+    // the entry the tab is standing on (row 4.2).
+    std::string title;
 };
 
 // What the browser is showing: the tabs, which one is active, and the state the
@@ -76,6 +79,23 @@ public:
     // once: a second call says no, so a repaint cannot re-apply an old offset.
     bool take_scroll_restore(float& x, float& y);
 
+    // The active tab's history, oldest first, for a history panel. Read-only: the panel links to URLs and a click
+    // goes through the ordinary navigation path.
+    std::vector<HistoryEntry> const& history_entries() const;
+
+    // Bookmarks: a flat list, which is what this browser has room for. `add` keeps the first title it is given for
+    // a URL, so a bookmark made before the page loaded still reads as its URL until the title arrives.
+    struct Bookmark {
+        std::string url;
+        std::string title;
+    };
+    std::vector<Bookmark> const& bookmarks() const { return m_bookmarks; }
+    bool is_bookmarked(std::string const& url) const;
+    void add_bookmark(std::string url, std::string title);
+    bool remove_bookmark(std::string const& url);
+    // Adds when the page is not bookmarked, removes when it is. Returns true when the page is bookmarked afterwards.
+    bool toggle_bookmark();
+
     // `history.pushState(data, unused, url)` and `history.replaceState(...)`. No document is loaded: the URL and the
     // history move, the page stays. Returns false when `url` is not same-origin with the current entry, which is the
     // case upstream throws a SecurityError for (HTML/History.cpp:169-223).
@@ -124,6 +144,7 @@ private:
     BrowserTab* active();
 
     std::vector<BrowserTab> m_tabs;
+    std::vector<Bookmark> m_bookmarks;
     std::size_t m_active { 0 };
 };
 

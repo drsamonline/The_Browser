@@ -12,6 +12,7 @@ add_library(AetherisRendering STATIC
     rendering/user_agent_stylesheet.cpp
     ui/browser_session.cpp
     ui/chrome_layout.cpp
+    ui/library_page.cpp
     ui/input_router.cpp
     ui/window_host.cpp
     rendering/glyph_rasterizer.cpp

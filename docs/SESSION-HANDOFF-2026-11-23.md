@@ -1018,3 +1018,45 @@ Four compile errors, all mine: a namespace include, an accessor that did not exi
 `active_index`), the router declared *after* the lambda that wanted to use it, and a test that referenced the
 accessors this commit deleted. The last one is the useful signal — deleting the duplicated coordinates broke the test
 that had been written against them, which is exactly what a shared layout is supposed to do.
+
+---
+
+## 29. Twenty-fourth commit — row 4.2: history and bookmarks
+
+| piece | where |
+| --- | --- |
+| `HistoryEntry` keeps the title it had while it was current | `browser_session.{hpp,cpp}` |
+| bookmarks: `add`, `remove`, `is_bookmarked`, `toggle_bookmark` — no duplicates, first title wins | same |
+| the panels, built as ordinary documents of real `<a href>` links | `src/ui/library_page.{hpp,cpp}` |
+| shortcuts: Ctrl+H history, Ctrl+B bookmarks, Ctrl+D toggles a bookmark | `input_router.cpp` |
+| the panel replaces the page area until toggled off | `main.cpp` |
+
+The design decision worth naming: **the panel is a document, not an overlay**. Its rows are real links, so a click goes
+through the navigation path a page's own links already use — no second hit-testing path, no second set of coordinates
+to drift (which is exactly what row 4.1 was about).
+
+### Evidence — `AetherisBrowserSession`
+
+| assertion |
+| --- |
+| each history entry kept its own title (`First`, then `Second`) |
+| a bookmark cannot be added twice, and the first title is kept |
+| `toggle_bookmark` adds on the first call and removes on the second |
+| `remove_bookmark` returns whether it removed anything |
+| the history panel is titled, its entries are `<a href>` links, **newest first**, the current page is marked, and a bookmarked entry carries a star |
+| the bookmarks panel lists only bookmarks |
+| an empty panel says "No bookmarks yet" instead of rendering blank |
+
+Suite **66/66 twice**, 138.26 s and 136.71 s.
+
+### Not done, in the row
+
+No delete-one-entry or clear-all, no bookmark folders or editing, no search box, and **nothing is persisted** — the
+history and the bookmarks end with the process. Persistence would need a store on disk and a decision about where it
+lives; that is a row of its own, not a corner of this one.
+
+### What this row cost
+
+Three compile errors, all includes or namespaces: `LibraryPage` unknown in `main.cpp`, then in the test, then the test
+needing `<ui/library_page.hpp>` rather than the bare name. The pattern is consistent enough to name: this codebase's
+tests include by angle-bracket path, and every new module costs one of these.

@@ -120,8 +120,59 @@ bool BrowserSession::navigate(std::string url, bool replace)
 
 void BrowserSession::set_page_title(std::string title)
 {
-    if (auto* tab = active())
-        tab->title = std::move(title);
+    auto* tab = active();
+    if (!tab)
+        return;
+    tab->title = std::move(title);
+    // The entry the tab is standing on keeps the title, which is what a history list shows later.
+    if (!tab->entries.empty())
+        tab->entries[tab->index].title = tab->title;
+}
+
+std::vector<HistoryEntry> const& BrowserSession::history_entries() const
+{
+    static const std::vector<HistoryEntry> empty;
+    auto const* tab = m_tabs.empty() ? nullptr : &m_tabs[m_active];
+    return tab ? tab->entries : empty;
+}
+
+bool BrowserSession::is_bookmarked(std::string const& url) const
+{
+    for (auto const& bookmark : m_bookmarks)
+        if (bookmark.url == url)
+            return true;
+    return false;
+}
+
+void BrowserSession::add_bookmark(std::string url, std::string title)
+{
+    if (url.empty() || is_bookmarked(url))
+        return;
+    m_bookmarks.push_back(Bookmark { std::move(url), std::move(title) });
+}
+
+bool BrowserSession::remove_bookmark(std::string const& url)
+{
+    for (auto it = m_bookmarks.begin(); it != m_bookmarks.end(); ++it) {
+        if (it->url == url) {
+            m_bookmarks.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool BrowserSession::toggle_bookmark()
+{
+    auto const& url = current_url();
+    if (url.empty())
+        return false;
+    if (is_bookmarked(url)) {
+        remove_bookmark(url);
+        return false;
+    }
+    add_bookmark(url, current_title());
+    return true;
 }
 
 void BrowserSession::set_loading(bool loading)

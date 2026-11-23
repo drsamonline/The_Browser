@@ -1,6 +1,7 @@
 // Tabs and navigation state, tested without rendering or networking.
 
 #include <ui/browser_session.hpp>
+#include <ui/library_page.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -156,6 +157,66 @@ int main()
         require(session.current_state() == "{\"n\":2}", "with that entry's own state, not the one replaced above it");
         require(session.history_back(), "back again");
         require(session.current_state().empty(), "the first entry has no state");
+    }
+
+// Row 4.2: the history and bookmarks model, and the panel documents built from it.
+    {
+        BrowserSession session;
+        require(session.open("https://a.test/one"), "open the first page");
+        session.set_page_title("First");
+        require(session.navigate("https://a.test/two"), "go to the second");
+        session.set_page_title("Second");
+
+        // Each entry keeps the title it had while it was current.
+        auto const& entries = session.history_entries();
+        require(entries.size() == 2, "two history entries");
+        require(entries[0].title == "First", "the first kept its title");
+        require(entries[1].title == "Second", "and so did the second");
+
+        // Bookmarks: add, detect, refuse a duplicate, toggle, remove.
+        require(!session.is_bookmarked("https://a.test/one"), "nothing is bookmarked to begin with");
+        session.add_bookmark("https://a.test/one", "First");
+        require(session.is_bookmarked("https://a.test/one"), "the bookmark is there");
+        require(session.bookmarks().size() == 1, "one bookmark");
+        session.add_bookmark("https://a.test/one", "First again");
+        require(session.bookmarks().size() == 1, "adding the same URL twice keeps one");
+        require(session.bookmarks()[0].title == "First", "and the first title it was given");
+
+        require(session.toggle_bookmark(), "toggling the current page bookmarks it");
+        require(session.is_bookmarked("https://a.test/two"), "which is the page the tab is on");
+        require(!session.toggle_bookmark(), "toggling again removes it");
+        require(!session.is_bookmarked("https://a.test/two"), "and it is gone");
+
+        require(session.remove_bookmark("https://a.test/one"), "remove by URL");
+        require(session.bookmarks().empty(), "nothing left");
+
+        // The panels: real links, newest history first, and the current page marked.
+        BrowserSession panel_session;
+        panel_session.open("https://a.test/first");
+        panel_session.set_page_title("First page");
+        panel_session.navigate("https://a.test/second");
+        panel_session.set_page_title("Second page");
+        panel_session.add_bookmark("https://a.test/first", "First page");
+
+        auto const history_html = LibraryPage::build(panel_session, LibraryPage::Mode::History);
+        require(history_html.find("History") != std::string::npos, "the history panel is titled");
+        require(history_html.find("<a href='https://a.test/first'") != std::string::npos,
+            "an entry is a real link, so a click navigates through the ordinary path");
+        require(history_html.find("Second page") < history_html.find("First page"),
+            "newest first: the page you were just on is at the top");
+        require(history_html.find("current page") != std::string::npos, "the current page is marked");
+        require(history_html.find("\u2605") != std::string::npos, "a bookmarked entry carries a star");
+
+        auto const bookmarks_html = LibraryPage::build(panel_session, LibraryPage::Mode::Bookmarks);
+        require(bookmarks_html.find("Bookmarks") != std::string::npos, "the bookmarks panel is titled");
+        require(bookmarks_html.find("https://a.test/first") != std::string::npos, "with the bookmark in it");
+        require(bookmarks_html.find("https://a.test/second") == std::string::npos, "and nothing else");
+
+        // An empty panel says so rather than rendering a blank page.
+        BrowserSession empty;
+        empty.open("https://a.test/only");
+        auto const empty_bookmarks = LibraryPage::build(empty, LibraryPage::Mode::Bookmarks);
+        require(empty_bookmarks.find("No bookmarks yet") != std::string::npos, "an empty bookmarks panel explains itself");
     }
 
     return 0;

@@ -57,6 +57,12 @@ InputAction InputRouter::handle_key(WindowEvent const& event)
             m_address_focused = true;
             return InputAction { InputAction::Kind::FocusAddress, m_address };
         }
+        if (key == "h")
+            return InputAction { InputAction::Kind::ShowHistory };
+        if (key == "b")
+            return InputAction { InputAction::Kind::ShowBookmarks };
+        if (key == "d")
+            return InputAction { InputAction::Kind::ToggleBookmark };
         if (key == "t")
             return InputAction { InputAction::Kind::NewTab };
         if (key == "w")
