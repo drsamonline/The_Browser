@@ -526,35 +526,68 @@ void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width,
         return;
     }
 
-    float total_fixed = gap * std::max(0, static_cast<int>(items.size()) - 1);
+    // Flexbox §9.2-9.7, at the scale this engine can express: a flex base size per item, then grow or shrink
+    // into the free space. The basis is `flex-basis` when it names a size, otherwise the item's `width`, and
+    // `auto`/`content` fall back to zero - the engine has no intrinsic-width pass for a block child yet, which
+    // is why an item with neither basis nor width starts at zero and grows from there (row 3c1).
+    struct FlexItem {
+        LayoutNode* node { nullptr };
+        float base { 0 };
+        float grow { 0 };
+        float shrink { 1 }; // css-flexbox-1: flex-shrink's initial value is 1
+    };
+    std::vector<FlexItem> flex_items;
+    flex_items.reserve(items.size());
+
+    float total_base = gap * std::max(0, static_cast<int>(items.size()) - 1);
     float total_grow = 0;
+    float total_scaled_shrink = 0;
     for (auto* child : items) {
-        float grow = parse_length(child->style.get("flex-grow"), 0, available_width);
-        total_grow += std::max(0.0f, grow);
-        auto width = resolve_dimension(child->style, "width", available_width, -1);
-        if (width >= 0) total_fixed += width;
+        FlexItem item;
+        item.node = child;
+        item.grow = std::max(0.0f, parse_length(child->style.get("flex-grow"), 0, available_width));
+        item.shrink = std::max(0.0f, parse_length(child->style.get("flex-shrink"), 1, available_width));
+
+        auto const* basis = child->style.get("flex-basis");
+        bool const basis_is_size = basis && !basis->empty() && *basis != "auto" && *basis != "content";
+        if (basis_is_size)
+            item.base = std::max(0.0f, parse_length(basis, 0, available_width));
+        else if (auto const* width = child->style.get("width"); width && !width->empty() && *width != "auto")
+            item.base = std::max(0.0f, parse_length(width, 0, available_width));
+
+        total_base += item.base;
+        total_grow += item.grow;
+        total_scaled_shrink += item.shrink * item.base;
+        flex_items.push_back(item);
     }
-    float free_space = std::max(0.0f, available_width - total_fixed);
+
+    float const free_space = available_width - total_base;
     float cursor_x = node.box.content.x;
     float max_height = 0;
     auto justify = node.style.get("justify-content");
+    float const positive_free = std::max(0.0f, free_space);
     float extra_gap = 0;
-    if (justify && *justify == "center") cursor_x += free_space / 2;
-    else if (justify && *justify == "flex-end") cursor_x += free_space;
-    else if (justify && *justify == "space-between" && items.size() > 1) extra_gap = free_space / (items.size() - 1);
-    else if (justify && *justify == "space-around") { extra_gap = free_space / items.size(); cursor_x += extra_gap / 2; }
+    if (justify && *justify == "center") cursor_x += positive_free / 2;
+    else if (justify && *justify == "flex-end") cursor_x += positive_free;
+    else if (justify && *justify == "space-between" && items.size() > 1) extra_gap = positive_free / (items.size() - 1);
+    else if (justify && *justify == "space-around") { extra_gap = positive_free / items.size(); cursor_x += extra_gap / 2; }
 
-    for (auto* child : items) {
-        float width = resolve_dimension(child->style, "width", available_width, -1);
-        float grow = std::max(0.0f, parse_length(child->style.get("flex-grow"), 0, available_width));
-        if (width < 0) width = total_grow > 0 ? free_space * grow / total_grow : 0;
-        layout_node(*child, cursor_x, node.box.content.y, width);
+    for (auto& item : flex_items) {
+        float width = item.base;
+        if (free_space > 0 && total_grow > 0) {
+            width += free_space * item.grow / total_grow;
+        } else if (free_space < 0 && total_scaled_shrink > 0) {
+            // Shrinking is proportional to shrink factor * base size, so the widest item gives up the most.
+            width += free_space * (item.shrink * item.base) / total_scaled_shrink;
+            width = std::max(0.0f, width);
+        }
+        layout_node(*item.node, cursor_x, node.box.content.y, width);
         auto align = node.style.get("align-items");
         if (align && *align == "center") {
-            child->rect.y += std::max(0.0f, max_height - child->rect.height) / 2;
+            item.node->rect.y += std::max(0.0f, max_height - item.node->rect.height) / 2;
         }
-        cursor_x = child->rect.x + child->rect.width + gap + extra_gap;
-        max_height = std::max(max_height, child->rect.height);
+        cursor_x = item.node->rect.x + item.node->rect.width + gap + extra_gap;
+        max_height = std::max(max_height, item.node->rect.height);
     }
     if (auto align = node.style.get("align-items"); align && *align == "flex-end") {
         for (auto* child : items) child->rect.y += max_height - child->rect.height;

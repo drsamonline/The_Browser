@@ -92,6 +92,9 @@ All credited in `CREDITS.md`.
   in the `else` of the text branch, so the one node kind that carries both painted one of them; they now paint
   before the text. Found alongside: a generated `inline-block` took the whole line instead of shrinking to its
   text, because no parent shrink-to-fit pass can measure a node with no DOM node.
+- **Row 3c1 closed** (2026-11-23): flex completeness. The `flex` shorthand is parsed (`flex: 1` = `1 1 0%`, which is
+  what real pages mean by it), `flex-basis` feeds the base size, and an overflowing row shrinks items in proportion
+  to `flex-shrink x base`. Grid areas are row 3c2, split out because they are a different algorithm.
 
 ## 2. Current state
 

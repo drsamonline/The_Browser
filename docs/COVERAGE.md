@@ -32,6 +32,8 @@ are at the bottom.
 | `::before` `::after` and other pseudo-elements | done — synthetic boxes; text, background and border all paint, and the box is content-sized (2026-11-23) | `layout.cpp`, `render_tree.cpp`, `AetherisTextLayout` |
 | CSS custom properties `var()` | done, 2026-11-17 — inherited, fallbacks, chains, cycle guard | `substitute_vars()` in `style.cpp` |
 | Media queries | done | `css_parser.cpp` |
+| Flexbox: `flex` shorthand, basis, grow, shrink, `justify-content`, `align-items` | done, 2026-11-23 — `auto` basis has no intrinsic-width pass, so an item with neither basis nor width starts at 0 and grows | `layout.cpp`, `style.cpp`, `AetherisLayout` |
+| Grid: tracks, `grid-column`/`row` spans | partial — `grid-template-columns`/`rows` tracks are placed; areas and named lines are not | `layout.cpp` |
 | `transform` (translate/scale) | done | paint pass |
 | `position: sticky` | done, 2026-11-23 — shifted at paint time, clamped to the containing block; `top` and `bottom` both read, `top` wins when they conflict | `render_tree.cpp`, `paint_executor.cpp` |
 | `visibility` | done, 2026-11-18 — inherited, per-box, `collapse` as `hidden` | `RenderTree::emit()` |

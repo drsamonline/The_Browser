@@ -1204,6 +1204,54 @@ void StyleResolver::apply_declaration(StyleProperties& properties, CssDeclaratio
         return;
     }
 
+    if (declaration.property == "flex") {
+        // The `flex` shorthand, css-flexbox-1 §7.1: `flex: <grow> <shrink>? <basis>?`. It matters because it is
+        // how real pages size a column - `flex: 1` means `1 1 0%`, not "grow with an auto basis" - and without
+        // it every `flex: 1` in the wild was ignored (row 3c1).
+        std::istringstream stream(declaration.value);
+        std::vector<std::string> parts;
+        std::string part;
+        while (stream >> part)
+            parts.push_back(part);
+        auto is_number = [](std::string const& token) {
+            char* end = nullptr;
+            std::strtof(token.c_str(), &end);
+            return end != token.c_str() && end && *end == '\0';
+        };
+        if (parts.size() == 1 && parts[0] == "none") {
+            properties.set("flex-grow", "0");
+            properties.set("flex-shrink", "0");
+            properties.set("flex-basis", "auto");
+            return;
+        }
+        if (parts.size() == 1 && parts[0] == "auto") {
+            properties.set("flex-grow", "1");
+            properties.set("flex-shrink", "1");
+            properties.set("flex-basis", "auto");
+            return;
+        }
+        if (parts.size() == 1 && parts[0] == "initial") {
+            properties.set("flex-grow", "0");
+            properties.set("flex-shrink", "1");
+            properties.set("flex-basis", "auto");
+            return;
+        }
+        float grow = 0;
+        float shrink = 1;
+        std::string basis = "0%";
+        std::size_t index = 0;
+        if (index < parts.size() && is_number(parts[index]))
+            grow = std::strtof(parts[index++].c_str(), nullptr);
+        if (index < parts.size() && is_number(parts[index]))
+            shrink = std::strtof(parts[index++].c_str(), nullptr);
+        if (index < parts.size())
+            basis = parts[index];
+        properties.set("flex-grow", std::to_string(grow));
+        properties.set("flex-shrink", std::to_string(shrink));
+        properties.set("flex-basis", basis);
+        return;
+    }
+
     if (declaration.property == "border-radius") {
         std::istringstream stream(declaration.value);
         std::string first;

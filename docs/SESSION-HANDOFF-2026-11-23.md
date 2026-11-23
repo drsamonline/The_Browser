@@ -401,3 +401,58 @@ Two causes, both one line's worth:
 2. **Relink the probe.** The first run after the fix still showed the old numbers because the probe is statically
    linked against `libAetherisRendering.a` — the library had been rebuilt, the probe had not. Same family as the
    stale-binary trap in the 11-18 handover, one step further down the chain.
+
+---
+
+## 15. Tenth commit — row 3c1: flex completeness
+
+Row 3c was "complete flex and grid", which is two algorithms in one row. Split: **3c1** flex (this commit),
+**3c2** grid areas and named lines (still open).
+
+| what | before | after |
+| --- | --- | --- |
+| `flex: 1` | **ignored** — the shorthand was never parsed, so the commonest flex declaration in the wild did nothing | `1 1 0%`, as css-flexbox-1 §7.1 defines it |
+| `flex-basis` | ignored | the base size, ahead of `width` |
+| overflow in a row | `free_space` was clamped at 0, so items overflowed the container | items shrink in proportion to `flex-shrink × base`; `flex-shrink: 0` refuses |
+
+Upstream: `Libraries/LibWeb/Rust/src/layout/flex_formatting_context.rs:797-820` (`used_flex_basis_for_item`:
+`content`, then `auto` → the main size property → `content`, then a length or percentage) and `:1022`
+(`determine_flex_base_size`). The distribution here is the simple form of §9.7 — no min/max clamping beyond zero,
+because the engine has no intrinsic min-content pass for a block child.
+
+### Numbers, 300 px row, three items
+
+| declaration | widths |
+| --- | --- |
+| `.i0,.i1,.i2 { flex: 1 }` | 100 100 100 |
+| `.i0 { width: 100px } .i1,.i2 { flex: 1 }` | 100 100 100 |
+| `.i0 { flex: 2 } .i1 { flex: 1 } .i2 { flex: 0 0 0px }` | 200 100 0 |
+| `.i0,.i1 { flex-basis: 200px }` | 150 150 0 |
+| `.i0,.i1 { flex-basis: 200px; flex-shrink: 0 }` | 200 200 0 (overflows) |
+| `.i0,.i1,.i2 { flex: 0 0 150px }` | 150 150 150 |
+
+`AetherisLayout` pins all six. Suite **65/65 twice**, 135.15 s and 141.02 s.
+
+### What is still missing from flex, and named
+
+`flex-basis: auto` on an item with no `width` falls back to zero rather than to its content, because there is no
+intrinsic-width pass for a block child. `flex-wrap`, `align-content` and `order` are unread. Margins on flex items
+are not subtracted from the free space.
+
+### The environment trap this commit walked into
+
+This session's `/scratch/work` was restored from a snapshot **older than the pushed history**: `HEAD` was at
+`5a8a5d7a` (row 2f) while `origin/main` was at `5d47ff44` (row 3a3), and the working tree matched the *older*
+state. The flex work was therefore committed on the wrong base, in a commit that would have reverted rows 3a6, 3i,
+3b and 3a3 if it had been pushed.
+
+What caught it: `git push` was rejected as a non-fast-forward, and `git diff --stat origin/main HEAD~1` showed 25
+files and 909 deletions — a "single feature" commit that deletes 900 lines is not a single feature.
+
+What fixed it: the commit was preserved on a branch (`flex-work-preserved`), the branch reset to `origin/main`, and
+only the flex hunks re-applied — `style.cpp` (pure addition), `layout.cpp` (the flex function only), `TestLayout.cpp`
+(additive), and the three doc edits. Then rebuilt and re-ran the suite, because the source files had changed
+underneath the build tree.
+
+**Rule for the next session: compare `git log --oneline -1` against `git fetch && git log --oneline -1
+origin/main` before the first commit, not after the first rejected push.**
