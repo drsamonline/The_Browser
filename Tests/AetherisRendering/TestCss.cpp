@@ -2,6 +2,7 @@
 #include <content_value.hpp>
 #include <css_parser.hpp>
 #include <document.hpp>
+#include <selector.hpp>
 #include <style.hpp>
 #include <css_tokenizer.hpp>
 
@@ -151,6 +152,79 @@ int main()
         require(sheet.font_faces[1].family == "Heading", "an unquoted family is read too");
         require(sheet.font_faces[1].source == "/heading.ttf", "and its source");
         require(sheet.rules.size() == 1, "the rule after the faces is still parsed");
+    }
+
+    // Row 3j: a selector is parsed once, when the stylesheet is parsed, and matching walks that
+    // form instead of re-reading the text for every node. Upstream's shape: the parsed selector is
+    // an object (LibWeb/CSS/Selector.h) and matching evaluates it
+    // (LibWeb/Rust/src/css/dom_selector_matching.rs:1262).
+    {
+        // The chain and its combinators, in subject-to-leftmost order.
+        auto const chain = compile_selector("div.a > .b + span");
+        require(chain.parts.size() == 3, "three compounds in `div.a > .b + span`");
+        require(chain.parts[0].combinator == ' ', "the leftmost part's combinator is unused");
+        require(chain.parts[0].compound.tag == "div" && chain.parts[0].compound.classes.size() == 1,
+            "the first compound is `div.a`");
+        require(chain.parts[1].combinator == '>', "child combinator between the first and second");
+        require(chain.parts[2].combinator == '+', "next-sibling combinator before the subject");
+        require(chain.parts[2].compound.tag == "span", "the subject is a span");
+
+        // A descendant combinator is whitespace, and a space inside parentheses is not one.
+        auto const descendant = compile_selector("a b");
+        require(descendant.parts.size() == 2 && descendant.parts[1].combinator == ' ',
+            "whitespace is a descendant combinator");
+        auto const nested = compile_selector(":is(.a, .b) .c");
+        require(nested.parts.size() == 2, "the space inside :is() is not a combinator");
+        require(nested.parts[0].compound.pseudo_classes.size() == 1, ":is() is one pseudo-class");
+
+        // Specificity is computed once, with the parse, and is the same number the cascade used
+        // to recompute per node.
+        require(compile_selector("div").specificity == 1, "one element is 1");
+        require(compile_selector(".a.b").specificity == 200, "two classes are 200");
+        require(compile_selector("#id .a div").specificity == 10101, "an id, a class and an element");
+
+        // An attribute selector keeps its operator, its value and its case flag.
+        auto const attribute = parse_compound("[data-x~='v' i]");
+        require(attribute.attributes.size() == 1, "one attribute requirement");
+        require(attribute.attributes[0].op == AttributeRequirement::Operator::Includes, "~= is Includes");
+        require(attribute.attributes[0].name == "data-x" && attribute.attributes[0].value == "v",
+            "the name and value are separated");
+        require(attribute.attributes[0].insensitive, "the `i` flag is read");
+
+        // The sheet carries the compiled form for every selector it parsed, and the text beside it.
+        CssParser compiled_parser;
+        auto const sheet = compiled_parser.parse("div, .a > .b { color: #000000; }");
+        require(sheet.rules.size() == 1, "one rule");
+        require(sheet.rules[0].selectors.size() == 2, "two selectors");
+        require(sheet.rules[0].compiled.size() == 2, "and both are compiled");
+        require(sheet.rules[0].compiled[1].parts.size() == 2, "the second selector has two compounds");
+
+        // The class test scans the attribute in place now, so a class that is only part of a word
+        // must still not match.
+        auto class_document = Document::parse_html("<div class='alpha beta'></div>");
+        auto* div = class_document.root().children.empty() ? nullptr : class_document.root().children.front().get();
+        require(div != nullptr, "the fixture has a div");
+        auto const class_sheet = CssParser {}.parse(".alpha { color: #ff0000; } .alph { color: #00ff00; }");
+        StyleResolver class_resolver;
+        auto const alpha = class_resolver.resolve(*div, class_sheet, nullptr, nullptr);
+        require(alpha.get("color") && *alpha.get("color") == "#ff0000", "a whole-word class matches");
+        require(class_sheet.rules.size() == 2, "both class rules parsed");
+    }
+
+    // Row 3j: the style fingerprint is cached, because layout asks every node for its parent's.
+    // A cache that does not invalidate would make a child inherit a stale parent style, so the
+    // invalidation is asserted rather than assumed.
+    {
+        StyleProperties properties;
+        properties.set("color", "#111111");
+        auto const before = properties.fingerprint();
+        require(!before.empty(), "a fingerprint is produced");
+        require(properties.fingerprint() == before, "and it is stable");
+        properties.set("color", "#222222");
+        require(properties.fingerprint() != before, "changing a property invalidates the cached digest");
+        auto const changed = properties.fingerprint();
+        properties.set("background-color", "#333333");
+        require(properties.fingerprint() != changed, "adding a property invalidates it too");
     }
 
     return 0;

@@ -18,7 +18,7 @@ are at the bottom.
 | --- | --- | --- |
 | HTML5 parsing (gumbo) | done | `third_party/gumbo` |
 | CSS cascade, specificity | done, incl. `:is`/`:not` greatest-argument and `:where` zero | `src/rendering/style.cpp` |
-| Compound, descendant and child selectors | done | `matches()` in `style.cpp` |
+| Compound, descendant and child selectors | done, and parsed once per selector since 2026-11-23 | `matches_compound()` in `style.cpp`, `selector.cpp` |
 | Sibling combinators `+` `~` | done, 2026-11-18 | `matches()` walks previous element siblings |
 | Attribute selectors (6 forms) | done | `style.cpp` |
 | `[a=v i]` case flag | done, 2026-11-18 | `AttributeRequirement::insensitive` |

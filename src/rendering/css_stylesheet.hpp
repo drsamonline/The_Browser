@@ -1,5 +1,7 @@
 #pragma once
 
+#include "selector.hpp"
+
 #include "animation.hpp"
 
 #include <string>
@@ -15,6 +17,9 @@ struct CssDeclaration {
 
 struct CssRule {
     std::vector<std::string> selectors;
+    // The same selectors, parsed once (row 3j). `selectors` stays because the invalidation paths
+    // and the pseudo-element resolver still ask questions about the text; matching uses these.
+    std::vector<CompiledSelector> compiled;
     std::vector<CssDeclaration> declarations;
     size_t source_order { 0 };
 };

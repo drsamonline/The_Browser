@@ -356,6 +356,10 @@ void CssParser::parse_block(std::vector<CssToken> const& tokens, size_t& positio
 
         CssRule rule;
         rule.selectors = std::move(selectors);
+        // Parse each selector once, here, rather than once per node at match time (row 3j).
+        rule.compiled.reserve(rule.selectors.size());
+        for (auto const& selector : rule.selectors)
+            rule.compiled.push_back(compile_selector(selector));
         rule.source_order = source_order++;
 
         while (position < tokens.size() && tokens[position].type != CssTokenType::EndOfFile) {

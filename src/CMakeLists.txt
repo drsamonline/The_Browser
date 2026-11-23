@@ -59,6 +59,7 @@ add_library(AetherisRendering STATIC
     rendering/render_document.cpp
     rendering/render_tree.cpp
     rendering/software_surface.cpp
+    rendering/selector.cpp
     rendering/style.cpp
     rendering/text_layout.cpp
 )

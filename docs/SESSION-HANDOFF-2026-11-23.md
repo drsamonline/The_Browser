@@ -1165,3 +1165,77 @@ right is not the same as a check.
 
 The new rows were first written as `3e` and `0.2`, both of which already exist. The checklist has no uniqueness check,
 so the collision was caught by grepping the file before committing — worth doing every time a row is added.
+
+## 32. Twenty-seventh commit — row 3j: selector matching, compiled once
+
+Row 3j had been sitting as "profile before touching anything" since the corpus run found it. This commit
+profiles it, fixes the largest term, and re-profiles to name the next one.
+
+### The measurement, before any change
+
+`tools/layout-cost.cpp` times the three stages of building a document separately - parse, style resolution
+(`LayoutTreeBuilder::build`), geometry (`LayoutEngine::layout`).
+
+| document | parse | style | layout |
+| --- | --- | --- | --- |
+| 400 empty divs | 15.5 ms | **392 ms** | 34 ms |
+| 800 empty divs | 19.6 ms | **514 ms** | 49 ms |
+| 800 divs with text | 37.4 ms | **1089 ms** | 333 ms |
+
+Style is 10-20x geometry at every size, so the row's "0.8 ms per element" is real but it is not box layout.
+A second sweep added author rules that match nothing, so the only variable is how many selectors are tested
+per node: 400 nodes at 0 rules 445 ms, 50 rules 765 ms, 200 rules 1252 ms, 800 rules 3862 ms. The slope is
+**10.6 us per (rule x node)** for a three-character class selector.
+
+### What that pointed at
+
+`StyleResolver::matches_simple` took the selector as **text** and re-parsed it on every call: five containers
+allocated (`tag`, `id`, two string vectors, an attribute vector) and the characters re-scanned into them -
+work that depends only on the selector, redone once per node. `matches()` also scanned for a combinator with
+`depth_at(index)`, which loops from 0 to `index`, so that scan was O(n^2) in selector length, again per node
+per rule. Specificity was re-scored from the same text on every match.
+
+Upstream does none of this. `LibWeb/CSS/Selector.h` holds an opaque parsed selector with a `Combinator` enum
+and a `specificity()` method, and `LibWeb/Rust/src/css/dom_selector_matching.rs:1262` matches a prepared
+`selector.view()` against an element. The shape to port is: parse once, match the parsed form.
+
+### The three fixes
+
+| fix | what changed |
+| --- | --- |
+| selectors parsed once | new `src/rendering/selector.{hpp,cpp}`: `CompiledSelector` (parts, combinators, specificity, text), `compile_selector()`, `parse_compound()`, `selector_specificity()`. `CssRule::compiled` is filled by `CssParser`, and `StyleResolver::matches_compound` reads the parsed compound |
+| fingerprint cached | `StyleProperties::fingerprint()` was rebuilt per node - a string per property, sorted, joined - because `LayoutTreeBuilder` asks every node for its parent's digest. It is computed once per style now and invalidated by `set()`, the only writer |
+| class scan in place | the class test built an `istringstream` and a `vector<string>` from the node's `class` attribute on every rule x node. A class is a whitespace-separated word, so it is found by scanning for word boundaries with no allocation; `[a~=v]` likewise |
+
+The second and third were not in the plan. They were found by re-running the probe after the first fix and
+seeing that the per-node cost had barely moved: with zero author rules and only 39 UA rules to test, the
+0.74 ms per node left could not be matching. `layout.cpp:45` was the answer.
+
+### The result
+
+| case | before | after | |
+| --- | --- | --- | --- |
+| 400 empty divs, style | 392 ms | **98 ms** | 4.0x |
+| 800 empty divs, style | 514 ms | **201 ms** | 2.6x |
+| 800 divs with text, style | 1089 ms | **446 ms** | 2.4x |
+| 800 author rules, style | 3862 ms | **933 ms** | 4.1x |
+| 0 author rules, style | 445 ms | **83 ms** | 5.4x |
+
+0.8 ms per element is now 0.24 ms. The suite feels it: 400 s of wall clock became **141.52 s and 139.62 s**,
+and `WindowGeometry` went from 177 s to 81 s. Both runs are 66/66.
+
+### What is still open, named
+
+The per-node `StyleProperties` itself: an `unordered_map<std::string, std::string>` filled by roughly eighty
+string insertions for every node. That is now most of what remains of the style pass, and it is the refactor
+the previous session named. Row 3j stays `[~]` rather than `[x]` for exactly that reason - the largest term
+was fixed twice over, and the row's headline number is not yet where a browser would put it.
+
+### A mistake worth recording
+
+The refactor was first done by slicing the original `style.cpp` with line ranges computed by hand, and two
+ranges were off by one (`lines(724,808)` where the block ended at 807). The result did not compile, and the
+regeneration had silently reverted two earlier edits - the `#include` and the `resolve()` loop - because it
+was rebuilt from `git show HEAD:` rather than from the working file. Both were re-applied and checked with
+`grep` before the build. Slicing source by line number is only safe when the boundary is printed and read
+first, which is what the second attempt did.

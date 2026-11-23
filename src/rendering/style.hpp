@@ -1,5 +1,7 @@
 #pragma once
 
+#include "selector.hpp"
+
 #include "css_stylesheet.hpp"
 #include "dom.hpp"
 #include "visual_state.hpp"
@@ -40,6 +42,14 @@ public:
 
 private:
     std::unordered_map<std::string, std::string> m_properties;
+
+    // Row 3j: `LayoutTreeBuilder` asks every node for its parent's fingerprint, so this digest is
+    // built once per resolved style and reused until that style changes. Rebuilding it per node
+    // meant allocating a string per property, sorting them and joining them - measured at ~0.7 ms
+    // per node, which was most of the style pass once selector matching was compiled (see
+    // docs/COVERAGE-CORPUS.md). `set()` is the only writer, so it is the only invalidator.
+    mutable std::string m_fingerprint;
+    mutable bool m_fingerprint_valid { false };
 };
 
 // A node's resolved style, kept between relayouts so an unchanged subtree does not
@@ -83,7 +93,9 @@ public:
 
 private:
     static bool matches(DomNode const& node, std::string const& selector, VisualInteractionState const* interaction_state);
-    static bool matches_simple(DomNode const& node, std::string const& selector, VisualInteractionState const* interaction_state);
+    // A selector parsed once, at stylesheet-parse time (row 3j). Matching walks this form.
+    static bool matches(DomNode const& node, CompiledSelector const& selector, VisualInteractionState const* interaction_state);
+    static bool matches_compound(DomNode const& node, CompoundSelector const& compound, VisualInteractionState const* interaction_state);
     static int specificity(std::string const& selector);
     static void apply_declaration(StyleProperties& properties, CssDeclaration const& declaration);
 

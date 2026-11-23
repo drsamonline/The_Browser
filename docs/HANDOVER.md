@@ -426,6 +426,23 @@ Docs: `docs/ROADMAP.md` (status), `docs/PHASES.md` (order), `docs/UI_SPEC.md`
 
 ---
 
+## 7b. Row 3j — where the style pass goes, and what is left of it
+
+Measured 2026-11-23 with `tools/layout-cost.cpp`, which times parse, style resolution and geometry separately.
+
+- **Style resolution dominates, not geometry.** At 400 empty divs, style was 392 ms against layout's 34 ms, and
+  style scales with **rules x nodes** - 10.6 us per (rule x node) before the fix.
+- **Fixed:** selectors are parsed once (`src/rendering/selector.cpp`, `CssRule::compiled`), the style fingerprint
+  is cached (`StyleProperties::fingerprint`, invalidated by `set()`), and the class test scans the attribute in
+  place instead of building an `istringstream` per rule x node. Style is now **2.4-5.4x faster** and the whole
+  suite runs in 140 s instead of 400 s.
+- **Still open:** the per-node `StyleProperties` - an `unordered_map<string, string>` built from ~80 string
+  insertions for every node. That is most of what remains of the style pass and the next thing to take.
+- **Re-measure before trusting a number.** The 2-core pod is noisy: the same 200-rule case gave 1252 ms and
+  3690 ms on different runs. The direction survives the noise; the constant is good to about ±2x.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.
