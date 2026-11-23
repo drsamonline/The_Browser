@@ -3,6 +3,9 @@
 #include <render_document.hpp>
 #include <software_surface.hpp>
 #include <functional>
+#include "animation.hpp"
+#include "css_stylesheet.hpp"
+#include "css_parser.hpp"
 #include "easing.hpp"
 #include "transition.hpp"
 
@@ -152,6 +155,103 @@ int main()
         require(geometry_after.x == geometry_before.x && geometry_after.width == geometry_before.width,
             "the geometry did not move");
         require(document.layout_passes() == passes_before, "and nothing was laid out again");
+    }
+
+// Row 3d3: `@keyframes` parsing, the `animation` shorthand, and the sampling arithmetic.
+    {
+        CssParser parser;
+        auto sheet = parser.parse(
+            "@keyframes fade { from { opacity: 0 } 50% { opacity: 0.5 } to { opacity: 1 } }"
+            "@keyframes spin { 0% { opacity: 1 } 100% { opacity: 0 } }");
+        require(sheet.keyframes.size() == 2, "two keyframes rules were read");
+        require(sheet.keyframes[0].name == "fade", "the first is named fade");
+        require(sheet.keyframes[0].frames.size() == 3, "with three keyframes");
+        require_near(sheet.keyframes[0].frames[0].offset, 0.0, 1e-9, "`from` is offset 0");
+        require_near(sheet.keyframes[0].frames[1].offset, 0.5, 1e-9, "`50%` is offset 0.5");
+        require_near(sheet.keyframes[0].frames[2].offset, 1.0, 1e-9, "`to` is offset 1");
+
+        // Sampling: the value between keyframes, and clamped outside them.
+        double value = 0;
+        require(sheet.keyframes[0].value_at(0.0, "opacity", value), "the rule mentions opacity");
+        require_near(value, 0.0, 1e-9, "at 0 it is the first keyframe");
+        require(sheet.keyframes[0].value_at(0.25, "opacity", value), "and at 0.25");
+        require_near(value, 0.25, 1e-9, "halfway between 0 and 0.5");
+        require(sheet.keyframes[0].value_at(1.0, "opacity", value), "at 1");
+        require_near(value, 1.0, 1e-9, "the last keyframe");
+        require(!sheet.keyframes[0].value_at(0.5, "transform", value), "a property the rule never mentions has no value");
+
+        // A keyframe that is silent about a property does not interrupt it: `from { opacity: 0 } to {}` still runs.
+        auto sparse = parser.parse("@keyframes f { from { opacity: 0 } 50% { color: red } to { opacity: 1 } }");
+        require(sparse.keyframes[0].value_at(0.5, "opacity", value), "opacity is still animated across a silent keyframe");
+        require_near(value, 0.5, 1e-9, "interpolated from 0 to 1 across the middle");
+
+        // The shorthand.
+        {
+            StyleProperties style;
+            style.set("animation", "fade 2s ease-in 100ms infinite");
+            auto const spec = animation_spec_from_style(style);
+            require(spec.declared, "the declaration is seen");
+            require(spec.name == "fade", "the name is read");
+            require_near(spec.duration, 2.0, 1e-9, "2s is two seconds");
+            require_near(spec.delay, 0.1, 1e-9, "100ms is 0.1 seconds");
+            require(spec.infinite, "infinite is read");
+
+            StyleProperties reordered;
+            reordered.set("animation", "3s linear spin");
+            auto const second = animation_spec_from_style(reordered);
+            require(second.name == "spin", "the name may come last");
+            require_near(second.duration, 3.0, 1e-9, "and the duration first");
+
+            StyleProperties none;
+            require(!animation_spec_from_style(none).declared, "no declaration, no animation");
+        }
+
+        // A running animation: progress over its clock, and the value at a time.
+        {
+            Animation animation;
+            animation.rule = &sheet.keyframes[0];
+            animation.duration = 1.0;
+            animation.start_time = 0.0;
+            animation.easing = easing_from_string("linear");
+            require_near(animation.progress_at(0.0), 0.0, 1e-9, "progress starts at 0");
+            require_near(animation.progress_at(0.5), 0.5, 1e-9, "half the duration is half the progress");
+            require_near(animation.progress_at(1.0), 1.0, 1e-9, "and the end is 1");
+            require(animation.finished_at(1.0), "finished at the end");
+            require(!animation.finished_at(0.5), "not finished halfway");
+
+            // Two iterations wrap: at 1.25 s the animation is a quarter through its second pass.
+            Animation twice = animation;
+            twice.iterations = 2;
+            require(!twice.finished_at(1.25), "still running in the second iteration");
+            require_near(twice.progress_at(1.25), 0.25, 1e-9, "a quarter into the second pass");
+
+            double sampled = 0;
+            require(animation.value_at(0.5, "opacity", sampled), "the animation samples opacity");
+            require_near(sampled, 0.5, 1e-9, "halfway is 0.5");
+        }
+    }
+
+// End to end: a stylesheet `animation:` starts by itself when the document is built, and moves pixels over the
+    // clock without relaying anything out.
+    {
+        auto document = RenderDocument::create("<div class='box'></div>",
+            "@keyframes fade { from { opacity: 1 } to { opacity: 0 } }"
+            ".box { width: 50px; height: 50px; background: #ff0000; margin: 10px; animation: fade 1s linear; }", 200);
+        auto const passes_before = document.layout_passes();
+        auto const pixel_at = [&](double time) {
+            document.set_time(time);
+            auto surface = document.render_to_surface(200, 100, Color { 255, 255, 255, 255 });
+            return surface.pixel(20, 20);
+        };
+        auto const start = pixel_at(0.0);
+        auto const middle = pixel_at(0.5);
+        auto const end = pixel_at(1.0);
+        auto const after = pixel_at(2.0);
+        require(start.red == 255 && start.green == 0, "at t=0 the box is opaque red");
+        require(middle.red == 255 && middle.green == 128, "halfway through the animation it is half faded");
+        require(end.green == 255, "at the end it has faded out completely");
+        require(after.green == 255, "and it stays faded, holding the last keyframe");
+        require(document.layout_passes() == passes_before, "an animation repaints; it does not reflow");
     }
 
     std::cout << "easing: ease(0.5)=" << easing_from_string("ease").at(0.5)

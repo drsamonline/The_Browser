@@ -189,6 +189,8 @@ RenderDocument RenderDocument::create_from_document(Document document, std::stri
 
     auto render_tree = RenderTree::from_layout(*layout_root);
     RenderDocument result(std::move(document), std::move(layout_root), std::move(render_tree), std::move(sheet));
+    // `animation:` declarations in the sheet start their animations here, at time 0 of the document clock (row 3d3).
+    result.start_stylesheet_animations();
     result.m_style_cache = std::move(cache);
     result.m_last_style_stats = stats;
     result.m_viewport_width = viewport_width;
@@ -473,6 +475,41 @@ SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color c
     return render_to_surface(width, height, clear_color, PaintOffset {});
 }
 
+void RenderDocument::start_stylesheet_animations()
+{
+    if (m_stylesheet.keyframes.empty())
+        return;
+    // Walk the DOM once, resolving each element's style far enough to read its `animation`. This is the same
+    // selector matching the layout pass does; it runs once, when the document is built.
+    StyleResolver resolver;
+    std::function<void(DomNode const&)> walk = [&](DomNode const& node) {
+        if (node.type == DomNodeType::Element) {
+            auto style = resolver.resolve(node, m_stylesheet);
+            auto spec = animation_spec_from_style(style);
+            if (spec.declared) {
+                for (auto const& rule : m_stylesheet.keyframes) {
+                    if (rule.name != spec.name)
+                        continue;
+                    RunningAnimation running;
+                    running.node = &node;
+                    running.animation.rule = &rule;
+                    running.animation.duration = spec.duration;
+                    running.animation.delay = spec.delay;
+                    running.animation.iterations = spec.iterations;
+                    running.animation.infinite = spec.infinite;
+                    running.animation.easing = spec.easing;
+                    running.animation.start_time = m_time;
+                    m_animations.push_back(running);
+                    break;
+                }
+            }
+        }
+        for (auto const& child : node.children)
+            walk(*child);
+    };
+    walk(m_document.root());
+}
+
 void RenderDocument::start_opacity_transition(DomNode const* node, double to, double duration, double delay, Easing easing)
 {
     if (!node)
@@ -496,7 +533,7 @@ void RenderDocument::start_opacity_transition(DomNode const* node, double to, do
 SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color clear_color, PaintOffset offset) const
 {
     SoftwareSurface surface(width, height, clear_color);
-    if (m_transitions.empty()) {
+    if (m_transitions.empty() && m_animations.empty()) {
         PaintExecutor {}.execute(m_render_tree, surface, offset);
         return surface;
     }
@@ -504,6 +541,22 @@ SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color c
     // A transition in flight changes paint, not geometry: the render tree is rebuilt from the existing layout
     // (which is cheap - no style resolution, no layout) with the values at this instant, and nothing is relaid out.
     std::unordered_map<LayoutNode const*, float> overrides;
+    for (auto const& running : m_animations) {
+        double value = 0;
+        if (!running.animation.value_at(m_time, "opacity", value))
+            continue;
+        std::function<bool(LayoutNode const&)> find = [&](LayoutNode const& candidate) {
+            if (candidate.dom_node == running.node) {
+                overrides[&candidate] = static_cast<float>(value);
+                return true;
+            }
+            for (auto const& child : candidate.children)
+                if (find(*child))
+                    return true;
+            return false;
+        };
+        find(*m_layout_root);
+    }
     for (auto const& pending : m_transitions) {
         float const value = static_cast<float>(pending.transition.value_at(m_time));
         std::function<bool(LayoutNode const&)> find = [&](LayoutNode const& candidate) {

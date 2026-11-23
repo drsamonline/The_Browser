@@ -37,6 +37,7 @@ add_library(AetherisRendering STATIC
     rendering/shaper.cpp
     rendering/bidi.cpp
     rendering/content_security_policy.cpp
+    rendering/animation.cpp
     rendering/content_value.cpp
     rendering/easing.cpp
     rendering/transition.cpp

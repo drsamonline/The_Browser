@@ -1,6 +1,7 @@
 #pragma once
 
 #include "document.hpp"
+#include "animation.hpp"
 #include "transition.hpp"
 #include "layout.hpp"
 #include "paint_executor.hpp"
@@ -45,6 +46,11 @@ public:
     // through any transition that is in flight (row 3d2).
     void set_time(double seconds) { m_time = seconds; }
     double time() const { return m_time; }
+
+    // Starts the animations the document's own stylesheet asks for: any element whose `animation` names a
+    // `@keyframes` rule in the sheet begins one at time 0. Called when the document is built, which is what a page
+    // expects - an animation starts because the style says so, not because a host asked (row 3d3).
+    void start_stylesheet_animations();
 
     // Starts a transition on a DOM node's `opacity`, from its current value to `to`, over `duration` seconds after
     // `delay`. This is the API a style change will call once the cache records which property moved; until then it
@@ -139,6 +145,11 @@ private:
         Transition transition;
     };
     std::vector<PendingTransition> m_transitions;
+    struct RunningAnimation {
+        DomNode const* node { nullptr };
+        Animation animation;
+    };
+    std::vector<RunningAnimation> m_animations;
 };
 
 } // namespace aetheris::rendering

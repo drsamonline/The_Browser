@@ -131,6 +131,10 @@ All credited in `CREDITS.md`.
   row 1g4c owed. `BrowserSession::push_state` resolves the URL against the document, refuses a cross-origin one, and
   never loads anything; the state is JSON rather than a structured clone, and a value JSON cannot carry becomes
   `null` — the same substitute upstream makes when its serialiser refuses.
+- **Row 3d3 closed** (2026-11-23): `@keyframes` animations. The rule is parsed into the stylesheet, the `animation`
+  shorthand is read, and `Animation` samples a numeric property at the document clock. Unlike a transition, an
+  animation starts by itself: `RenderDocument` walks the DOM once when it is built. Measured — a red box fades to
+  white over one second in five steps, holds the last keyframe after that, and `layout_passes()` never moves.
 
 ## 2. Current state
 

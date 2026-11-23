@@ -1,5 +1,7 @@
 #pragma once
 
+#include "animation.hpp"
+
 #include <string>
 #include <string_view>
 #include <vector>
@@ -28,6 +30,8 @@ struct CssFontFace {
 struct CssStyleSheet {
     std::vector<CssRule> rules;
     std::vector<CssFontFace> font_faces;
+    // `@keyframes name { from { … } to { … } }`, in the order they were declared (row 3d3).
+    std::vector<KeyframesRule> keyframes;
     bool m_uses_generated_content { false };
     bool empty() const { return rules.empty(); }
 

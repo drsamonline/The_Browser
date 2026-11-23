@@ -26,6 +26,7 @@ private:
     static std::string join_value(std::vector<CssToken> const& tokens, size_t begin, size_t end);
     static std::string quote_string_items(std::vector<CssToken> const& tokens, size_t begin, size_t end);
     static void parse_font_face(std::vector<CssToken> const& tokens, size_t& position, CssStyleSheet& sheet);
+    static void parse_keyframes(std::string const& name, std::vector<CssToken> const& tokens, size_t& position, CssStyleSheet& sheet);
     static bool is_significant(CssToken const& token);
 };
 

@@ -1,5 +1,6 @@
 #include "css_parser.hpp"
 
+#include <algorithm>
 #include <cctype>
 
 namespace aetheris::rendering {
@@ -91,6 +92,103 @@ void CssParser::parse_font_face(std::vector<CssToken> const& tokens, size_t& pos
     }
     if (!face.family.empty() && !face.source.empty())
         sheet.font_faces.push_back(std::move(face));
+}
+
+// Reads `@keyframes name { from { … } 50% { … } to { … } }` into the stylesheet. The outer block is already open
+// when this is called; each inner block is one keyframe, and its offset comes from the tokens before its brace.
+// `from`, `to`, `50%` or `0.5` - the offset a keyframe applies at.
+static std::string trimmed(std::string text)
+{
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())))
+        text.erase(text.begin());
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())))
+        text.pop_back();
+    return text;
+}
+
+static double offset_from_text(std::string text)
+{
+    text = trimmed(std::move(text));
+    if (text == "from")
+        return 0.0;
+    if (text == "to")
+        return 1.0;
+    bool const percent = !text.empty() && text.back() == '%';
+    if (percent)
+        text.pop_back();
+    char* end = nullptr;
+    double const value = std::strtod(text.c_str(), &end);
+    if (end == text.c_str())
+        return 0.0;
+    return percent ? value / 100.0 : value;
+}
+
+void CssParser::parse_keyframes(std::string const& name, std::vector<CssToken> const& tokens, size_t& position, CssStyleSheet& sheet)
+{
+    KeyframesRule rule;
+    rule.name = name;
+
+    // The caller consumed the rule's own opening brace before dispatching here, as it does for every block: the
+    // first token is already the first keyframe's offset.
+    int depth = 1;
+    while (position < tokens.size() && tokens[position].type != CssTokenType::EndOfFile) {
+        // Between keyframes: read the offset text up to the next brace.
+        std::string offset_text;
+        while (position < tokens.size() && tokens[position].type != CssTokenType::OpenBrace
+            && tokens[position].type != CssTokenType::CloseBrace && tokens[position].type != CssTokenType::EndOfFile) {
+            if (is_significant(tokens[position]))
+                offset_text += tokens[position].value;
+            ++position;
+        }
+        if (position >= tokens.size() || tokens[position].type == CssTokenType::EndOfFile)
+            break;
+        if (tokens[position].type == CssTokenType::CloseBrace) {
+            ++position;
+            if (--depth == 0)
+                break;
+            continue;
+        }
+        ++position; // the keyframe's opening brace
+        ++depth;
+
+        Keyframe frame;
+        frame.offset = offset_from_text(offset_text);
+        // Declarations, the same property/colon/value shape the ordinary rule path reads.
+        while (position < tokens.size() && tokens[position].type != CssTokenType::CloseBrace
+            && tokens[position].type != CssTokenType::EndOfFile) {
+            std::string property;
+            while (position < tokens.size() && tokens[position].type != CssTokenType::Colon
+                && tokens[position].type != CssTokenType::Semicolon
+                && tokens[position].type != CssTokenType::CloseBrace) {
+                if (is_significant(tokens[position]))
+                    property += tokens[position].value;
+                ++position;
+            }
+            if (position < tokens.size() && tokens[position].type == CssTokenType::Colon)
+                ++position;
+            std::string value;
+            while (position < tokens.size() && tokens[position].type != CssTokenType::Semicolon
+                && tokens[position].type != CssTokenType::CloseBrace) {
+                value += tokens[position].value;
+                ++position;
+            }
+            value = trim(value);
+            if (!property.empty() && !value.empty())
+                frame.declarations.emplace_back(property, value);
+            if (position < tokens.size() && tokens[position].type == CssTokenType::Semicolon)
+                ++position;
+        }
+        if (position < tokens.size() && tokens[position].type == CssTokenType::CloseBrace) {
+            ++position;
+            --depth;
+        }
+        rule.frames.push_back(std::move(frame));
+    }
+
+    std::sort(rule.frames.begin(), rule.frames.end(),
+        [](Keyframe const& a, Keyframe const& b) { return a.offset < b.offset; });
+    if (!rule.name.empty())
+        sheet.keyframes.push_back(std::move(rule));
 }
 
 // The renderer always presents a screen viewport of 1024x768, so a media query
@@ -219,6 +317,19 @@ void CssParser::parse_block(std::vector<CssToken> const& tokens, size_t& positio
 
         if (!found_open_brace)
             break;
+
+        // @keyframes name { <offset> { declarations } ... } — a block of blocks, so it is read whole rather than
+        // left to the selector path (row 3d3).
+        if (!selectors.empty() && selectors.front().rfind("@keyframes", 0) == 0) {
+            if (include) {
+                auto name = selectors.front().substr(10);
+                name = trimmed(name);
+                parse_keyframes(name, tokens, position, sheet);
+            } else {
+                skip_block(tokens, position);
+            }
+            continue;
+        }
 
         // @font-face { ... } — a font descriptor block, not a selector rule. Its declarations are read into the
         // stylesheet's face table so `font-family` can find them later (row 3d1).

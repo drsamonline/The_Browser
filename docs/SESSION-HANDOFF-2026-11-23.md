@@ -883,3 +883,51 @@ clone; only the set of clonable values is smaller.
 `WindowGeometry` failed once in a full `-j2` run and passed alone (81 s) and in the two runs after (77 s). It is a
 long test and the pod was busy; both suite runs reported for this commit are clean. If it flakes again, the fix is a
 longer ctest timeout for that test, not a code change.
+
+---
+
+## 26. Twenty-first commit — row 3d3: `@keyframes` animations
+
+Upstream keeps a named rule holding keyframes, each with an offset and a declaration block
+(`CSS/CSSKeyframesRule.h`, `CSSKeyframeRule.h`), and samples between the frames that mention the property. That is the
+shape ported here.
+
+| piece | where |
+| --- | --- |
+| `@keyframes` parsing — a block of blocks, offsets as `from`/`to`/`50%`/`0.5`, sorted | `css_parser.cpp` → `CssStyleSheet::keyframes` |
+| the `animation` shorthand: name, duration, easing, delay, iteration count, `infinite` | `animation_spec_from_style()` |
+| sampling a numeric property at a time | `Animation::value_at` / `KeyframesRule::value_at` |
+| starting them | `RenderDocument::start_stylesheet_animations()`, run once when the document is built |
+| applying them | the same opacity override map row 3d2 built for transitions |
+
+**The difference from transitions, and why this row was cheaper:** a transition needs a *trigger* (a computed value
+changing), which the style cache does not record yet. An animation needs none — the declaration is in the stylesheet at
+load time, so the engine starts it while building the document. That is why 3d3 closed in one commit while 3d2 still
+carries its trigger as an open tail.
+
+### Numbers — 50x50 red box, `animation: fade 1s linear`, `@keyframes fade { from { opacity: 1 } to { opacity: 0 } }`
+
+| t | pixel at (20, 20) |
+| --- | --- |
+| 0.00 | rgba(255, 0, 0) |
+| 0.25 | rgba(255, 64, 64) |
+| 0.50 | rgba(255, 128, 128) |
+| 0.75 | rgba(255, 192, 192) |
+| 1.00 | rgba(255, 255, 255) |
+| 1.50 | rgba(255, 255, 255) — the last keyframe holds |
+
+`layout_passes()` 1 before and after. Suite **66/66 twice**, 138.02 s and 149.24 s.
+
+### Three bugs, all found by running the thing
+
+| bug | how it showed | fix |
+| --- | --- | --- |
+| the parser skipped the first keyframe | a rule parsed with `frames=0` | the caller has already consumed the rule's opening brace; the reader must not look for it again |
+| `strtod("infinite")` returns infinity | the iteration keyword landed in the **delay**, as `inf` | check the keyword before anything numeric, and reject non-finite values as times |
+| a duplicate offset helper | `-Wunused-function` under `-Werror` | the parser owns offset parsing; the module dropped its copy |
+
+### Not done, in the row
+
+Only numeric properties are sampled — `opacity` is the one paint applies. `animation-direction`, `fill-mode`,
+`play-state` and comma lists are unread, and colour or transform keyframes would need a value type this engine does
+not have yet.
