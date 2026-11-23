@@ -2,6 +2,9 @@
 #include <font.hpp>
 #include <text_layout.hpp>
 
+#include <layout.hpp>
+#include <functional>
+#include <string>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -91,5 +94,52 @@ int main()
         }
     }
     require(text_commands > 1, "wrapped text creates fragments");
+// Row 3i: when there is no break opportunity the text overflows rather than wrapping. The row claimed the
+    // opposite ("ours never overflows"); measured, the engine already does what the spec asks, so these
+    // assertions pin it rather than change it. The bitmap fallback makes the widths exact: 10 px per character.
+    {
+        StyleProperties style;
+        style.set("font-size", "16px");
+
+        auto const too_narrow = TextLayout::layout("aaa", 0, 0, 25, style);
+        require(too_narrow.size() == 1, "one word with no opportunity stays on one line");
+        require(too_narrow[0].rect.width > 25, "and it overflows the line rather than being squeezed");
+
+        auto const long_word = TextLayout::layout("aaaaaaaa", 0, 0, 30, style);
+        require(long_word.size() == 1, "a word wider than the line is not broken");
+        require(long_word[0].rect.width > 30, "it overflows");
+
+        auto const at_the_space = TextLayout::layout("aaa bbb", 0, 0, 30, style);
+        require(at_the_space.size() == 2, "a space is a break opportunity, so the second word wraps");
+        require(at_the_space[1].rect.y > at_the_space[0].rect.y, "onto the next line");
+
+        // The same rule for inline boxes: no whitespace between them means no opportunity, so they stay on one
+        // line and overflow, and a space between them is an opportunity and moves the second one down.
+        auto spans = [](std::string const& separator) {
+            return "<div style='width:100px'>"
+                   "<span style='display:inline-block;width:60px;height:10px'>a</span>" + separator
+                + "<span style='display:inline-block;width:60px;height:10px'>b</span></div>";
+        };
+        auto inline_rows = [](std::string const& html) {
+            auto document = RenderDocument::create(html, "", 400);
+            std::vector<float> ys;
+            std::function<void(LayoutNode const&)> walk = [&](LayoutNode const& node) {
+                if (node.display == LayoutDisplay::InlineBlock && node.dom_node && node.dom_node->name == "span")
+                    ys.push_back(node.rect.y);
+                for (auto const& child : node.children)
+                    walk(*child);
+            };
+            walk(document.layout_root());
+            return ys;
+        };
+        auto const without_space = inline_rows(spans(""));
+        require(without_space.size() == 2, "two inline boxes are laid out");
+        require(std::abs(without_space[0] - without_space[1]) < 0.01f,
+            "no whitespace between them: no opportunity, so both stay on one line and overflow");
+        auto const with_space = inline_rows(spans(" "));
+        require(with_space.size() == 2, "two inline boxes are laid out with a space too");
+        require(with_space[1] > with_space[0], "a space between them is an opportunity, so the second wraps");
+    }
+
     return 0;
 }

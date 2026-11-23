@@ -80,6 +80,10 @@ All credited in `CREDITS.md`.
   and an optional alt-text list — instead of a quoted string. `content: "a" "b"` now renders "ab" rather than
   "a b", `content: "x" / "alt"` keeps the alt text on the layout node, and an item this engine cannot express
   (`attr()`) renders nothing instead of its own source text.
+- **Row 3i closed as a non-divergence** (2026-11-23): the row said the engine never overflows. Measured, it
+  overflows whenever there is no break opportunity — a word wider than the line stays on one line, and two
+  inline boxes with no whitespace between them stay on one line too — and wraps at a space. Five assertions in
+  `AetherisTextLayout` now pin it so a future wrap change cannot quietly start wrapping.
 
 ## 2. Current state
 

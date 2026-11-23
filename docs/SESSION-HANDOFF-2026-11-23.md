@@ -300,3 +300,28 @@ so the parser's work is not thrown away between here and there. `attr()`, `count
    a leading space.
 2. **A pure function is a cheap test.** `parse_content_value` took six assertions and no font, no document and
    no pixels; the layout wiring needed one probe to confirm, and both found real mistakes.
+
+---
+
+## 12. Seventh commit — row 3i: the divergence was not there
+
+The row said: "at an exactly-full line this wraps anyway; upstream overflows. Ours never overflows — the safer
+error, recorded not hidden." Measured with a probe, both halves are wrong.
+
+| case | measured | spec / upstream |
+| --- | --- | --- |
+| `"aaa"` in a 25 px box | one fragment, 30 px wide — overflows | overflows |
+| `"aaaaaaaa"` (80 px) in a 30 px box | one fragment, 80 px wide | overflows |
+| `"aaa bbb"` in a 30 px box | two lines, one per word | wraps at the space |
+| two 60 px `inline-block`s in 100 px, **no whitespace** | both at `y=0`; the second at `x=60`, overflowing | overflows |
+| the same two with a space between | the second at `y=10` | wraps |
+
+So there was nothing to fix. The row is marked `[-]` — out of scope because the gap does not exist — and the
+five cases are now assertions in `AetherisTextLayout`, which is the part that has value: a future change to the
+wrap pass cannot quietly start wrapping where it should overflow.
+
+### What this row would do differently
+
+Nothing about the code. About the process: a row written from a *symptom* can name a fault that is not there,
+and this one survived two sessions because nobody measured it. The same probe that closed 2h, 2g and 2b would
+have closed this in ten minutes on the day it was written.

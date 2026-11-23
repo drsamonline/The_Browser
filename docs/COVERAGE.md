@@ -40,7 +40,7 @@ are at the bottom.
 | Feature | State | Evidence |
 | --- | --- | --- |
 | Block flow | done | `layout.cpp` |
-| Inline flow, line breaking, `white-space` | done, per-byte advances | `text_layout.cpp` |
+| Inline flow, line breaking, `white-space` | done — breaks at whitespace and at the cluster offsets the shaper allows; overflows when there is no opportunity, as a browser does (measured 2026-11-23) | `text_layout.cpp`, `AetherisTextLayout` |
 | Flex | partial — no `flex-grow` at load, no `flex-shrink`/`basis` | `layout_flex_children()` |
 | Grid | partial — `grid-template-columns` read | `layout_grid_children()` |
 | Absolute positioning | done | `layout_absolute_children()` |
