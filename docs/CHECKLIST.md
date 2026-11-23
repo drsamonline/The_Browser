@@ -108,7 +108,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked ·
 
 | Row | Item | Status | Proof / blocker |
 | --- | --- | --- | --- |
-| 4.1 | Tab strip over `window_manager` | `[ ]` | — |
+| 4.1 | Tab strip over `window_manager` | `[x]` | 2026-11-23; the chrome was one hardcoded tab box, and the input router kept its **own copy** of the chrome geometry (`tab_width() 190`, `back_x() 230`, …) with a comment that activating a tab "needs the tab list; not yet" - so the tabs a page painted and the tabs a click could reach were computed twice. Now `src/ui/chrome_layout.{hpp,cpp}` computes the strip once: one box per tab, shrinking from 190 px toward a 56 px minimum as tabs are added, a close button inside each box, and the buttons after them. The chrome document draws from it and `InputRouter::set_chrome_layout()` hit-tests against it, so the two cannot drift. Clicks resolve to `ActivateTab` (with the tab's index), `CloseTab` (that tab), `NewTab`, `Back`/`Forward`/`Reload` or `FocusAddress`, and the app acts on them - switching tabs issues the same navigation a history move does. `AetherisInputRouter` pins: a click in the second tab names index 1, a click on its close button closes rather than switches, `+` opens a tab, one tab keeps the 190 px maximum, twelve shrink but stay above the minimum, the strip ends before the `+`, the address bar stays inside the window, and zero tabs still shows one box. **Not done:** the tab strip has no drag-reorder, no middle-click close, no overflow menu when tabs would fall below the minimum, and the close button is drawn with a text glyph rather than an icon |
 | 4.2 | History and bookmarks | `[ ]` | — |
 
 ## Tier 5 — safety

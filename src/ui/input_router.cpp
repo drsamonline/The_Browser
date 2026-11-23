@@ -137,19 +137,28 @@ InputAction InputRouter::handle_click(WindowEvent const& event)
         return InputAction { InputAction::Kind::PageClick, {}, event.x, event.y };
     }
 
-    if (event.x < tab_width())
-        return InputAction {}; // activating a tab needs the tab list; not yet
-    if (event.x >= address_x() && event.x < address_x() + address_width()) {
+    // Everything in the strip is decided by the layout that drew it: one source of truth for the tabs a page paints
+    // and the tabs a click can reach (row 4.1).
+    auto const hit = m_layout.hit_test(event.x, event.y);
+    switch (hit.kind) {
+    case ChromeLayout::Hit::Tab:
+        return InputAction { InputAction::Kind::ActivateTab, {}, event.x, event.y, 0, hit.index };
+    case ChromeLayout::Hit::CloseTab:
+        return InputAction { InputAction::Kind::CloseTab, {}, event.x, event.y, 0, hit.index };
+    case ChromeLayout::Hit::NewTab:
+        return InputAction { InputAction::Kind::NewTab };
+    case ChromeLayout::Hit::Back:
+        return InputAction { InputAction::Kind::Back };
+    case ChromeLayout::Hit::Forward:
+        return InputAction { InputAction::Kind::Forward };
+    case ChromeLayout::Hit::Reload:
+        return InputAction { InputAction::Kind::Reload };
+    case ChromeLayout::Hit::Address:
         m_address_focused = true;
         return InputAction { InputAction::Kind::FocusAddress, m_address };
+    case ChromeLayout::Hit::None:
+        break;
     }
-    // Navigation buttons are drawn at these positions; a click near one fires it.
-    if (event.x >= back_x() - 12 && event.x < back_x() + 12)
-        return InputAction { InputAction::Kind::Back };
-    if (event.x >= forward_x() - 12 && event.x < forward_x() + 12)
-        return InputAction { InputAction::Kind::Forward };
-    if (event.x >= reload_x() - 12 && event.x < reload_x() + 12)
-        return InputAction { InputAction::Kind::Reload };
     return InputAction {};
 }
 

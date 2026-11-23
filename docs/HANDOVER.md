@@ -140,6 +140,10 @@ All credited in `CREDITS.md`.
   it had a real bug: `https://A.test` and `https://a.test` got separate buckets because the origin key was computed by
   hand in `main.cpp`. It is now lowercased in `set_storage_origin()` and computed by `SecurityPolicy::origin()`, so the
   engine has one definition of "origin". `AetherisJs` pins the isolation.
+- **Row 4.1 closed** (2026-11-23): the tab strip. `src/ui/chrome_layout.{hpp,cpp}` computes the strip once and both
+  the drawing and the input router read it — before this the router had its own copy of every chrome coordinate and
+  a comment saying tab activation was not possible yet. Tabs now switch, close and open by click, shrinking from
+  190 px to a 56 px minimum as they are added.
 
 ## 2. Current state
 

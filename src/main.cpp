@@ -19,6 +19,7 @@
 #include "resource_loader.hpp"
 #include "secure_resource_loader.hpp"
 #include "ui/browser_session.hpp"
+#include "ui/chrome_layout.hpp"
 #include "ui/input_router.hpp"
 #include "ui/window_host.hpp"
 #include "resource.hpp"
@@ -1860,7 +1861,7 @@ static std::string document_title(rendering::DomNode const& node)
     return {};
 }
 
-static std::string chrome_document(std::string const& title, std::string const& address)
+static std::string chrome_document(ui::BrowserSession const& session, std::string const& address)
 {
     auto escape = [](std::string const& value) {
         std::string out;
@@ -1872,12 +1873,17 @@ static std::string chrome_document(std::string const& title, std::string const& 
         }
         return out;
     };
-    std::string tab_title = escape(title.empty() ? address : title);
-    if (tab_title.size() > 20)
-        tab_title = tab_title.substr(0, 19) + "\u2026";
+    auto truncate = [](std::string text, std::size_t limit) {
+        if (text.size() > limit)
+            text = text.substr(0, limit - 1) + "\u2026";
+        return text;
+    };
 
-    // Absolutely positioned, not flex: the engine has no flexbox, and this
-    // layout is a fixed 34px strip so explicit coordinates are exact.
+    // One layout for drawing and for hit-testing: the tab boxes painted here are the ones a click is matched
+    // against (row 4.1).
+    auto const layout = ui::ChromeLayout::compute(session.tab_count(), session.active_index(),
+        static_cast<int>(1024));
+
     auto box = [](int left, int top, int width, int height, std::string const& background,
                    std::string const& radius) {
         return "position:absolute;left:" + std::to_string(left) + "px;top:" + std::to_string(top)
@@ -1891,15 +1897,26 @@ static std::string chrome_document(std::string const& title, std::string const& 
     };
 
     std::string html = "<html><body style='margin:0;background:#202124'>";
-    html += "<div style='" + box(8, 4, 190, 26, "#35363a", "6px") + "'></div>";
-    html += label(16, 9, tab_title, "#e8eaed", 12);
-    html += label(206, 8, "+", "#9aa0a6", 15);
-    html += label(230, 8, "\u2190", "#9aa0a6", 14);
-    html += label(256, 8, "\u2192", "#9aa0a6", 14);
-    html += label(282, 8, "\u21bb", "#9aa0a6", 14);
-    html += "<div style='" + box(310, 5, 660, 24, "#35363a", "12px") + "'></div>";
-    html += label(320, 10, escape(address), "#e8eaed", 12);
-    html += label(986, 8, "\u22ee", "#9aa0a6", 14);
+    for (auto const& tab_box : layout.tabs) {
+        auto const* tab = session.tab(tab_box.index);
+        bool const active = tab_box.index == session.active_index();
+        // The active tab is lighter and taller-looking; the others recede. That is the only difference a strip needs.
+        html += "<div style='" + box(tab_box.left, active ? 3 : 5, tab_box.width, active ? 28 : 24,
+            active ? "#3c4043" : "#2a2b2e", "6px") + "'></div>";
+        auto const title = tab ? truncate(tab->title.empty() ? tab->url : tab->title,
+                               static_cast<std::size_t>(std::max(6, (tab_box.width - 44) / 7)))
+                               : std::string("New Tab");
+        html += label(tab_box.left + 10, active ? 9 : 10, escape(title), active ? "#e8eaed" : "#9aa0a6", 12);
+        // The close button, at the position the hit test will use.
+        html += label(layout.close_left(tab_box) - 2, active ? 8 : 9, "\u00d7", active ? "#e8eaed" : "#9aa0a6", 13);
+    }
+    html += label(layout.new_tab_left + 4, 8, "+", "#9aa0a6", 15);
+    html += label(layout.back_left + 6, 8, "\u2190", "#9aa0a6", 14);
+    html += label(layout.forward_left + 6, 8, "\u2192", "#9aa0a6", 14);
+    html += label(layout.reload_left + 6, 8, "\u21bb", "#9aa0a6", 14);
+    html += "<div style='" + box(layout.address_left, 5, layout.address_width, 24, "#35363a", "12px") + "'></div>";
+    html += label(layout.address_left + 10, 10, escape(address), "#e8eaed", 12);
+    html += label(1024 - 30, 8, "\u22ee", "#9aa0a6", 14);
     html += "</body></html>";
     return html;
 }
@@ -2374,7 +2391,7 @@ session.set_page_title(document_title(cached_page->document().root()));
     auto compose_chrome = [&](rendering::SoftwareSurface& window) {
         std::string status = session.failed() ? session.error() : session.current_url();
         auto chrome = rendering::RenderDocument::create(
-            chrome_document(session.display_title(), status), "", static_cast<float>(kWidth));
+            chrome_document(session, status), "", static_cast<float>(kWidth));
         auto chrome_surface = chrome.render_to_surface(kWidth, kChromeHeight, rendering::Color { 32, 33, 36, 255 });
         window.blit(chrome_surface, 0, 0);
     };
@@ -2445,6 +2462,8 @@ session.set_page_title(document_title(cached_page->document().root()));
             // The router only needs to know whether the bar is on screen, so a
             // click at the right edge is routed to the bar instead of the page.
             router.set_scroll_bar(scroll_bar_visible, kWidth, static_cast<int>(rendering::ScrollBar::thickness()));
+            // The router hit-tests against the boxes that are about to be painted (row 4.1).
+            router.set_chrome_layout(ui::ChromeLayout::compute(session.tab_count(), session.active_index(), kWidth));
             compose_chrome(window);
             host->present(window);
             need_render = false;
@@ -2748,7 +2767,18 @@ session.set_page_title(document_title(cached_page->document().root()));
                 session.new_tab();
                 need_render = true;
                 break;
+            case ui::InputAction::Kind::ActivateTab:
+                if (session.activate_tab(action.index)) {
+                    // Switching tabs loads the tab's URL, the same request a history move makes.
+                    g_navigation_request = session.current_url();
+                    g_navigation_pending = true;
+                    need_render = true;
+                }
+                break;
             case ui::InputAction::Kind::CloseTab:
+                // A click on a tab's close button closes that tab; the keyboard shortcut closes the active one.
+                if (action.index < session.tab_count() && action.index != session.active_index())
+                    session.activate_tab(action.index);
                 session.close_active_tab();
                 need_render = true;
                 break;
@@ -2822,7 +2852,12 @@ static int run_render_window(std::string const& url, std::string const& output_p
     // The title comes from the page so the tab reads like a real browser.
     std::string title = document_title(page.document().root());
 
-    auto chrome = rendering::RenderDocument::create(chrome_document(title, url), "", static_cast<float>(kWidth));
+    // This path renders one page with no session, so it shows a one-tab strip. Same layout code, so the tab is where
+    // a click would be in the window.
+    ui::BrowserSession single;
+    single.open(url);
+    single.set_page_title(title);
+    auto chrome = rendering::RenderDocument::create(chrome_document(single, url), "", static_cast<float>(kWidth));
     auto chrome_surface = chrome.render_to_surface(kWidth, kChromeHeight, rendering::Color { 32, 33, 36, 255 });
 
     auto window = rendering::SoftwareSurface(kWidth, kHeight, rendering::Color { 255, 255, 255, 255 });

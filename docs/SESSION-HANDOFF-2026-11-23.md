@@ -972,3 +972,49 @@ so rather than claiming an enforcement that has no subject.
 The first re-run of the storage probe printed the **old** results, because a probe links the static library and had not
 been relinked. That trap is in the handover's build facts and it still caught me; relinking is not optional after a
 library rebuild.
+
+---
+
+## 28. Twenty-third commit — row 4.1: the tab strip
+
+The chrome had one hardcoded tab box, and the input router kept **its own copy** of every chrome coordinate
+(`tab_width() 190`, `back_x() 230`, …) with the comment `activating a tab needs the tab list; not yet`. Two
+computations of one layout is the bug this row was really about: the tabs a page painted and the tabs a click could
+reach could drift, and nothing would have caught it.
+
+| piece | where |
+| --- | --- |
+| one layout for the whole strip: tab boxes, close buttons, `+`, back/forward/reload, address bar | `src/ui/chrome_layout.{hpp,cpp}` |
+| drawing | `chrome_document()` builds one box per session tab from that layout |
+| hit-testing | `InputRouter::set_chrome_layout()`, then `ChromeLayout::hit_test()` |
+| actions | `ActivateTab` (carries the index), `CloseTab` (that tab), `NewTab`, `Back`/`Forward`/`Reload`, `FocusAddress` |
+| acting | the app switches tabs and issues the same navigation a history move does |
+
+Tab width shrinks from 190 px toward a 56 px minimum as tabs are added, so twelve tabs fit and the strip never runs
+under the `+`.
+
+### Evidence — `AetherisInputRouter`
+
+| assertion |
+| --- |
+| a click in the second tab produces `ActivateTab` with **index 1** |
+| a click on that tab's close button produces `CloseTab` with index 1, not a switch |
+| `+` produces `NewTab` |
+| one tab keeps the 190 px maximum; twelve shrink but stay at or above 56 px |
+| the strip ends before the `+`, and the address bar stays inside the window |
+| zero tabs still shows one box, which is what a browser does |
+| the pre-existing assertions (page vs chrome at y=34, back/forward/reload, address focus) now read the same layout the chrome draws |
+
+Suite **66/66 twice**, 136.09 s and 131.10 s.
+
+### Not done, in the row
+
+No drag-reorder, no middle-click close, no overflow menu for the case where tabs would fall below the minimum, and the
+close button is a text glyph rather than an icon.
+
+### What this row cost
+
+Four compile errors, all mine: a namespace include, an accessor that did not exist (`active_tab_index` versus
+`active_index`), the router declared *after* the lambda that wanted to use it, and a test that referenced the
+accessors this commit deleted. The last one is the useful signal — deleting the duplicated coordinates broke the test
+that had been written against them, which is exactly what a shared layout is supposed to do.

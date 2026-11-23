@@ -2,6 +2,8 @@
 
 #include "window_host.hpp"
 
+#include "chrome_layout.hpp"
+
 #include <string>
 
 namespace aetheris::ui {
@@ -17,6 +19,7 @@ struct InputAction {
         Back,
         Forward,
         NewTab,
+        ActivateTab,   // switch to the tab at `index` (row 4.1)
         CloseTab,
         FocusAddress,  // the address bar takes keyboard focus
         BlurAddress,   // the page takes keyboard focus again
@@ -39,17 +42,20 @@ struct InputAction {
     int x { 0 };
     int y { 0 };
     int delta { 0 };
+    std::size_t index { 0 }; // which tab, for ActivateTab and a click on a tab's close button
 
     InputAction() = default;
     // Explicit constructor rather than aggregate initialisation: leaving fields
     // out of a braced initialiser warns under -Wmissing-field-initializers, and
     // CI builds with -Werror.
-    explicit InputAction(Kind action_kind, std::string action_text = {}, int action_x = 0, int action_y = 0, int action_delta = 0)
+    explicit InputAction(Kind action_kind, std::string action_text = {}, int action_x = 0, int action_y = 0,
+        int action_delta = 0, std::size_t action_index = 0)
         : kind(action_kind)
         , text(std::move(action_text))
         , x(action_x)
         , y(action_y)
         , delta(action_delta)
+        , index(action_index)
     {
     }
 };
@@ -68,14 +74,10 @@ public:
     void set_address_text(std::string text) { m_address = std::move(text); }
     bool zen_mode() const { return m_zen; }
 
-    // Regions of the chrome strip, in window coordinates. Exposed so the same
-    // numbers drive both drawing and hit-testing.
-    static int tab_width() { return 190; }
-    static int back_x() { return 230; }
-    static int forward_x() { return 256; }
-    static int reload_x() { return 282; }
-    static int address_x() { return 310; }
-    static int address_width() { return 660; }
+    // The chrome's geometry, set by whoever drew it. The router used to keep its own copy of these numbers, which
+    // meant the tabs a page painted and the tabs a click could reach were computed twice (row 4.1).
+    void set_chrome_layout(ChromeLayout layout) { m_layout = std::move(layout); }
+    ChromeLayout const& chrome_layout() const { return m_layout; }
 
     // Tells the router whether a scrollbar is currently drawn along the right
     // edge of the page area. The router does not own the scroll geometry — it
@@ -98,6 +100,7 @@ private:
     InputAction handle_click(WindowEvent const& event);
 
     int m_chrome_height { 34 };
+    ChromeLayout m_layout;
     bool m_scroll_bar_visible { false };
     int m_content_width { 0 };
     int m_scroll_bar_width { 10 };

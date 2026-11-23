@@ -83,25 +83,68 @@ int main()
         require(router.handle(key("Escape")).kind == InputAction::Kind::Quit, "Escape on the page quits");
     }
 
-    // Clicks: chrome regions vs page, split at the strip height.
+    // Clicks: chrome regions vs page, split at the strip height. The chrome's geometry comes from the layout that
+    // drew it (row 4.1), so these assertions and the painting read the same numbers.
     {
+        auto const layout = ChromeLayout::compute(2, 0, 1024);
         InputRouter router;
+        router.set_chrome_layout(layout);
+
         auto page_click = router.handle(click(500, 400));
         require(page_click.kind == InputAction::Kind::PageClick, "a click below the strip goes to the page");
         require(page_click.x == 500 && page_click.y == 400, "page clicks keep their coordinates");
 
-        require(router.handle(click(InputRouter::address_x() + 10, 15)).kind == InputAction::Kind::FocusAddress,
+        require(router.handle(click(layout.address_left + 10, 15)).kind == InputAction::Kind::FocusAddress,
             "clicking the address bar focuses it");
         require(router.address_focused(), "the click focused the address bar");
 
         InputRouter buttons;
-        require(buttons.handle(click(InputRouter::back_x(), 15)).kind == InputAction::Kind::Back, "back button");
-        require(buttons.handle(click(InputRouter::forward_x(), 15)).kind == InputAction::Kind::Forward, "forward button");
-        require(buttons.handle(click(InputRouter::reload_x(), 15)).kind == InputAction::Kind::Reload, "reload button");
+        buttons.set_chrome_layout(layout);
+        require(buttons.handle(click(layout.back_left + 2, 15)).kind == InputAction::Kind::Back, "back button");
+        require(buttons.handle(click(layout.forward_left + 2, 15)).kind == InputAction::Kind::Forward, "forward button");
+        require(buttons.handle(click(layout.reload_left + 2, 15)).kind == InputAction::Kind::Reload, "reload button");
 
         // The very first page pixel is page, not chrome.
         require(buttons.handle(click(10, 34)).kind == InputAction::Kind::PageClick, "y=34 is page content");
         require(buttons.handle(click(10, 33)).kind != InputAction::Kind::PageClick, "y=33 is still chrome");
+
+        // Row 4.1: the tabs themselves. A click in the second tab switches to it, and a click on its close button
+        // closes that tab rather than switching.
+        InputRouter tabs;
+        tabs.set_chrome_layout(layout);
+        auto const& first = layout.tabs[0];
+        auto const& second = layout.tabs[1];
+        auto const switch_to_second = tabs.handle(click(second.left + 8, 15));
+        require(switch_to_second.kind == InputAction::Kind::ActivateTab, "a click in a tab activates it");
+        require(switch_to_second.index == 1, "the action names the tab that was clicked");
+
+        auto const switch_to_first = tabs.handle(click(first.left + 8, 15));
+        require(switch_to_first.kind == InputAction::Kind::ActivateTab && switch_to_first.index == 0,
+            "and the first tab for a click there");
+
+        auto const close = tabs.handle(click(layout.close_left(second) + 2, 15));
+        require(close.kind == InputAction::Kind::CloseTab, "a click on the close button closes");
+        require(close.index == 1, "the tab it belongs to");
+
+        require(tabs.handle(click(layout.new_tab_left + 2, 15)).kind == InputAction::Kind::NewTab, "the + opens a tab");
+    }
+
+    // The layout itself: tabs fit, shrink together, and never overlap the buttons.
+    {
+        auto const one = ChromeLayout::compute(1, 0, 1024);
+        require(one.tabs.size() == 1, "one tab, one box");
+        require(one.tabs[0].width == 190, "a single tab keeps the maximum width");
+        require(one.new_tab_left == one.tabs[0].left + one.tabs[0].width, "the + sits right after it");
+
+        auto const many = ChromeLayout::compute(12, 0, 1024);
+        require(many.tabs.size() == 12, "twelve tabs, twelve boxes");
+        require(many.tabs[0].width < 190, "twelve tabs are narrower than one");
+        require(many.tabs[0].width >= 56, "but no narrower than the minimum");
+        require(many.tabs.back().left + many.tabs.back().width <= many.new_tab_left, "the strip ends before the +");
+        require(many.address_left + many.address_width <= 1024, "the address bar stays inside the window");
+
+        auto const zero = ChromeLayout::compute(0, 0, 1024);
+        require(zero.tabs.size() == 1, "no tabs still shows one box, which is what a browser does");
     }
 
     // Hover only reaches the page.
