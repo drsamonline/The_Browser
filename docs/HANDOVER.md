@@ -110,6 +110,9 @@ All credited in `CREDITS.md`.
   cubic-bezier solve and `transition.cpp` holds a `Transition` with `value_at(now)`. What is missing is a clock the
   paint pass reads and the hook from a style *change* to a transition starting — `AetherisEasing` covers the part
   that does not need either (20 assertions; `ease(0.5) = 0.802403`).
+- **Row 4d closed** (2026-11-23): `tools/check-build.py` fails when ninja has pending steps or when a source is newer
+  than the binary, and names the newer files. It exists because twice in one session a build was killed and the next
+  suite passed on the previous binary. Run it before trusting a green suite: `python3 tools/check-build.py`.
 
 ## 2. Current state
 

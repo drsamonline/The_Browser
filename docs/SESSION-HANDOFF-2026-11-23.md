@@ -612,3 +612,42 @@ Suite **66/66 twice**, 136.06 s and 146.45 s.
 
 Nothing so far — this is the part of a feature that can be built and proven before the awkward part, and the row
 says exactly where the awkward part starts.
+
+---
+
+## 20. Fifteenth commit — row 4d: the guard against trusting a stale binary
+
+This row was a hazard, not a feature: twice today a build was killed by the sandbox's time limit, ninja printed
+nothing anyone read, and the next `ctest` passed on the *previous* binary. A passing suite that tested last hour's
+code is worse than a red one, because it is trusted.
+
+`tools/check-build.py` asks the two questions that went unasked:
+
+| question | what it catches |
+| --- | --- |
+| does ninja have pending steps? | an interrupted build |
+| is any source newer than the binary? | a build that never ran |
+
+It prints the newer files, exits 1 when stale, 2 when there is no build directory.
+
+### Verified here, in an environment that could not compile anything
+
+| case | result |
+| --- | --- |
+| this tree, with the 3d2 clock patch unbuilt | exit 1: **57 pending steps**, 2 newer sources named |
+| `--` a build directory that does not exist | exit 2 |
+| a binary the build never linked | exit 1, "has never linked it" |
+
+Written as one process with no subprocesses for the source check, because the environment that needed it allows
+exactly one level of process creation — `sh -c 'echo ok'` runs, `sh -c 'ls'` cannot fork, and `zig` cannot spawn its
+own frontend. A guard that cannot run is not a guard. The ninja check is best-effort and says so when it cannot ask.
+
+### What this row would do differently
+
+Nothing. It is thirty lines, it was written and tested in the environment that motivated it, and its first run found
+the exact condition it was written for.
+
+### The row's own advice, applied
+
+Run `python3 tools/check-build.py` before trusting a green suite. Its 57-pending-steps answer is the reason the 3d2
+clock patch is parked rather than committed.
