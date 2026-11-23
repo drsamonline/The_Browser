@@ -1783,57 +1783,8 @@ static std::string content_security_policy(rendering::DomNode const& root)
     return {};
 }
 
-// Inline scripts run only when the policy permits them. No policy, or no
-// script-src/default-src directive, means they are allowed.
-static bool csp_allows_inline_scripts(std::string const& policy)
-{
-    if (policy.empty())
-        return true;
-
-    std::string script_source;
-    bool have_script_source = false;
-    std::string default_source;
-    bool have_default_source = false;
-
-    std::size_t start = 0;
-    while (start <= policy.size()) {
-        auto semicolon = policy.find(';', start);
-        std::string directive = policy.substr(start,
-            semicolon == std::string::npos ? std::string::npos : semicolon - start);
-        start = semicolon == std::string::npos ? policy.size() + 1 : semicolon + 1;
-
-        std::string name;
-        std::string values;
-        std::size_t index = 0;
-        while (index < directive.size() && std::isspace(static_cast<unsigned char>(directive[index])))
-            ++index;
-        while (index < directive.size() && !std::isspace(static_cast<unsigned char>(directive[index])))
-            name += static_cast<char>(std::tolower(static_cast<unsigned char>(directive[index++])));
-        values = directive.substr(index);
-        for (auto& c : values)
-            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-
-        if (name == "script-src") {
-            script_source = values;
-            have_script_source = true;
-        } else if (name == "default-src") {
-            default_source = values;
-            have_default_source = true;
-        }
-    }
-
-    std::string effective;
-    if (have_script_source)
-        effective = script_source;
-    else if (have_default_source)
-        effective = default_source;
-    else
-        return true; // no directive restricting scripts
-
-    if (effective.find("'none'") != std::string::npos)
-        return false;
-    return effective.find("'unsafe-inline'") != std::string::npos;
-}
+// The inline-script question moved to ContentSecurityPolicy::allows_inline_script() when the fetch directives
+// landed (row 5a): one policy object now answers both "may this script run" and "may this URL be fetched".
 
 static std::vector<std::string> extract_scripts(std::string const& html)
 {
@@ -2013,7 +1964,8 @@ static rendering::RenderDocument create_scripted_document(
     std::string const& html, std::string const& css, std::string const& url,
     rendering::ResourceCache* resources,
     aetheris::js::Interpreter& js, DomHost& dom,
-    std::shared_ptr<std::array<double, 4>> viewport_state, double timer_budget_ms);
+    std::shared_ptr<std::array<double, 4>> viewport_state, double timer_budget_ms,
+    SecureFetcher* fetcher);
 
 
 static rendering::DomNode* node_at(rendering::RenderDocument& rendered, DomHost& dom,
@@ -2373,7 +2325,7 @@ static int run_window(std::string const& url, int frames, std::string const& fra
             // Scripts run here, so a page that builds its content in JavaScript
             // renders in the window instead of coming up blank.
             cached_page.emplace(create_scripted_document(body, style.css, session.current_url(), nullptr,
-                page_js, page_dom, page_viewport_state, 0.0));
+                page_js, page_dom, page_viewport_state, 0.0, &fetcher));
             g_current_page = &*cached_page;
 session.set_page_title(document_title(cached_page->document().root()));
             session.set_loading(false);
@@ -2895,7 +2847,8 @@ static rendering::RenderDocument create_scripted_document(
     std::string const& html, std::string const& css, std::string const& url,
     rendering::ResourceCache* resources,
     aetheris::js::Interpreter& js, DomHost& dom,
-    std::shared_ptr<std::array<double, 4>> viewport_state, double timer_budget_ms)
+    std::shared_ptr<std::array<double, 4>> viewport_state, double timer_budget_ms,
+    SecureFetcher* fetcher)
 {
     auto trace_phase = [](char const* what) {
         if (std::getenv("AETHERIS_TRACE_DOC"))
@@ -3018,9 +2971,12 @@ static rendering::RenderDocument create_scripted_document(
         return array;
     };
 
-    // Content-Security-Policy: inline scripts only run when the policy allows.
+    // Content-Security-Policy: inline scripts only run when the policy allows, and every fetch from here on is
+    // checked against the same policy's fetch directives (row 5a).
     auto policy = content_security_policy(document.root());
-    if (!csp_allows_inline_scripts(policy)) {
+    if (!policy.empty() && fetcher)
+        fetcher->secure->set_content_security_policy(rendering::ContentSecurityPolicy::parse(policy));
+    if (!rendering::ContentSecurityPolicy::parse(policy).allows_inline_script()) {
         std::cerr << "  [js] inline scripts blocked by Content-Security-Policy" << std::endl;
     } else for (auto const& script : extract_scripts(html)) {
         trace_phase("script begin");
@@ -3129,7 +3085,7 @@ static int run_render(std::string const& url, std::string const& output_path, st
     aetheris::js::Interpreter js;
     DomHost dom;
     auto viewport_state = std::make_shared<std::array<double, 4>>(std::array<double, 4> { 0.0, 0.0, 0.0, 768.0 });
-    auto rendered = create_scripted_document(html, css, url, &resources, js, dom, viewport_state, -1.0);
+    auto rendered = create_scripted_document(html, css, url, &resources, js, dom, viewport_state, -1.0, &fetcher);
 
     // --dispatch fires an element event after load, then re-lays out so the
     // handler's changes are in the image. It lives here rather than in the shared

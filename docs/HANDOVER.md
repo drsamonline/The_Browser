@@ -122,6 +122,11 @@ All credited in `CREDITS.md`.
   measurement — and the measurement found two things: trustworthiness was https-only, which blocked loopback
   resources as mixed content and never treated `http://localhost` as secure; and the test was written with `assert`,
   which disappears under NDEBUG. Both fixed; `AetherisSecurityPolicy` now pins 18 cases with `require`.
+- **Row 5a closed** (2026-11-23): CSP fetch directives. The policy left `main.cpp` for
+  `src/rendering/content_security_policy.{hpp,cpp}`, and `SecureResourceLoader` — the seam every fetch already passed
+  through — now maps a request context to its directive and refuses on a mismatch. Source lists cover `'self'`, `*`,
+  `'none'`, scheme, host, subdomain and port; a path in a source is not matched, and nonces, hashes and header
+  delivery are not implemented — all three are in the row.
 
 ## 2. Current state
 

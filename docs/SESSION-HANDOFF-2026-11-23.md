@@ -780,3 +780,58 @@ Suite **66/66 twice**, 135.20 s and 144.22 s.
 
 Audio and video are optionally-blockable per the spec, but this engine fetches neither, so there is no request context
 to classify them with — recorded in the row rather than invented.
+
+---
+
+## 24. Nineteenth commit — row 5a: CSP fetch directives
+
+The policy lived in `main.cpp` as one function that answered one question ("may inline scripts run?"). Row 5a is the
+other half of that question, and the seam for it already existed: `SecureResourceLoader`, which every fetch in the
+app passes through.
+
+| upstream | here |
+| --- | --- |
+| a class per directive, each with `pre_request_check`: get the effective directive, ask whether it should execute (`default-src` fallback), match the request against the source list (`ContentSecurityPolicy/Directives/ImageSourceDirective.cpp:27-43`) | one matcher doing the same two steps, because this engine fetches four kinds of thing |
+
+### What is enforced
+
+| request context | directive |
+| --- | --- |
+| image | `img-src` |
+| stylesheet | `style-src` |
+| script | `script-src` |
+| document | `frame-src` |
+| form submission | `form-action` |
+| anything else | `connect-src` |
+
+Source expressions matched: `'none'`, `*`, `'self'`, a scheme (`https:`), a host (`example.com`), a subdomain
+(`*.example.test`), and an optional port. Inline gating moved onto the same object as `allows_inline_script()` /
+`allows_inline_style()`, and `csp_allows_inline_scripts()` in `main.cpp` is gone.
+
+### Evidence — `AetherisSecurityPolicy`, 22 further assertions
+
+| group | cases |
+| --- | --- |
+| empty policy | allows everything, inline scripts included |
+| `'self'` | matches the document's own origin, not another host, and not another scheme on the same host |
+| `default-src` | stands in for `connect-src` when absent, and never overrides a present directive |
+| wildcards | `*` allows any host; `'none'` refuses even the origin |
+| subdomains | `*.example.test` matches `cdn.example.test` and **not** the bare `example.test` |
+| scheme source | `https:` matches any host on https and refuses http |
+| inline | `'unsafe-inline'` in both directions |
+| enforcement | the loader allows a matching image, refuses a foreign one, allows a script from the named host, and refuses one from the document's own host because `script-src` did not name it |
+
+Suite **66/66 twice**, 148.83 s and 160.37 s.
+
+### Not done, and in the row
+
+Nonces and hashes (`'nonce-…'`, `'sha256-…'`), `report-uri`/`report-to`, and header-delivered policies — this engine
+has no response headers, so a `<meta>` element is the only delivery path there is. A path inside a source expression
+(`example.com/images/`) is not matched against the request's path.
+
+### The build fought back, and the guard kept the record straight
+
+Three compile errors in a row were all mine and all ordering: the fetcher is not in scope where the policy is
+installed, the default argument was written on both the declaration and the definition, and the superseded helper
+became an unused function under `-Werror`. `tools/check-build.py` reported 67/67 binaries current before both suite
+runs, so neither pass was against a stale binary.

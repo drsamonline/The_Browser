@@ -1,5 +1,6 @@
 // Mixed content (row 5c) and the trustworthiness question underneath it. The assertions are plain `require` rather
 // than `assert`, because `assert` disappears under NDEBUG and a security test that vanishes is worse than none.
+#include "content_security_policy.hpp"
 #include "security_policy.hpp"
 #include "secure_resource_loader.hpp"
 #include "resource_loader.hpp"
@@ -82,6 +83,66 @@ int main()
     require(secure.load(ResourceRequestContext::Image, http).succeeded(), "the loader lets an image through");
     require(!secure.load(ResourceRequestContext::Script, script).succeeded(), "and refuses a script");
 
-    std::cout << "security policy: mixed content and trustworthiness verified\n";
+// Row 5a: the fetch directives. Upstream asks, per request, for the effective directive and then whether the
+    // request matches that directive's source list (ContentSecurityPolicy/Directives/ImageSourceDirective.cpp:27-43).
+    // These are the same two questions.
+    {
+        auto const page = Url::parse("https://example.test/page.html");
+        auto const cdn = Url::parse("https://cdn.example.test/logo.png");
+        auto const other = Url::parse("https://evil.test/logo.png");
+        auto const plain = Url::parse("http://example.test/logo.png");
+
+        auto const empty = ContentSecurityPolicy::parse("");
+        require(empty.empty(), "an empty policy is empty");
+        require(empty.allows_fetch("img-src", other, page), "no policy allows everything");
+        require(empty.allows_inline_script(), "and inline scripts run");
+
+        auto const images = ContentSecurityPolicy::parse("default-src 'self'; img-src 'self' https://cdn.example.test");
+        require(images.allows_fetch("img-src", page, page), "'self' matches the document's own origin");
+        require(images.allows_fetch("img-src", cdn, page), "an explicit host source matches");
+        require(!images.allows_fetch("img-src", other, page), "another host does not");
+        require(!images.allows_fetch("img-src", plain, page), "nor does another scheme on the same host");
+
+        // default-src stands in for a directive that is absent, and never for one that is present.
+        require(!images.allows_fetch("connect-src", other, page), "connect-src falls back to default-src 'self'");
+        require(images.allows_fetch("connect-src", page, page), "which allows the origin itself");
+
+        auto const wildcard = ContentSecurityPolicy::parse("img-src *");
+        require(wildcard.allows_fetch("img-src", other, page), "* allows any host");
+
+        auto const none = ContentSecurityPolicy::parse("img-src 'none'");
+        require(!none.allows_fetch("img-src", page, page), "'none' refuses even the origin");
+
+        auto const subdomains = ContentSecurityPolicy::parse("img-src *.example.test");
+        require(subdomains.allows_fetch("img-src", cdn, page), "*.example.test matches a subdomain");
+        require(!subdomains.allows_fetch("img-src", page, page), "but not the bare domain");
+
+        auto const by_scheme = ContentSecurityPolicy::parse("img-src https:");
+        require(by_scheme.allows_fetch("img-src", other, page), "a scheme source matches any host on that scheme");
+        require(!by_scheme.allows_fetch("img-src", plain, page), "and not another scheme");
+
+        // Inline: 'unsafe-inline' or nothing restricting it.
+        auto const strict = ContentSecurityPolicy::parse("script-src 'self'; style-src 'self'");
+        require(!strict.allows_inline_script(), "a script-src without 'unsafe-inline' blocks inline scripts");
+        require(!strict.allows_inline_style(), "and style-src does the same for styles");
+        auto const loose = ContentSecurityPolicy::parse("script-src 'unsafe-inline'");
+        require(loose.allows_inline_script(), "'unsafe-inline' allows them");
+        require(loose.allows_inline_style(), "and with no style-src, styles fall back to nothing restricting them");
+
+        // The loader enforces it, on the directive that matches the request's context.
+        ResourceCache policy_cache;
+        ResourceLoader policy_loader(policy_cache,
+            std::vector<std::shared_ptr<ResourceBackend>> { std::make_shared<DummyBackend>() });
+        SecureResourceLoader policy_secure(policy_loader, page);
+        policy_secure.set_content_security_policy(
+            ContentSecurityPolicy::parse("img-src 'self'; script-src https://cdn.example.test"));
+        require(policy_secure.load(ResourceRequestContext::Image, page).succeeded(), "the loader allows a matching image");
+        require(!policy_secure.load(ResourceRequestContext::Image, other).succeeded(), "and refuses a foreign one");
+        require(policy_secure.load(ResourceRequestContext::Script, cdn).succeeded(), "a script from the allowed host runs");
+        require(!policy_secure.load(ResourceRequestContext::Script, page).succeeded(),
+            "while one from the document's own host does not, because script-src did not name it");
+    }
+
+    std::cout << "security policy: mixed content, trustworthiness and CSP fetch directives verified\n";
     return 0;
 }
