@@ -33,6 +33,7 @@ are at the bottom.
 | CSS custom properties `var()` | done, 2026-11-17 — inherited, fallbacks, chains, cycle guard | `substitute_vars()` in `style.cpp` |
 | Media queries | done | `css_parser.cpp` |
 | `transform` (translate/scale) | done | paint pass |
+| `position: sticky` | done, 2026-11-23 — shifted at paint time, clamped to the containing block; `top` and `bottom` both read, `top` wins when they conflict | `render_tree.cpp`, `paint_executor.cpp` |
 | `visibility` | done, 2026-11-18 — inherited, per-box, `collapse` as `hidden` | `RenderTree::emit()` |
 
 ## Layout

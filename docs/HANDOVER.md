@@ -84,6 +84,10 @@ All credited in `CREDITS.md`.
   overflows whenever there is no break opportunity — a word wider than the line stays on one line, and two
   inline boxes with no whitespace between them stay on one line too — and wraps at a space. Five assertions in
   `AetherisTextLayout` now pin it so a future wrap change cannot quietly start wrapping.
+- **Row 3b closed** (2026-11-23): `position: sticky` is a paint-time shift of the box's command range, clamped
+  to its containing block, so scrolling stays repaint-only. Sticky children sort above in-flow siblings because
+  `position: sticky` creates a stacking context — without that the shifted box was painted underneath the next
+  sibling.
 
 ## 2. Current state
 

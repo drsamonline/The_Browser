@@ -325,3 +325,45 @@ wrap pass cannot quietly start wrapping where it should overflow.
 Nothing about the code. About the process: a row written from a *symptom* can name a fault that is not there,
 and this one survived two sessions because nobody measured it. The same probe that closed 2h, 2g and 2b would
 have closed this in ten minutes on the day it was written.
+
+---
+
+## 13. Eighth commit — row 3b: `position: sticky`
+
+| what | where |
+| --- | --- |
+| `StickyRegion`: the box's command range, its geometry, its containing block's bounds, and `top`/`bottom` | `src/rendering/render_tree.hpp` |
+| `emit` records one per sticky box, after its subtree is emitted | `src/rendering/render_tree.cpp` |
+| `PaintExecutor` shifts those commands at paint time: `clamp(scroll + top - node_top, 0, container_bottom - node_bottom)` | `src/rendering/paint_executor.cpp` |
+| Sticky children sort after in-flow siblings, because sticky creates a stacking context | `render_tree.cpp` |
+| Four assertions across four scroll offsets | `Tests/AetherisRendering/TestTextLayout.cpp` |
+
+Why paint time and not layout: the scroll path is documented as repaint-only ("the document is not re-laid out:
+scrolling repaints, it does not reflow"), so a sticky offset computed during layout would be stale the moment
+the page scrolled. The render tree therefore carries the geometry and the paint pass carries the scroll offset.
+
+### Numbers
+
+200x120 viewport, sticky box in a container spanning document rows 60-160, `top: 10px`, magenta so the first
+magenta row is the box:
+
+| scroll | box at surface y | why |
+| --- | --- | --- |
+| 0 | 60 | still in its natural place |
+| 60 | 10 | stuck 10 px below the scrollport top |
+| 100 | 10 | still stuck |
+| 140 | 0 | the container's bottom has arrived; the shift is clamped |
+
+### What went wrong, and what it cost
+
+The first version shifted the box but painted it **underneath** the sibling that follows it in the document, so
+at scroll 120 the magenta was there and invisible. `position: sticky` creates a stacking context; the fix is to
+sort sticky children after the in-flow ones (before the z-index comparison), which is three lines in the child
+ordering. The probe found it by reporting "no magenta" at one scroll offset and "correct" at the others.
+
+### Still not done, and named
+
+`bottom` is read and applied symmetrically, but only `top` is exercised by a test — a page that sticks to the
+bottom edge is untested. Absolute and fixed children still paint in document order rather than after in-flow
+content, which is the same class of bug this row hit; changing it would move pixels this row is not about, so it
+is recorded rather than fixed.

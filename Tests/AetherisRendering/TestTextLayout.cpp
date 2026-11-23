@@ -1,5 +1,7 @@
 #include <render_document.hpp>
 #include <font.hpp>
+#include <paint_executor.hpp>
+#include <software_surface.hpp>
 #include <text_layout.hpp>
 
 #include <layout.hpp>
@@ -139,6 +141,40 @@ int main()
         auto const with_space = inline_rows(spans(" "));
         require(with_space.size() == 2, "two inline boxes are laid out with a space too");
         require(with_space[1] > with_space[0], "a space between them is an opportunity, so the second wraps");
+    }
+
+// Row 3b: `position: sticky`. The box is in normal flow and is shifted at paint time, so it sticks to the
+    // scrollport without a relayout, and stops at its containing block's edge.
+    {
+        std::string const html =
+            "<div style='height:60px;background:#eee'></div>"
+            "<div style='height:100px;background:#ddd'>"
+            "  <div style='height:20px;background:#ff00ff'></div>"
+            "  <div style='height:80px;background:#ccc'></div>"
+            "</div>"
+            "<div style='height:300px;background:#bbb'></div>";
+        std::string const css = "div div:first-child { position: sticky; top: 10px; }";
+        auto document = RenderDocument::create(html, css, 200);
+        require(document.render_tree().sticky_regions().size() == 1, "the sticky box is recorded for paint");
+
+        auto magenta_row = [&](float scroll) {
+            auto surface = document.render_to_surface(200, 120, Color { 255, 255, 255, 255 }, PaintOffset { 0, scroll });
+            for (int y = 0; y < surface.height(); ++y)
+                for (int x = 0; x < surface.width(); ++x) {
+                    auto const color = surface.pixel(x, y);
+                    if (color.red > 200 && color.green < 100 && color.blue > 200)
+                        return y;
+                }
+            return -1;
+        };
+        require(magenta_row(0) == 60, "at the top of the page the box sits where the flow put it");
+        require(magenta_row(60) == 10, "scrolled past it, the box sticks 10 px below the scrollport's top");
+        require(magenta_row(100) == 10, "and keeps sticking");
+        require(magenta_row(140) == 0, "until its containing block's bottom pushes it out, which is the clamp");
+
+        // A page without one pays nothing: the region list is empty and paint takes the old path.
+        auto plain = RenderDocument::create("<div style='height:50px'></div>", "", 200);
+        require(plain.render_tree().sticky_regions().empty(), "no sticky box, no region");
     }
 
     return 0;

@@ -110,12 +110,12 @@ void apply_transform(PaintTransform const& transform, PaintCommand& command)
 RenderTree RenderTree::from_layout(LayoutNode const& root)
 {
     RenderTree tree;
-    emit(root, tree.m_commands, 1.0f, PaintTransform {});
+    emit(root, tree.m_commands, 1.0f, PaintTransform {}, tree.m_sticky_regions);
     return tree;
 }
 
 void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& commands, float inherited_opacity,
-    PaintTransform const& inherited)
+    PaintTransform const& inherited, std::vector<StickyRegion>& sticky_regions)
 {
     if (node.display == LayoutDisplay::None)
         return;
@@ -132,7 +132,7 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
     if (!visible) {
         float const opacity = std::clamp(inherited_opacity * number(node.style.get("opacity"), 1.0f), 0.0f, 1.0f);
         for (auto const& child : node.children)
-            emit(*child, commands, opacity, inherited);
+            emit(*child, commands, opacity, inherited, sticky_regions);
         return;
     }
 
@@ -145,6 +145,11 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
     cumulative.tx = inherited.sx * local.tx + inherited.tx;
     cumulative.ty = inherited.sy * local.ty + inherited.ty;
     std::size_t own_start = commands.size();
+
+    // `position: sticky` is in normal flow, so its geometry is already right; what it needs is a paint-time
+    // shift that keeps it inside the scrollport, clamped to its containing block (row 3b).
+    auto const* position = node.style.get("position");
+    bool const is_sticky = position && *position == "sticky";
 
     float opacity = std::clamp(inherited_opacity * number(node.style.get("opacity"), 1.0f), 0.0f, 1.0f);
     float radius = std::max(0.0f, number(node.style.get("border-radius"), 0.0f));
@@ -239,20 +244,34 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
     for (std::size_t index = own_start; index < commands.size(); ++index)
         apply_transform(cumulative, commands[index]);
 
+    // A sticky box is offset at paint time, so it can end up on top of a sibling that follows it in the
+    // document; `position: sticky` creates a stacking context, which is what puts it above the in-flow
+    // content instead of underneath it. Sticky children therefore sort after the in-flow ones, before the
+    // z-index comparison. (Absolute and fixed children keep their document order here - a separate
+    // question, and changing it would move pixels this row is not about.)
+    auto is_sticky_child = [](LayoutNode const& child) {
+        auto const* position = child.style.get("position");
+        return position && *position == "sticky";
+    };
+    bool any_sticky = false;
     for (auto const& child : node.children) {
         if (z_index(*child) != 0)
             any_z_index = true;
+        if (is_sticky_child(*child))
+            any_sticky = true;
         ordered_children.push_back(child.get());
     }
-    // Only pay for a stable sort when a child actually sets a z-index; the
-    // common case is that every child is auto (0) and the order is unchanged.
-    if (any_z_index) {
-        std::stable_sort(ordered_children.begin(), ordered_children.end(), [](auto const* a, auto const* b) {
-            return z_index(*a) < z_index(*b);
+    // Only pay for a stable sort when a child actually sets a z-index or is sticky; the common case is that
+    // every child is auto (0) and the order is unchanged.
+    if (any_z_index || any_sticky) {
+        std::stable_sort(ordered_children.begin(), ordered_children.end(), [&](auto const* a, auto const* b) {
+            if (z_index(*a) != z_index(*b))
+                return z_index(*a) < z_index(*b);
+            return static_cast<int>(is_sticky_child(*a)) < static_cast<int>(is_sticky_child(*b));
         });
     }
     for (auto const* child : ordered_children)
-        emit(*child, commands, opacity, cumulative);
+        emit(*child, commands, opacity, cumulative, sticky_regions);
 
     if (clips_children) {
         std::size_t tail_start = commands.size();
@@ -262,6 +281,28 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
         // The pop belongs to this node, so it carries this node's transform.
         for (std::size_t index = tail_start; index < commands.size(); ++index)
             apply_transform(cumulative, commands[index]);
+    }
+
+    // The sticky shift covers this box and everything inside it: the range is recorded here, after the
+    // subtree has been emitted, and paint applies it (row 3b).
+    if (is_sticky && commands.size() > own_start) {
+        StickyRegion region;
+        region.begin = own_start;
+        region.end = commands.size();
+        region.node_top = node.rect.y;
+        region.node_height = node.rect.height;
+        auto const& block = node.parent ? node.parent->rect : node.rect;
+        region.containing_top = block.y;
+        region.containing_bottom = block.y + block.height;
+        if (auto const* top = node.style.get("top"); top && !top->empty() && *top != "auto") {
+            region.has_top = true;
+            region.top = css_length_px(top, node.rect.height, 0.0f);
+        }
+        if (auto const* bottom = node.style.get("bottom"); bottom && !bottom->empty() && *bottom != "auto") {
+            region.has_bottom = true;
+            region.bottom = css_length_px(bottom, node.rect.height, 0.0f);
+        }
+        sticky_regions.push_back(region);
     }
 }
 

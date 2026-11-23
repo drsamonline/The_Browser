@@ -9,10 +9,35 @@ namespace {
 // Document coordinates to surface coordinates. Every rectangle the painter
 // touches goes through here, including clip rectangles, or a clip would stay
 // anchored to the document while its contents scrolled out from under it.
-LayoutRect to_surface(LayoutRect rect, PaintOffset offset)
+// Where a `position: sticky` box belongs, given how far the page is scrolled. Positive pushes it down. A box
+// with `top` only is never pushed up, one with `bottom` only is never pushed down, and either way it stops at
+// the edges of its containing block (row 3b).
+float sticky_shift(StickyRegion const& region, float scroll_y, float viewport_height)
+{
+    float const node_bottom = region.node_top + region.node_height;
+    float const min_shift = region.containing_top - region.node_top;
+    float const max_shift = region.containing_bottom - node_bottom;
+
+    float shift = 0;
+    if (region.has_top)
+        shift = scroll_y + region.top - region.node_top;
+    else if (region.has_bottom)
+        shift = scroll_y + viewport_height - region.bottom - node_bottom;
+
+    float const low = region.has_top ? 0.0f : min_shift;
+    float const high = region.has_bottom ? 0.0f : max_shift;
+    if (low <= high)
+        shift = std::clamp(shift, low, high);
+    else
+        shift = std::clamp(shift, std::min(low, high), std::max(low, high));
+    return shift;
+}
+
+LayoutRect to_surface(LayoutRect rect, PaintOffset offset, float sticky = 0.0f)
 {
     rect.x -= offset.x;
     rect.y -= offset.y;
+    rect.y += sticky;
     return rect;
 }
 
@@ -29,9 +54,24 @@ void PaintExecutor::execute(RenderTree const& tree, SoftwareSurface& surface, Pa
 {
     ClipStack clips;
 
-    for (auto const& command : tree.commands()) {
+    // One shift per command, so a sticky box and everything painted inside it move together and nothing else
+    // does. Pages without a sticky box leave this empty and the loop is unchanged.
+    std::vector<float> sticky;
+    if (!tree.sticky_regions().empty()) {
+        sticky.assign(tree.commands().size(), 0.0f);
+        for (auto const& region : tree.sticky_regions()) {
+            float const shift = sticky_shift(region, offset.y, static_cast<float>(surface.height()));
+            for (std::size_t index = region.begin; index < region.end && index < sticky.size(); ++index)
+                sticky[index] = shift;
+        }
+    }
+    auto shift_at = [&](std::size_t index) { return sticky.empty() ? 0.0f : sticky[index]; };
+
+    auto const& commands = tree.commands();
+    for (std::size_t index = 0; index < commands.size(); ++index) {
+        auto const& command = commands[index];
         if (command.push_clip) {
-            clips.push(to_surface(command.rect, offset), command.radius);
+            clips.push(to_surface(command.rect, offset, shift_at(index)), command.radius);
             continue;
         }
         if (command.pop_clip) {
@@ -42,7 +82,7 @@ void PaintExecutor::execute(RenderTree const& tree, SoftwareSurface& surface, Pa
         // Commands entirely outside the surface are skipped before they reach
         // the rasteriser. A long page paints thousands of commands above and
         // below the viewport; culling them here is what keeps scrolling flat.
-        auto rect = to_surface(command.rect, offset);
+        auto rect = to_surface(command.rect, offset, shift_at(index));
         if (rect.x + rect.width <= 0 || rect.y + rect.height <= 0
             || rect.x >= static_cast<float>(surface.width())
             || rect.y >= static_cast<float>(surface.height())) {

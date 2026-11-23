@@ -8,6 +8,22 @@
 
 namespace aetheris::rendering {
 
+// A `position: sticky` box, and the range of paint commands that belong to it. The shift depends on the scroll
+// offset, which changes without a relayout, so it is applied at paint time rather than baked into the geometry
+// here (row 3b). `node_top`/`node_bottom` and the containing block's bounds are in document coordinates.
+struct StickyRegion {
+    std::size_t begin { 0 };
+    std::size_t end { 0 };
+    float node_top { 0 };
+    float node_height { 0 };
+    float containing_top { 0 };
+    float containing_bottom { 0 };
+    float top { 0 }; // `top: <px>`, in effect when has_top
+    bool has_top { false };
+    float bottom { 0 }; // `bottom: <px>`, in effect when has_bottom
+    bool has_bottom { false };
+};
+
 struct PaintCommand {
     enum class Type {
         FillRect,
@@ -64,12 +80,15 @@ public:
     static RenderTree from_layout(LayoutNode const& root);
 
     std::vector<PaintCommand> const& commands() const { return m_commands; }
+    // `position: sticky` boxes, each with the command range it owns. Empty for a page without one.
+    std::vector<StickyRegion> const& sticky_regions() const { return m_sticky_regions; }
 
 private:
     static void emit(LayoutNode const& node, std::vector<PaintCommand>& commands, float inherited_opacity,
-        PaintTransform const& inherited);
+        PaintTransform const& inherited, std::vector<StickyRegion>& sticky_regions);
 
     std::vector<PaintCommand> m_commands;
+    std::vector<StickyRegion> m_sticky_regions;
 };
 
 } // namespace aetheris::rendering
