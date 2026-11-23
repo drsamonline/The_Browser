@@ -76,6 +76,64 @@ TtfFont* load_font()
 
 } // namespace
 
+namespace {
+
+std::string trim_copy(std::string const& value)
+{
+    std::size_t begin = 0, end = value.size();
+    while (begin < end && (value[begin] == ' ' || value[begin] == '\t' || value[begin] == '\'' || value[begin] == '"'))
+        ++begin;
+    while (end > begin && (value[end - 1] == ' ' || value[end - 1] == '\t' || value[end - 1] == '\'' || value[end - 1] == '"'))
+        --end;
+    return value.substr(begin, end - begin);
+}
+
+std::map<std::string, TtfFont*>& face_registry()
+{
+    static std::map<std::string, TtfFont*> faces;
+    return faces;
+}
+
+} // namespace
+
+bool register_font_face(std::string const& family, std::vector<uint8_t> const& data)
+{
+    if (family.empty() || data.empty())
+        return false;
+    auto& faces = face_registry();
+    if (faces.find(family) != faces.end())
+        return true;
+    auto* font = new TtfFont;
+    if (!font->load(data)) {
+        delete font;
+        return false;
+    }
+    faces.emplace(family, font);
+    return true;
+}
+
+TtfFont const* font_for_family(std::string_view family)
+{
+    if (family.empty())
+        return nullptr;
+    auto& faces = face_registry();
+    // `font-family: "Body", serif` - the first name that has a face wins, and a name with no face falls through
+    // to the engine's own font, which is what a browser does with an unknown family.
+    std::string name;
+    for (char c : family) {
+        if (c == ',') {
+            auto found = faces.find(trim_copy(name));
+            if (found != faces.end())
+                return found->second;
+            name.clear();
+            continue;
+        }
+        name += c;
+    }
+    auto found = faces.find(trim_copy(name));
+    return found != faces.end() ? found->second : nullptr;
+}
+
 TtfFont const* active_font()
 {
     static TtfFont* font = load_font();

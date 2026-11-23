@@ -1,4 +1,8 @@
 #include "render_document.hpp"
+
+#include <fstream>
+#include <iterator>
+#include "font_library.hpp"
 #include <functional>
 #include <unordered_set>
 
@@ -152,6 +156,23 @@ RenderDocument RenderDocument::create_from_document(Document document, std::stri
     combined.push_back('\n');
     combined.append(css);
     auto sheet = CssParser {}.parse(combined);
+
+    // `@font-face` rules name a file; read the ones this engine can reach and register them before layout asks
+    // for a family. A `file://` URL or a plain path is read from disk; an http(s) source is not fetched yet, and
+    // the family then falls back to the engine's own font (row 3d1).
+    for (auto const& face : sheet.font_faces) {
+        std::string path = face.source;
+        if (path.rfind("file://", 0) == 0)
+            path = path.substr(7);
+        if (path.empty() || path.rfind("http://", 0) == 0 || path.rfind("https://", 0) == 0
+            || path.rfind("data:", 0) == 0)
+            continue;
+        std::ifstream stream(path, std::ios::binary);
+        if (!stream)
+            continue;
+        std::vector<uint8_t> bytes { std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>() };
+        register_font_face(face.family, bytes);
+    }
 
     // Resolve the first pass into the cache as well as the layout tree, so the first
     // interaction has something to reuse: without this the first :hover re-resolves the

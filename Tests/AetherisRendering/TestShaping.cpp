@@ -6,6 +6,8 @@
 #include "embedded_font.inc"
 #include <font.hpp>
 #include <font_library.hpp>
+#include <render_document.hpp>
+#include <render_tree.hpp>
 #include <shaper.hpp>
 #include <text_layout.hpp>
 #include <ttf_font.hpp>
@@ -227,6 +229,43 @@ int main()
         float const shaped_pair = kern_font.measure("AT");
         float const apart = kern_font.measure("A") + kern_font.measure("T");
         require(shaped_pair < apart, "and GPOS kerns the same pair in the shaped path");
+    }
+
+// Row 3d1: a face declared by `@font-face` is registered, `font-family` selects it, and the pen draws with
+    // it. The fixture writes the embedded font to /tmp and declares it, so the whole path runs without a network.
+    {
+        require(register_font_face("AetherisTestFace", data), "the embedded bytes register as a face");
+        require(font_for_family("AetherisTestFace") != nullptr, "and the family finds it");
+        require(font_for_family("NoSuchFace") == nullptr, "an unknown family has no face");
+        require(font_for_family("NoSuchFace, AetherisTestFace") != nullptr, "a family list falls through to the one that exists");
+
+        StyleProperties named;
+        named.set("font-size", "16px");
+        named.set("font-family", "AetherisTestFace");
+        auto const named_font = Font::from_style(named);
+        require(named_font.face() == font_for_family("AetherisTestFace"), "Font::from_style carries the named face");
+
+        StyleProperties unnamed;
+        unnamed.set("font-size", "16px");
+        unnamed.set("font-family", "NoSuchFace");
+        require(Font::from_style(unnamed).face() == active_font(), "an unknown family falls back to the engine's font");
+
+        // End to end: the stylesheet's `@font-face` is read from disk and registered when the document is built,
+        // and the text command carries the family so paint can resolve the same face.
+        std::string const path = "/tmp/aetheris-fontface-test.ttf";
+        {
+            std::ofstream out(path, std::ios::binary);
+            out.write(reinterpret_cast<char const*>(data.data()), static_cast<std::streamsize>(data.size()));
+        }
+        auto document = RenderDocument::create("<p>text</p>",
+            "@font-face { font-family: 'FromCss'; src: url(" + path + "); } p { font-family: FromCss; }", 200);
+        require(font_for_family("FromCss") != nullptr, "building the document registered the declared face");
+        bool carried = false;
+        for (auto const& command : document.render_tree().commands())
+            if (command.type == PaintCommand::Type::DrawText && command.font_family == "FromCss")
+                carried = true;
+        require(carried, "and the text command carries the family for paint to resolve");
+        std::remove(path.c_str());
     }
 
     std::cout << "shaping: " << latin.size() << " latin glyphs, " << fi.size() << " for \"fi\", clusters are byte offsets\n";

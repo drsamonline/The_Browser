@@ -1,4 +1,5 @@
 #include "paint_executor.hpp"
+#include "font_library.hpp"
 
 #include <algorithm>
 
@@ -105,7 +106,8 @@ void PaintExecutor::execute(RenderTree const& tree, SoftwareSurface& surface, Pa
             surface.stroke_rounded_rect(rect, command.radius, command.edges, color, clip, command.border_style);
             break;
         case PaintCommand::Type::DrawText:
-            surface.draw_text(rect, command.text, command.font_size, color, clip, command.letter_spacing, command.word_spacing);
+            surface.draw_text(rect, command.text, command.font_size, color, clip, command.letter_spacing,
+                command.word_spacing, font_for_family(command.font_family));
             break;
         case PaintCommand::Type::DrawTextDecoration:
             surface.draw_text_decoration(rect, command.text_decoration, color, clip);

@@ -51,6 +51,9 @@ struct PaintCommand {
     // advances, and a run shaped without it would draw tighter than its box (row 2g).
     float letter_spacing { 0 };
     float word_spacing { 0 };
+    // The `font-family` the box asked for. Paint resolves it to a face, so the pen draws with the font layout
+    // measured (row 3d1).
+    std::string font_family;
     std::string text_decoration { "none" };
     float radius { 0 };
     std::shared_ptr<Image const> image;

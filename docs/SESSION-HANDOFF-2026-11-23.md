@@ -534,3 +534,40 @@ That is a second commit's worth of plumbing across five files, and it is written
 
 Nothing about the code. About the row: "three features" was never one row, and saying so cost nothing once the
 measurement (what does the parser do with `@font-face`? — nothing) was in hand.
+
+---
+
+## 18. Thirteenth commit — row 3d1: `@font-face` end to end, for local files
+
+| what | before | after |
+| --- | --- | --- |
+| `@font-face` | skipped with the other unknown at-rules | parsed into `CssStyleSheet::font_faces` (previous commit) |
+| a declared face | nothing loaded it | `RenderDocument` reads a `file://` or plain-path `src` and registers it |
+| `font-family` | inherited and never read | `font_for_family()` resolves the list to the first face that exists, else the engine's own font |
+| `Font`, `FontMetrics` | every path called `active_font()` | carry the resolved face |
+| the pen | `draw_text` called `active_font()` | receives the face paint resolved from the command's family |
+
+That is the plumbing the previous commit named as "five files' worth": `font_library`, `font`, `render_tree`,
+`paint_executor`, `software_surface`, `render_document`.
+
+### Evidence
+
+| assertion | where |
+| --- | --- |
+| the embedded bytes register as a face; the family finds it; an unknown family has none; a comma list falls through to the one that exists | `AetherisShaping` |
+| `Font::from_style` carries the named face, and an unknown family falls back to `active_font()` | same |
+| building a document with `@font-face { src: url(/tmp/…ttf) }` registers the face and puts the family on the text command | same |
+
+Suite **65/65 twice**, 141.13 s and 135.05 s.
+
+### Not done, and in the row
+
+An `http(s)` or `data:` source is not fetched — the family then falls back to the engine's font, which is the same
+thing a browser does for a face that fails to load. `font-weight` and `font-style` do not select among faces of one
+family: the registry is keyed on the family name alone.
+
+### What this row would do differently
+
+The two halves were the right split, and the second half was four compile errors in a row (a member reference, two
+missing includes, an undeclared function) — all mechanical, none a design problem. The lesson is the boring one:
+add the include when you add the use, and read the error's first line rather than the wall of compiler flags.

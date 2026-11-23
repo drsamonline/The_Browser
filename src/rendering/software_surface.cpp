@@ -182,14 +182,14 @@ void SoftwareSurface::stroke_rounded_rect(LayoutRect const& rect, float radius, 
     }
 }
 
-void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, float font_size, Color color, std::optional<RoundedRect> clip, float letter_spacing, float word_spacing)
+void SoftwareSurface::draw_text(LayoutRect const& rect, std::string_view text, float font_size, Color color, std::optional<RoundedRect> clip, float letter_spacing, float word_spacing, TtfFont const* face)
 {
     if (text.empty() || font_size <= 0)
         return;
 
     // Prefer real outlines when a font is available; the embedded bitmap font
     // remains the fallback so the engine still renders without one.
-    if (auto* font = active_font()) {
+    if (auto* font = face ? face : active_font()) {
         float scale = font_size / static_cast<float>(font->units_per_em() > 0 ? font->units_per_em() : 1000);
         float pen_x = rect.x;
         int baseline = static_cast<int>(std::lround(rect.y + static_cast<float>(font->ascender()) * scale));
