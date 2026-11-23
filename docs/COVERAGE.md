@@ -33,6 +33,7 @@ are at the bottom.
 | CSS custom properties `var()` | done, 2026-11-17 — inherited, fallbacks, chains, cycle guard | `substitute_vars()` in `style.cpp` |
 | Media queries | done | `css_parser.cpp` |
 | `@font-face` | done for local files, 2026-11-23 — parsed into `CssStyleSheet::font_faces`, a `file://`/path `src` is read and registered, `font-family` selects it through `Font`/`FontMetrics`/`draw_text`. Not done: `http(s)`/`data:` sources are not fetched, and weight/style do not pick among a family's faces | `css_parser.cpp`, `font_library.cpp`, `font.cpp`, `render_document.cpp` |
+| Transitions, animations | **partial**, 2026-11-23 — timing functions (`ease*`, `linear`, `cubic-bezier()`, `steps()`) and a `Transition` value model exist and are tested; nothing drives them from a clock or from a style change yet | `easing.cpp`, `transition.cpp`, `AetherisEasing` |
 | Flexbox: `flex` shorthand, basis, grow, shrink, `justify-content`, `align-items` | done, 2026-11-23 — `auto` basis has no intrinsic-width pass, so an item with neither basis nor width starts at 0 and grows | `layout.cpp`, `style.cpp`, `AetherisLayout` |
 | Grid: tracks, areas, explicit placement | done, 2026-11-23 — `grid-template-columns`/`rows` tracks, `grid-template-areas` + `grid-area`, `grid-column`/`grid-row` with `start / end`, and auto-placement into the first free cell. Not read: named lines, `span n`, `auto-fit`/`minmax`, `grid-auto-flow: column` | `layout.cpp`, `AetherisLayout` |
 | `transform` (translate/scale) | done | paint pass |

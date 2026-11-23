@@ -106,6 +106,10 @@ All credited in `CREDITS.md`.
   served the first one's bitmaps. What remains for 3d1 is fetching the source and making `font-family` select a
   face — `active_font()` is the only font the paint path can reach today. 3d2 (transitions) and 3d3 (animations)
   are separate rows now, because they are separate features.
+- **Row 3d2 started** (2026-11-23): the timing-function and transition arithmetic. `easing.cpp` ports upstream's
+  cubic-bezier solve and `transition.cpp` holds a `Transition` with `value_at(now)`. What is missing is a clock the
+  paint pass reads and the hook from a style *change* to a transition starting — `AetherisEasing` covers the part
+  that does not need either (20 assertions; `ease(0.5) = 0.802403`).
 
 ## 2. Current state
 

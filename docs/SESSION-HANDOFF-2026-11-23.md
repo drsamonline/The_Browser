@@ -571,3 +571,44 @@ family: the registry is keyed on the family name alone.
 The two halves were the right split, and the second half was four compile errors in a row (a member reference, two
 missing includes, an undeclared function) — all mechanical, none a design problem. The lesson is the boring one:
 add the include when you add the use, and read the error's first line rather than the wall of compiler flags.
+
+---
+
+## 19. Fourteenth commit — row 3d2 started: the curve and the arithmetic
+
+A transition is a curve plus a clock. This commit is the curve and the arithmetic, both of which can be checked
+without a clock, a document or a pixel.
+
+| what | where |
+| --- | --- |
+| `Easing`: the four named curves, `linear`, `cubic-bezier(a,b,c,d)`, `steps(n[, jump-start|jump-end])` | `src/rendering/easing.{hpp,cpp}` |
+| the cubic-bezier solve | ported from `LibWeb/Rust/src/css/animation.rs:217-300`: Newton-Raphson for eight steps at 1e-7, bisection for sixty-four, and the tangent extension outside [0, 1] that css-easing-1 asks for |
+| `Transition`: property, from, to, duration, delay, start time, easing, `value_at(now)`, `finished_at(now)` | `src/rendering/transition.{hpp,cpp}` |
+| `transition_spec_from_style()`: the shorthand in any token order | same |
+| 20 assertions: the curves at 0, 0.5 and 1; steps; a transition before, during and after its delay; a zero duration; the shorthand both ways round | `Tests/AetherisRendering/TestEasing.cpp` (new binary, so the suite is **66**) |
+
+### Numbers
+
+| curve | at 0.5 |
+| --- | --- |
+| `linear` | 0.5 |
+| `ease` | **0.802403** (the standard value is 0.8024) |
+| `ease-in` | below 0.5 |
+| `ease-out` | above 0.5 |
+| `ease-in-out` | 0.5 |
+| `cubic-bezier(0, 0, 1, 1)` | 0.3 at input 0.3 — the solve agreeing with the identity |
+| `steps(2)` at 0.4 / 0.6 | 0.0 / 0.5 |
+
+Suite **66/66 twice**, 136.06 s and 146.45 s.
+
+### What 3d2 still needs
+
+1. **A clock.** `render_to_surface` is static: nothing advances time. The window loop has frames, so the clock
+   belongs there and on `RenderDocument`, and paint reads it.
+2. **The trigger.** A transition starts when a property's computed value changes. The style cache already notices
+   which nodes are dirty; it does not record *which property* moved, which is what starting a transition needs.
+
+### What this row would do differently
+
+Nothing so far — this is the part of a feature that can be built and proven before the awkward part, and the row
+says exactly where the awkward part starts.

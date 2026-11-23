@@ -22,6 +22,12 @@ add_executable(TestAetherisBidi
 target_link_libraries(TestAetherisBidi PRIVATE AetherisRendering)
 add_test(NAME AetherisBidi COMMAND TestAetherisBidi)
 
+add_executable(TestAetherisEasing
+    TestEasing.cpp
+)
+target_link_libraries(TestAetherisEasing PRIVATE AetherisRendering)
+add_test(NAME AetherisEasing COMMAND TestAetherisEasing)
+
 add_executable(TestAetherisCss
     TestCss.cpp
 )
