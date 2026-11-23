@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iterator>
 #include "font_library.hpp"
+#include <cstdlib>
 #include <functional>
 #include <unordered_set>
 
@@ -472,10 +473,53 @@ SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color c
     return render_to_surface(width, height, clear_color, PaintOffset {});
 }
 
+void RenderDocument::start_opacity_transition(DomNode const* node, double to, double duration, double delay, Easing easing)
+{
+    if (!node)
+        return;
+    PendingTransition pending;
+    pending.node = node;
+    pending.transition.property = "opacity";
+    // The start value is whatever the node's own style says today, which is what a transition interpolates from.
+    StyleResolver resolver;
+    auto style = resolver.resolve(*node, m_stylesheet);
+    auto const* opacity = style.get("opacity");
+    pending.transition.from = opacity ? std::strtod(opacity->c_str(), nullptr) : 1.0;
+    pending.transition.to = to;
+    pending.transition.duration = duration;
+    pending.transition.delay = delay;
+    pending.transition.easing = easing;
+    pending.transition.start_time = m_time;
+    m_transitions.push_back(pending);
+}
+
 SoftwareSurface RenderDocument::render_to_surface(int width, int height, Color clear_color, PaintOffset offset) const
 {
     SoftwareSurface surface(width, height, clear_color);
-    PaintExecutor {}.execute(m_render_tree, surface, offset);
+    if (m_transitions.empty()) {
+        PaintExecutor {}.execute(m_render_tree, surface, offset);
+        return surface;
+    }
+
+    // A transition in flight changes paint, not geometry: the render tree is rebuilt from the existing layout
+    // (which is cheap - no style resolution, no layout) with the values at this instant, and nothing is relaid out.
+    std::unordered_map<LayoutNode const*, float> overrides;
+    for (auto const& pending : m_transitions) {
+        float const value = static_cast<float>(pending.transition.value_at(m_time));
+        std::function<bool(LayoutNode const&)> find = [&](LayoutNode const& candidate) {
+            if (candidate.dom_node == pending.node) {
+                overrides[&candidate] = value;
+                return true;
+            }
+            for (auto const& child : candidate.children)
+                if (find(*child))
+                    return true;
+            return false;
+        };
+        find(*m_layout_root);
+    }
+    auto tree = RenderTree::from_layout(*m_layout_root, &overrides);
+    PaintExecutor {}.execute(tree, surface, offset);
     return surface;
 }
 

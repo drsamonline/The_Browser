@@ -651,3 +651,46 @@ the exact condition it was written for.
 
 Run `python3 tools/check-build.py` before trusting a green suite. Its 57-pending-steps answer is the reason the 3d2
 clock patch is parked rather than committed.
+
+---
+
+## 21. Sixteenth commit — row 3d2 closed: transitions run
+
+The parked patch was verified first thing in a healthy environment, and the guard from the previous commit was used
+to check the build before the suite was trusted — it reported 57 pending steps and stopped exactly the mistake it
+was written for.
+
+| part | where |
+| --- | --- |
+| the curve: `ease`, `linear`, `ease-in/out/in-out`, `cubic-bezier()`, `steps()`, ported from upstream's solve | `easing.cpp` |
+| the arithmetic: `Transition::value_at(now)`, the `transition` shorthand in any order | `transition.cpp` |
+| the clock: `RenderDocument::set_time()`, `start_opacity_transition()` | `render_document.cpp` |
+| paint: `RenderTree::from_layout(root, opacity_overrides)`, and `render_to_surface` rebuilding the tree from the existing layout when a transition is live | `render_tree.cpp`, `render_document.cpp` |
+
+### Numbers — 50x50 red box, 200x100 page, opacity 1 → 0, linear, 1 s
+
+| t | pixel at (20, 20) | rect |
+| --- | --- | --- |
+| 0.00 | rgba(255, 0, 0) | x=10 y=10 50x50 |
+| 0.25 | rgba(255, 64, 64) | unchanged |
+| 0.50 | rgba(255, 128, 128) | unchanged |
+| 0.75 | rgba(255, 192, 192) | unchanged |
+| 1.00 | rgba(255, 255, 255) | unchanged |
+
+`layout_passes()` 1 before, 1 after: **a transition repaints, it does not reflow.** Suite **66/66 twice**, 211.64 s
+and 185.69 s.
+
+### The guard earned its keep on its first day
+
+`tools/check-build.py` reported `57 step(s) pending` when this session resumed, which is the state that twice made a
+green suite meaningless. Two false positives were fixed while using it: `tools/*.py` counted as compiled sources, and
+comparing against the *oldest* binary made a test-only edit report `aetheris` as stale. It now compares the newest
+source against the newest binary, and checks ninja's pending steps as well.
+
+### Still open in this row's subject
+
+| gap | what it needs |
+| --- | --- |
+| the trigger | a style change starting a transition: the cache records which nodes are dirty, not which property moved |
+| properties | only `opacity` is interpolated; colour, transform and lengths are next |
+| `transition` shorthand | the first transition in a comma list is read, the rest are not |

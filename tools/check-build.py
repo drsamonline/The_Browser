@@ -25,7 +25,9 @@ import shutil
 import subprocess
 import sys
 
-SOURCE_ROOTS = ("src", "Tests", "tools")
+# `tools/` is deliberately absent: nothing in it is compiled into the binaries, and counting it made the guard
+# report its own edit as a stale build.
+SOURCE_ROOTS = ("src", "Tests")
 SOURCE_SUFFIXES = (".cpp", ".hpp", ".h", ".inc", ".txt", ".sh", ".py")
 
 
@@ -64,16 +66,27 @@ def main(argv):
     positional = [argument for argument in argv if not argument.startswith("--")]
     quiet = "--quiet" in argv
     build_dir = positional[0] if positional else "build"
-    binary = positional[1] if len(positional) > 1 else "bin/aetheris"
+    binary = positional[1] if len(positional) > 1 else None
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    target = os.path.join(root, build_dir, binary)
+    build_path = os.path.join(root, build_dir)
 
-    if not os.path.isdir(os.path.join(root, build_dir)):
+    if not os.path.isdir(build_path):
         print(f"check-build: no build directory at {build_dir}", file=sys.stderr)
         return 2
-    if not os.path.isfile(target):
-        print(f"check-build: {binary} does not exist - the build has never linked it", file=sys.stderr)
+
+    # Every binary the build produces, unless one is named. Checking only `aetheris` reported a test-only edit as a
+    # stale build, which is the kind of false positive that teaches a reader to ignore the guard.
+    if binary:
+        targets = [os.path.join(build_path, binary)]
+    else:
+        bin_dir = os.path.join(build_path, "bin")
+        targets = sorted(
+            os.path.join(bin_dir, entry) for entry in os.listdir(bin_dir)
+            if os.path.isfile(os.path.join(bin_dir, entry))
+        ) if os.path.isdir(bin_dir) else []
+    if not targets:
+        print(f"check-build: no binaries under {build_dir}/bin - nothing has been linked", file=sys.stderr)
         return 1
 
     status = 0
@@ -88,16 +101,21 @@ def main(argv):
 
     sources = newest_sources(root)
     if sources:
-        target_mtime = os.stat(target).st_mtime
-        newer = [(mtime, path) for mtime, path in sources if mtime > target_mtime]
-        if newer:
-            print(f"check-build: {binary} is older than {len(newer)} source file(s)", file=sys.stderr)
-            for _, path in newer[:5]:
-                print(f"  newer: {os.path.relpath(path, root)}", file=sys.stderr)
+        # Compare against the *newest* binary: if nothing was linked after the last source edit, the build did not
+        # run. Comparing against the oldest instead made a test-only edit report `aetheris` as stale, which is true
+        # and useless - aetheris does not depend on the tests.
+        newest_mtime, newest_path = sources[0]
+        newest_binary = max(targets, key=lambda path: os.stat(path).st_mtime)
+        newest_binary_mtime = os.stat(newest_binary).st_mtime
+        if newest_binary_mtime < newest_mtime:
+            print(f"check-build: nothing was linked after {os.path.relpath(newest_path, root)} changed", file=sys.stderr)
+            for mtime, path in sources[:5]:
+                if mtime > newest_binary_mtime:
+                    print(f"  newer: {os.path.relpath(path, root)}", file=sys.stderr)
             status = 1
 
     if status == 0 and not quiet:
-        print(f"check-build: {binary} is current")
+        print(f"check-build: all {len(targets)} binary/binaries in {build_dir}/bin are current")
     return status
 
 

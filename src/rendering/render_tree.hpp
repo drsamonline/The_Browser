@@ -4,6 +4,7 @@
 #include "image.hpp"
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace aetheris::rendering {
@@ -80,7 +81,10 @@ struct PaintTransform {
 
 class RenderTree {
 public:
-    static RenderTree from_layout(LayoutNode const& root);
+    // `opacity_overrides` lets a caller replace a node's own opacity - it is how a transition in flight reaches
+    // paint without a relayout. Null means "use the stylesheet's value", which is the ordinary case (row 3d2).
+    static RenderTree from_layout(LayoutNode const& root,
+        std::unordered_map<LayoutNode const*, float> const* opacity_overrides = nullptr);
 
     std::vector<PaintCommand> const& commands() const { return m_commands; }
     // `position: sticky` boxes, each with the command range it owns. Empty for a page without one.
@@ -88,7 +92,8 @@ public:
 
 private:
     static void emit(LayoutNode const& node, std::vector<PaintCommand>& commands, float inherited_opacity,
-        PaintTransform const& inherited, std::vector<StickyRegion>& sticky_regions);
+        PaintTransform const& inherited, std::vector<StickyRegion>& sticky_regions,
+        std::unordered_map<LayoutNode const*, float> const* opacity_overrides);
 
     std::vector<PaintCommand> m_commands;
     std::vector<StickyRegion> m_sticky_regions;

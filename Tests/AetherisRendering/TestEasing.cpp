@@ -1,5 +1,8 @@
 // The timing-function and transition arithmetic, on its own: no font, no document, no pixels. Row 3d2 starts here
 // because a transition is a curve plus a clock, and the curve can be checked without either.
+#include <render_document.hpp>
+#include <software_surface.hpp>
+#include <functional>
 #include "easing.hpp"
 #include "transition.hpp"
 
@@ -112,6 +115,43 @@ int main()
         StyleProperties explicit_none;
         explicit_none.set("transition", "none");
         require(!transition_spec_from_style(explicit_none).declared, "`none` declares nothing to animate");
+    }
+
+// The clock: a transition on a box's opacity, rendered at five instants. The pixel moves and the geometry does
+    // not - that is the claim the paint path was built on (a transition repaints, it does not reflow).
+    {
+        auto document = RenderDocument::create("<div class='box'></div>",
+            ".box { width: 50px; height: 50px; background: #ff0000; margin: 10px; }", 200);
+        DomNode* box = nullptr;
+        std::function<void(DomNode&)> walk = [&](DomNode& node) {
+            if (node.name == "div")
+                box = &node;
+            for (auto& child : node.children)
+                walk(*child);
+        };
+        walk(const_cast<DomNode&>(document.document().root()));
+        require(box != nullptr, "the fixture has a box");
+
+        auto const geometry_before = document.layout_root().children.front()->rect;
+        auto const passes_before = document.layout_passes();
+        document.start_opacity_transition(box, 0.0, 1.0, 0.0, easing_from_string("linear"));
+
+        auto const pixel_at = [&](double time) {
+            document.set_time(time);
+            auto surface = document.render_to_surface(200, 100, Color { 255, 255, 255, 255 });
+            return surface.pixel(20, 20);
+        };
+        auto const start = pixel_at(0.0);
+        auto const middle = pixel_at(0.5);
+        auto const end = pixel_at(1.0);
+        require(start.red == 255 && start.green == 0, "at t=0 the box is its own colour");
+        require(middle.red == 255 && middle.green == 128, "halfway it is halfway to the background");
+        require(end.red == 255 && end.green == 255, "at the end it has arrived");
+
+        auto const geometry_after = document.layout_root().children.front()->rect;
+        require(geometry_after.x == geometry_before.x && geometry_after.width == geometry_before.width,
+            "the geometry did not move");
+        require(document.layout_passes() == passes_before, "and nothing was laid out again");
     }
 
     std::cout << "easing: ease(0.5)=" << easing_from_string("ease").at(0.5)

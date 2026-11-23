@@ -1,6 +1,7 @@
 #pragma once
 
 #include "document.hpp"
+#include "transition.hpp"
 #include "layout.hpp"
 #include "paint_executor.hpp"
 #include "render_tree.hpp"
@@ -37,6 +38,18 @@ public:
     // Size of the laid-out document, which is what the viewport scrolls within.
     LayoutRect document_rect() const { return m_layout_root->rect; }
     RenderTree const& render_tree() const { return m_render_tree; }
+
+    // The document clock, in seconds. Nothing advances it by itself: a host that has frames calls set_time() each
+    // frame, which is what upstream's event loop does with a frame timestamp
+    // (LibWeb/HTML/EventLoop/EventLoop.cpp:395 -> Document::update_animations_and_send_events). Paint reads it
+    // through any transition that is in flight (row 3d2).
+    void set_time(double seconds) { m_time = seconds; }
+    double time() const { return m_time; }
+
+    // Starts a transition on a DOM node's `opacity`, from its current value to `to`, over `duration` seconds after
+    // `delay`. This is the API a style change will call once the cache records which property moved; until then it
+    // is how a transition is started at all.
+    void start_opacity_transition(DomNode const* node, double to, double duration, double delay = 0, Easing easing = {});
 
     SoftwareSurface render_to_surface(int width, int height, Color clear_color = { 0, 0, 0, 0 }) const;
     // Paints the viewport that starts at `offset` in document coordinates. The
@@ -120,6 +133,12 @@ private:
     ResourceCache m_resources;
     ImageCache m_images;
     std::string m_source_url;
+    double m_time { 0 };
+    struct PendingTransition {
+        DomNode const* node { nullptr };
+        Transition transition;
+    };
+    std::vector<PendingTransition> m_transitions;
 };
 
 } // namespace aetheris::rendering

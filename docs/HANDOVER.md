@@ -106,10 +106,11 @@ All credited in `CREDITS.md`.
   served the first one's bitmaps. What remains for 3d1 is fetching the source and making `font-family` select a
   face — `active_font()` is the only font the paint path can reach today. 3d2 (transitions) and 3d3 (animations)
   are separate rows now, because they are separate features.
-- **Row 3d2 started** (2026-11-23): the timing-function and transition arithmetic. `easing.cpp` ports upstream's
-  cubic-bezier solve and `transition.cpp` holds a `Transition` with `value_at(now)`. What is missing is a clock the
-  paint pass reads and the hook from a style *change* to a transition starting — `AetherisEasing` covers the part
-  that does not need either (20 assertions; `ease(0.5) = 0.802403`).
+- **Row 3d2 closed** (2026-11-23): transitions run. The curve (`ease(0.5) = 0.802403`, ported from upstream's
+  cubic-bezier solve), the arithmetic (`Transition::value_at`), and a clock — `RenderDocument::set_time()` plus
+  `start_opacity_transition()`, with paint rebuilding the render tree from the existing layout so a transition
+  **repaints without reflowing** (measured: red to white in five steps, rect unchanged, `layout_passes()` stays 1).
+  What is missing: the trigger (a style change starting one) and every property but `opacity`.
 - **Row 4d closed** (2026-11-23): `tools/check-build.py` fails when ninja has pending steps or when a source is newer
   than the binary, and names the newer files. It exists because twice in one session a build was killed and the next
   suite passed on the previous binary. Run it before trusting a green suite: `python3 tools/check-build.py`.

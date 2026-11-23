@@ -107,15 +107,16 @@ void apply_transform(PaintTransform const& transform, PaintCommand& command)
 
 } // namespace
 
-RenderTree RenderTree::from_layout(LayoutNode const& root)
+RenderTree RenderTree::from_layout(LayoutNode const& root, std::unordered_map<LayoutNode const*, float> const* opacity_overrides)
 {
     RenderTree tree;
-    emit(root, tree.m_commands, 1.0f, PaintTransform {}, tree.m_sticky_regions);
+    emit(root, tree.m_commands, 1.0f, PaintTransform {}, tree.m_sticky_regions, opacity_overrides);
     return tree;
 }
 
 void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& commands, float inherited_opacity,
-    PaintTransform const& inherited, std::vector<StickyRegion>& sticky_regions)
+    PaintTransform const& inherited, std::vector<StickyRegion>& sticky_regions,
+    std::unordered_map<LayoutNode const*, float> const* opacity_overrides)
 {
     if (node.display == LayoutDisplay::None)
         return;
@@ -132,7 +133,7 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
     if (!visible) {
         float const opacity = std::clamp(inherited_opacity * number(node.style.get("opacity"), 1.0f), 0.0f, 1.0f);
         for (auto const& child : node.children)
-            emit(*child, commands, opacity, inherited, sticky_regions);
+            emit(*child, commands, opacity, inherited, sticky_regions, opacity_overrides);
         return;
     }
 
@@ -151,7 +152,12 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
     auto const* position = node.style.get("position");
     bool const is_sticky = position && *position == "sticky";
 
-    float opacity = std::clamp(inherited_opacity * number(node.style.get("opacity"), 1.0f), 0.0f, 1.0f);
+    float own_opacity = number(node.style.get("opacity"), 1.0f);
+    if (opacity_overrides) {
+        if (auto found = opacity_overrides->find(&node); found != opacity_overrides->end())
+            own_opacity = found->second;
+    }
+    float opacity = std::clamp(inherited_opacity * own_opacity, 0.0f, 1.0f);
     float radius = std::max(0.0f, number(node.style.get("border-radius"), 0.0f));
 
     bool clips_children = node.style.get("overflow") && (*node.style.get("overflow") == "hidden" || *node.style.get("overflow") == "clip");
@@ -280,7 +286,7 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
         });
     }
     for (auto const* child : ordered_children)
-        emit(*child, commands, opacity, cumulative, sticky_regions);
+        emit(*child, commands, opacity, cumulative, sticky_regions, opacity_overrides);
 
     if (clips_children) {
         std::size_t tail_start = commands.size();
