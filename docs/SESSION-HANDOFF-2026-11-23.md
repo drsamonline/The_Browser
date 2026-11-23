@@ -1239,3 +1239,59 @@ regeneration had silently reverted two earlier edits - the `#include` and the `r
 was rebuilt from `git show HEAD:` rather than from the working file. Both were re-applied and checked with
 `grep` before the build. Slicing source by line number is only safe when the boundary is printed and read
 first, which is what the second attempt did.
+
+## 33. Twenty-eighth commit — row 3j, second term: measured, and the cheap fix rejected
+
+Section 32 fixed selector matching and left row 3j `[~]`, naming the per-node `StyleProperties` as
+what remained. This commit measures that term and does not change any engine code, because the fix
+that looked obvious was measured and was worse.
+
+### What a style actually is
+
+`tools/style-cost.cpp` counts what a resolved style holds and splits the resolve in two:
+
+| measurement | value |
+| --- | --- |
+| properties in a resolved style | **17** |
+| resolve, full sheet | 0.114 ms per element |
+| resolve, sheet with no rules at all | 0.074 ms per element (**65%**) |
+| so: selector matching | 0.040 ms per element (35%) |
+
+Two things this corrects. Section 32's cell guessed "~80 string insertions per node"; the real
+number is 17. And the property work is not a remainder - it is the larger half of what is left.
+
+### The hypothesis, and its rejection
+
+The map grows by rehashing, so reserve it. Priced in isolation the idea looked strong: the same 17
+inserts cost 0.039 ms per style, and 0.005 ms with a `reserve(24)` - an 8x difference on the
+component that is 65% of the cost.
+
+Built alternately, five runs each, on the measure the change targets:
+
+| build | "no rules at all", five runs | median |
+| --- | --- | --- |
+| with `reserve(24)` | 0.068, 0.063, 0.069, 0.064, 0.059 ms | **0.064 ms** |
+| without it (HEAD) | 0.048, 0.048, 0.075, 0.047, 0.048 ms | **0.048 ms** |
+
+The reserve is **33% slower**. The reason is that `StyleProperties` is not one object per element:
+text nodes, generated boxes, pseudo-element styles and the temporaries built inside
+`apply_declaration` all construct one, and most of them hold a property or two. Reserving 24 buckets
+makes every one of them pay for a table it never fills, and that cost is larger than the rehashes it
+saves on the styles that do reach seventeen.
+
+The change was reverted rather than shipped, and `git status` was clean before this commit. That is
+the whole of this commit's code change: none.
+
+### What the row now says
+
+Row 3j stays `[~]`, with the numbers above in its cell. What is left is structural, not tuning: a
+style is seventeen string-keyed inserts into a hash map, and the honest fix is a typed property set
+or interned property ids - which changes every consumer of `StyleProperties` and is a session of its
+own, not a tail of this row.
+
+### On trusting a number from this box
+
+Identical suite runs measured 126.97 s and 164.79 s back to back, and the same probe line varied
+from 0.047 to 0.075 ms across five runs. Any claim smaller than about 20% is not measurable here;
+that is why the reserve decision was taken on an alternating build rather than on one before/after
+pair, and why it was taken in the opposite direction to the one expected.

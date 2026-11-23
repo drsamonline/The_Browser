@@ -436,8 +436,12 @@ Measured 2026-11-23 with `tools/layout-cost.cpp`, which times parse, style resol
   is cached (`StyleProperties::fingerprint`, invalidated by `set()`), and the class test scans the attribute in
   place instead of building an `istringstream` per rule x node. Style is now **2.4-5.4x faster** and the whole
   suite runs in 140 s instead of 400 s.
-- **Still open:** the per-node `StyleProperties` - an `unordered_map<string, string>` built from ~80 string
-  insertions for every node. That is most of what remains of the style pass and the next thing to take.
+- **Still open, and measured:** a resolved style holds **17 properties**, and resolving an element costs
+  0.114 ms of which **0.074 ms (65%) is property work** and 0.040 ms (35%) is matching. Reserving the map was
+  tried and was **33% slower** on an alternating build (0.064 ms vs 0.048 ms), because text nodes, generated
+  boxes and the temporaries inside `apply_declaration` all build a `StyleProperties` and most hold one or two
+  properties. Reverted. The real fix is structural - a typed property set or interned ids - and it touches
+  every consumer of `StyleProperties`.
 - **Re-measure before trusting a number.** The 2-core pod is noisy: the same 200-rule case gave 1252 ms and
   3690 ms on different runs. The direction survives the noise; the constant is good to about ±2x.
 
