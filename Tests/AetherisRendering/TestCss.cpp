@@ -1,4 +1,5 @@
 #include <color.hpp>
+#include <render_document.hpp>
 #include <content_value.hpp>
 #include <css_parser.hpp>
 #include <document.hpp>
@@ -225,6 +226,39 @@ int main()
         auto const changed = properties.fingerprint();
         properties.set("background-color", "#333333");
         require(properties.fingerprint() != changed, "adding a property invalidates it too");
+    }
+
+    // Row 0.8: `rgb()` and `rgba()` are parsed, and a colour the parser cannot read paints nothing rather
+    // than an opaque black box. Every rgba() background on a real page used to become black.
+    {
+        auto const half = Color::parse("rgba(0, 0, 255, 0.5)");
+        require(half.has_value(), "rgba() parses");
+        require(half->red == 0 && half->green == 0 && half->blue == 255, "and its channels");
+        require(half->alpha >= 127 && half->alpha <= 128, "with alpha 0.5 as 127 or 128 of 255");
+
+        auto const opaque = Color::parse("rgb(0,0,255)");
+        require(opaque.has_value() && opaque->alpha == 255, "rgb() is opaque");
+
+        auto const percent = Color::parse("rgba(0, 0, 255, 50%)");
+        require(percent.has_value() && percent->alpha >= 127 && percent->alpha <= 128, "alpha may be a percentage");
+
+        auto const channels = Color::parse("rgb(100%, 0%, 0%)");
+        require(channels.has_value() && channels->red == 255, "channels may be percentages");
+
+        require(Color::parse("transparent")->alpha == 0, "transparent is still transparent");
+        require(!Color::parse("not-a-colour").has_value(), "an unknown colour does not parse");
+        require(!Color::parse("rgb(1,2)").has_value(), "a short rgb() does not parse");
+
+        // The paint side: a background the parser cannot read must leave what is underneath. A red parent
+        // and a child with a colour nobody can parse - the child's pixels stay the parent's red.
+        auto document = RenderDocument::create(
+            "<div style='background-color: #ff0000; width: 100px; height: 40px'>"
+            "<div style='width: 50px; height: 40px; background-color: bogus(1,2,3)'></div></div>",
+            "", 200);
+        auto const surface = document.render_to_surface(120, 60, Color { 255, 255, 255, 255 });
+        auto const pixel = surface.pixel(10, 10);
+        require(pixel.red == 255 && pixel.green == 0 && pixel.blue == 0,
+            "an unreadable background paints nothing, so the parent shows through");
     }
 
     return 0;

@@ -380,3 +380,46 @@ painted a background at all. It is row 0.8, with the probe to run named in it.
 whichever build directory is stale and build both. The pod recycled four times today; each time cost
 ten to forty minutes of rediscovery, twice on the compiler and once on the CMake cache. It reports
 what is missing under `--check` and changes nothing.
+
+## 10. Tenth commit — row 0.8: two colour bugs, and the page loses its black boxes
+
+The row asked for three fixtures: no background, `transparent`, and `rgba(0,0,0,0)`, over a red parent.
+The first two showed the parent's red. The third painted **black**.
+
+### Two bugs, both in colour
+
+**`Color::parse` had no `rgb()` or `rgba()` at all.** It handled named colours, `#rgb`, `#rrggbb`,
+`#rrggbbaa` and `transparent`. Every `rgba()` background on a real page therefore failed to parse -
+and a real page uses them for most of its backgrounds.
+
+**An unparseable colour painted opaque black.** `PaintExecutor::command_color` was
+`Color::parse(...).value_or(Color { 0, 0, 0, 255 })`, so anything the parser did not understand became
+a black box over the page. CSS drops an invalid declaration instead, so the paint side now falls back
+to fully transparent **for fills** - what is underneath shows through - and keeps black for text,
+because a page with no colour is still a page with text.
+
+| fixture | before | after |
+| --- | --- | --- |
+| no background | parent red | parent red |
+| `transparent` | parent red | parent red |
+| `rgba(0,0,0,0)` | **black** | parent red |
+| `rgba(0,0,255,0.5)` over red | — | **(127,0,128)** |
+| `rgba(0,0,255,50%)` over red | — | **(127,0,128)** |
+
+On the real page the black boxes are gone: the contents sidebar renders white, with a rule under its
+heading and indented sub-items.
+
+### A test that flaked, and why it is worth knowing
+
+`WindowCore` and `WindowGeometry` failed once in a full suite run - "the frame after Tab is readable" -
+and passed on re-run and on the run after. They drive the browser binary and read a frame back, so on a
+busy pod they flake. The suite was run three times to get two clean passes rather than one green run
+and a claim. Worth remembering before treating a red window test as a regression: run it again alone
+first.
+
+### What the page looks like now
+
+Styled, and structurally recognisable: a contents sidebar, blue links, indented sub-items, a rule under
+the heading. Not yet a reproduction of Wikipedia - the article body is missing from the viewport and
+the layout is the sidebar's - so the next question is what decides which content lands where, not what
+colour it is.

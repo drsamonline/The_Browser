@@ -46,7 +46,13 @@ LayoutRect to_surface(LayoutRect rect, PaintOffset offset, float sticky = 0.0f)
 
 Color PaintExecutor::command_color(PaintCommand const& command)
 {
-    Color color = Color::parse(command.color).value_or(Color { 0, 0, 0, 255 });
+    // A colour the parser does not understand paints *nothing*, not opaque black. CSS drops an invalid
+    // declaration, so the background stays whatever is underneath; painting black instead turned every
+    // rgba() background on a real page into a black box (row 0.8). Text keeps its black fallback, since
+    // a page with no colour is still a page with text.
+    bool const is_text = command.type == PaintCommand::Type::DrawText
+        || command.type == PaintCommand::Type::DrawTextDecoration;
+    Color color = Color::parse(command.color).value_or(is_text ? Color { 0, 0, 0, 255 } : Color { 0, 0, 0, 0 });
     color.alpha = static_cast<uint8_t>(static_cast<float>(color.alpha) * std::clamp(command.opacity, 0.0f, 1.0f));
     return color;
 }
