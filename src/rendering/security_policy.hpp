@@ -6,7 +6,7 @@
 
 namespace aetheris::rendering {
 
-enum class ResourceRequestContext { Document, Subresource, Script, Style, Image, FormSubmission };
+enum class ResourceRequestContext { Document, Subresource, Script, Style, Image, Font, FormSubmission };
 
 class SecurityPolicy {
 public:

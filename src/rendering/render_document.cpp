@@ -146,6 +146,46 @@ RenderDocument RenderDocument::create(std::string_view html, std::string_view cs
     return create_from_document(Document::parse_html(html), css, viewport_width, resources, source_url);
 }
 
+namespace {
+
+// The base64 alphabet, as `data:` URIs use it. Padding is optional and whitespace is ignored, because a
+// stylesheet may wrap a long value.
+std::vector<uint8_t> decode_base64(std::string_view text)
+{
+    auto const value_of = [](char c) -> int {
+        if (c >= 'A' && c <= 'Z')
+            return c - 'A';
+        if (c >= 'a' && c <= 'z')
+            return c - 'a' + 26;
+        if (c >= '0' && c <= '9')
+            return c - '0' + 52;
+        if (c == '+' || c == '-')
+            return 62;
+        if (c == '/' || c == '_')
+            return 63;
+        return -1;
+    };
+
+    std::vector<uint8_t> out;
+    out.reserve(text.size() / 4 * 3);
+    unsigned accumulator = 0;
+    int bits = 0;
+    for (char const c : text) {
+        int const value = value_of(c);
+        if (value < 0)
+            continue; // padding and whitespace
+        accumulator = (accumulator << 6) | static_cast<unsigned>(value);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back(static_cast<uint8_t>((accumulator >> bits) & 0xff));
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 RenderDocument RenderDocument::create_from_document(Document document, std::string_view css, float viewport_width, ResourceCache* resources, std::string_view source_url)
 {
     // The UA stylesheet is the base layer: parsing it before the author CSS
@@ -159,20 +199,49 @@ RenderDocument RenderDocument::create_from_document(Document document, std::stri
     auto sheet = CssParser {}.parse(combined);
 
     // `@font-face` rules name a file; read the ones this engine can reach and register them before layout asks
-    // for a family. A `file://` URL or a plain path is read from disk; an http(s) source is not fetched yet, and
-    // the family then falls back to the engine's own font (row 3d1).
+    // for a family (row 3d1).
+    //
+    // Three sources, in the order a page usually offers them: a `data:` URI carrying the font inline, a file on
+    // disk, or a URL the host has already fetched into the resource cache. A remote font the host has not fetched
+    // is still skipped, and the family falls back to the engine's own - but an inline or cached one no longer
+    // does, which is what the row's tail was about.
     for (auto const& face : sheet.font_faces) {
-        std::string path = face.source;
-        if (path.rfind("file://", 0) == 0)
-            path = path.substr(7);
-        if (path.empty() || path.rfind("http://", 0) == 0 || path.rfind("https://", 0) == 0
-            || path.rfind("data:", 0) == 0)
+        std::string const& source = face.source;
+        if (source.empty())
             continue;
-        std::ifstream stream(path, std::ios::binary);
-        if (!stream)
-            continue;
-        std::vector<uint8_t> bytes { std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>() };
-        register_font_face(face.family, bytes);
+
+        std::vector<uint8_t> bytes;
+
+        if (source.rfind("data:", 0) == 0) {
+            // `data:font/woff2;base64,AAAA...`. Only base64 is supported: a percent-encoded binary font is
+            // not something a stylesheet generator emits, and guessing at it would be worse than skipping.
+            auto const comma = source.find(',');
+            if (comma == std::string::npos)
+                continue;
+            auto const header = source.substr(0, comma);
+            if (header.find(";base64") == std::string::npos)
+                continue;
+            bytes = decode_base64(std::string_view(source).substr(comma + 1));
+        } else if (source.rfind("http://", 0) == 0 || source.rfind("https://", 0) == 0) {
+            // A remote font has to have been fetched already; this is where it is looked up.
+            if (!resources)
+                continue;
+            auto cached = resources->get(source);
+            if (!cached)
+                continue;
+            bytes = cached->bytes;
+        } else {
+            std::string path = source;
+            if (path.rfind("file://", 0) == 0)
+                path = path.substr(7);
+            std::ifstream stream(path, std::ios::binary);
+            if (!stream)
+                continue;
+            bytes.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+        }
+
+        if (!bytes.empty())
+            register_font_face(face.family, bytes);
     }
 
     // Resolve the first pass into the cache as well as the layout tree, so the first

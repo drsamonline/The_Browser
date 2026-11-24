@@ -29,6 +29,36 @@ static void require(bool condition, char const* message)
     }
 }
 
+static std::string base64_of(std::vector<uint8_t> const& bytes)
+{
+    static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    std::size_t i = 0;
+    while (i + 2 < bytes.size()) {
+        unsigned const chunk = (static_cast<unsigned>(bytes[i]) << 16)
+            | (static_cast<unsigned>(bytes[i + 1]) << 8) | static_cast<unsigned>(bytes[i + 2]);
+        out.push_back(alphabet[(chunk >> 18) & 0x3f]);
+        out.push_back(alphabet[(chunk >> 12) & 0x3f]);
+        out.push_back(alphabet[(chunk >> 6) & 0x3f]);
+        out.push_back(alphabet[chunk & 0x3f]);
+        i += 3;
+    }
+    auto const rest = bytes.size() - i;
+    if (rest == 1) {
+        unsigned const chunk = static_cast<unsigned>(bytes[i]) << 16;
+        out.push_back(alphabet[(chunk >> 18) & 0x3f]);
+        out.push_back(alphabet[(chunk >> 12) & 0x3f]);
+        out += "==";
+    } else if (rest == 2) {
+        unsigned const chunk = (static_cast<unsigned>(bytes[i]) << 16) | (static_cast<unsigned>(bytes[i + 1]) << 8);
+        out.push_back(alphabet[(chunk >> 18) & 0x3f]);
+        out.push_back(alphabet[(chunk >> 12) & 0x3f]);
+        out.push_back(alphabet[(chunk >> 6) & 0x3f]);
+        out.push_back('=');
+    }
+    return out;
+}
+
 int main()
 {
     require(shaping_available(), "this build has a shaper (HarfBuzz was found at configure time)");
@@ -269,5 +299,47 @@ int main()
     }
 
     std::cout << "shaping: " << latin.size() << " latin glyphs, " << fi.size() << " for \"fi\", clusters are byte offsets\n";
+    // Row 3d1's tail: a `data:` URI carries the font inline, so a page can ship a face without a file
+    // or a network. Base64 is decoded; anything else in a `data:` URI is skipped rather than guessed at.
+    {
+        auto const encoded = base64_of(data);
+        auto inline_document = RenderDocument::create("<p>text</p>",
+            "@font-face { font-family: 'InlineFace'; src: url(data:font/ttf;base64," + encoded + "); }"
+            "p { font-family: InlineFace; }",
+            200);
+        require(font_for_family("InlineFace") != nullptr, "a base64 data: URI registers the face");
+        bool carried = false;
+        for (auto const& command : inline_document.render_tree().commands())
+            if (command.type == PaintCommand::Type::DrawText && command.font_family == "InlineFace")
+                carried = true;
+        require(carried, "and paint is told the family");
+
+        // A `data:` URI that is not base64 is not a font this engine can read, so the family stays absent
+        // rather than silently resolving to something wrong.
+        RenderDocument::create("<p>text</p>",
+            "@font-face { font-family: 'PercentFace'; src: url(data:font/ttf,%00%01%02); }"
+            "p { font-family: PercentFace; }",
+            200);
+        require(font_for_family("PercentFace") == nullptr, "a percent-encoded data: URI is skipped");
+
+        // A remote face is registered from the resource cache: the host fetches `@font-face` sources, because
+        // they are named inside the stylesheet and never appear in the document's dependency list. This is
+        // the lookup half of that path, without a network.
+        ResourceCache cache;
+        cache.put({ ResourceType::Font, "https://fonts.test/body.ttf", std::vector<uint8_t>(data.begin(), data.end()) });
+        RenderDocument::create("<p>text</p>",
+            "@font-face { font-family: 'RemoteFace'; src: url(https://fonts.test/body.ttf); }"
+            "p { font-family: RemoteFace; }",
+            200, &cache);
+        require(font_for_family("RemoteFace") != nullptr, "a face whose bytes are cached registers");
+
+        // The same rule with nothing cached must not invent a face.
+        RenderDocument::create("<p>text</p>",
+            "@font-face { font-family: 'UncachedFace'; src: url(https://fonts.test/missing.ttf); }"
+            "p { font-family: UncachedFace; }",
+            200);
+        require(font_for_family("UncachedFace") == nullptr, "an uncached remote face is skipped, not guessed");
+    }
+
     return 0;
 }

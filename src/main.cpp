@@ -43,6 +43,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <map>
+#include <regex>
 #include <memory>
 #include <string>
 #include <thread>
@@ -3209,6 +3210,28 @@ static int run_render(std::string const& url, std::string const& output_path, st
         if (!css.empty())
             css.push_back('\n');
         css += block;
+    }
+
+    // `@font-face` names its file inside the stylesheet, so it is not in the dependency list. Fetch the
+    // remote ones into the cache here, where `RenderDocument` looks them up: a page whose fonts arrive over
+    // the network used to render every glyph in the engine's own face (row 3d1's tail).
+    {
+        std::regex const face_source(R"(@font-face\s*\{[^}]*?src\s*:\s*url\(\s*[\"']?([^\"')]+)[\"']?\s*\))",
+            std::regex::icase);
+        std::vector<std::string> seen;
+        for (std::sregex_iterator it(css.begin(), css.end(), face_source), end; it != end; ++it) {
+            std::string const source = (*it)[1].str();
+            if (source.rfind("http://", 0) != 0 && source.rfind("https://", 0) != 0)
+                continue; // data: and file: are read by the engine itself
+            if (std::find(seen.begin(), seen.end(), source) != seen.end())
+                continue;
+            seen.push_back(source);
+            auto fetched = fetcher.fetch(rendering::ResourceRequestContext::Font, rendering::Url::parse(source));
+            if (!fetched.succeeded())
+                continue;
+            resources.put({ rendering::ResourceType::Font, source,
+                std::vector<unsigned char>(fetched.resource->bytes.begin(), fetched.resource->bytes.end()) });
+        }
     }
 
     trace_at("resources fetched");

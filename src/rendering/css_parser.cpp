@@ -67,10 +67,24 @@ void CssParser::parse_font_face(std::vector<CssToken> const& tokens, size_t& pos
         position = property_end;
         if (position < tokens.size() && tokens[position].type == CssTokenType::Colon)
             ++position;
+        // A value runs to the `;` or `}` that ends it, but not one inside parentheses: a `data:` URI
+        // carries `data:font/ttf;base64,AAAA`, and reading that `;` as the end of the declaration cut the
+        // source at `url(data:font/ttf` so the face had no source and was dropped (row 3d1's tail). This is
+        // the same nested-syntax rule the selector scanners needed, applied to declaration values.
         auto value_begin = position;
-        while (position < tokens.size() && tokens[position].type != CssTokenType::Semicolon
-            && tokens[position].type != CssTokenType::CloseBrace)
+        int parens = 0;
+        while (position < tokens.size() && tokens[position].type != CssTokenType::EndOfFile) {
+            if (parens == 0 && (tokens[position].type == CssTokenType::Semicolon
+                    || tokens[position].type == CssTokenType::CloseBrace))
+                break;
+            for (char const c : tokens[position].value) {
+                if (c == '(')
+                    ++parens;
+                else if (c == ')' && parens > 0)
+                    --parens;
+            }
             ++position;
+        }
         std::string value;
         for (size_t index = value_begin; index < position; ++index)
             value += tokens[index].value;

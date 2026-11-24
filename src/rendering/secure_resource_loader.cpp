@@ -16,6 +16,8 @@ std::string_view directive_for(ResourceRequestContext context)
     switch (context) {
     case ResourceRequestContext::Image:
         return "img-src";
+    case ResourceRequestContext::Font:
+        return "font-src";
     case ResourceRequestContext::Style:
         return "style-src";
     case ResourceRequestContext::Script:

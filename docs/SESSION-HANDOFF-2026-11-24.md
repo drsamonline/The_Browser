@@ -294,3 +294,42 @@ today). The other twelve rows carry named tails, which the convention keeps in t
 rather than as new rows; the highest-value ones still outstanding are remote `@font-face` sources
 (3d1), CSP nonces and hashes (5a), transitions started by a style change (3d2), and persistence for
 history and bookmarks (4.2).
+
+## 8. Eighth commit — row 3d1's tail: fonts from `data:` and from the network
+
+`@font-face` only ever worked for a file on disk. A page whose fonts arrived inline or over the network
+drew every glyph in the engine's own face.
+
+### The parser had to change first
+
+`src: url(data:font/ttf;base64,AAAA)` produced **no face at all**, not even a bad one. The declaration
+value scan ran to the first `;`, and the `;` in `data:font/ttf;base64` ended the declaration, leaving
+`url(data:font/ttf` with no closing paren. The face had no source and was dropped.
+
+The scan is paren-aware now - the same nested-syntax rule the selector scanners needed, applied to
+declaration values. That is the third place in this engine where a `;` or `,` inside parentheses has
+been read as a terminator.
+
+### Then three sources, where there was one
+
+| source | how |
+| --- | --- |
+| `data:` | base64 decoded inline; a percent-encoded `data:` URI is skipped rather than guessed at |
+| file | as before |
+| `http(s)` | looked up in the resource cache, which the CLI now populates |
+
+The remote case needed the CLI: a `@font-face` source is named inside the stylesheet and never appears
+in the document's dependency list, so nothing was fetching fonts. `run_render` now scans the assembled
+CSS for `@font-face` sources and fetches the remote ones into the cache, where `RenderDocument` looks
+them up.
+
+A new `ResourceRequestContext::Font` maps to the `font-src` CSP directive. Borrowing `Image` would have
+enforced `img-src` on fonts, and the fallthrough would have enforced `connect-src`.
+
+### What the tests pin
+
+`AetherisShaping` now asserts: a base64 `data:` URI registers the face and paint carries the family; a
+percent-encoded `data:` URI is skipped; a face whose bytes are cached registers; an uncached remote face
+is skipped rather than invented. The last two run without a network by seeding the cache directly.
+
+Still open in this row: `font-weight`/`font-style` do not select among several faces of one family.
