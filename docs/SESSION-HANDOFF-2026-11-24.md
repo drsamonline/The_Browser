@@ -423,3 +423,49 @@ Styled, and structurally recognisable: a contents sidebar, blue links, indented 
 the heading. Not yet a reproduction of Wikipedia - the article body is missing from the viewport and
 the layout is the sidebar's - so the next question is what decides which content lands where, not what
 colour it is.
+
+## 11. Eleventh commit — row 0.9, and a screenshot that was telling the truth
+
+After row 0.8 the page was styled but showed its table of contents where the article should be. That
+reading was wrong, and the first thing worth recording is why.
+
+`tools/article-position.cpp` prints the rect and computed box properties of a page's landmark nodes and
+walks up their ancestors. It said:
+
+| node | where it is |
+| --- | --- |
+| `mw-content-text` (the article) | **y=1578**, height 41,297 |
+| document | 1024 x **41,297** |
+| `h1` | **x=1000**, width 976, on a 1024-wide page |
+
+So the article is not missing - the screenshot was the top of a 41,000-pixel page, which is what the
+top of that page looks like. The real defect was the `h1`: laid out at x=1000, entirely off the right
+edge.
+
+### The five-line fixture
+
+`<div><span>inline text</span><div></div></div>` reproduced a related fault exactly: the block child
+was placed **on the text's line, at the cursor**, instead of starting a new line at the container's left
+edge. `LayoutEngine::layout_inline_children` placed every non-inline child at the inline cursor; it now
+starts a new line at the container's left edge and advances past it. `AetherisAdvancedLayout` pins both
+the x and the y.
+
+### But that was not the `h1`
+
+The ancestor walk found the rest: the `h1` is inside `<header>` with `display: flex` and
+`justify-content: flex-end`. The engine honours the rule and *also* gives the item the container's full
+width (976), so placing it at the end puts its left edge at 1000 and its right edge at 1976. A flex item
+with `flex-basis: auto` and no width should size to its content, and then `flex-end` right-aligns a
+content-sized box.
+
+That is row **0.10**, with the next step named: a fixture asserting the item's **width** as well as its
+position, at all four `justify-content` values - asserting only the position would have passed while the
+width was wrong, which is exactly how this survived.
+
+### The pattern worth naming
+
+Three times today a screenshot or a summary line said something that was true and was read as something
+else: "188 linked resources" (the count of ones that loaded, not the ones asked for), "the page is
+unstyled" (its stylesheets were cached as images), and "it shows the contents instead of the article"
+(the contents *are* at the top of a 41,000-pixel page). Each time the fix was to ask the layout or the
+engine for a number rather than to look harder at the picture.

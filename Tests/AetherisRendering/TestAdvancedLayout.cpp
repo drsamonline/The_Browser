@@ -90,5 +90,22 @@ int main()
         require(current->rect.height > 0, "the innermost box was given a height");
     }
 
+    // Row 0.9: a block-level child of an inline formatting context starts a new line at the container's
+    // left edge. It used to be placed at the inline cursor, which on a real page put a heading at
+    // x = 1000 on a 1024-wide page - off the screen - and drew a block over the text line before it.
+    {
+        auto rendered = RenderDocument::create(
+            "<div id='outer' style='width: 300px'><span>inline text</span>"
+            "<div id='inner' style='height: 20px'></div></div>", "", 400);
+        auto const& outer = *rendered.layout_root().children[0];
+        require(outer.children.size() == 2, "the container has a text run and a block");
+        auto const& text = *outer.children[0];
+        auto const& block_child = *outer.children[1];
+        require(block_child.rect.x == outer.box.content.x,
+            "the block starts at the container's left edge, not at the inline cursor");
+        require(block_child.rect.y >= text.rect.y + text.rect.height,
+            "and below the line of text, not on top of it");
+    }
+
     return 0;
 }

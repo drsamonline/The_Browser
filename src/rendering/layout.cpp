@@ -472,6 +472,22 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
         // which is what made deep nesting exponential (row 3k).
         bool const child_is_inline_level = child->display == LayoutDisplay::Inline
             || child->display == LayoutDisplay::InlineBlock;
+
+        // A block-level child of an inline formatting context starts a new line at the container's left
+        // edge - it is not placed at the inline cursor. Placing it there put a page's heading at the right
+        // edge of its container (x = 24 + 976 on a 1024-wide page, so off the screen) and drew a block on
+        // top of the text line before it (row 0.9).
+        if (!child_is_inline_level) {
+            if (cursor_x > x)
+                cursor_y = std::max(cursor_y, max_bottom);
+            layout_node(*child, x, cursor_y, available_width);
+            cursor_x = x;
+            max_bottom = child->rect.y + child->rect.height;
+            cursor_y = max_bottom;
+            line_ends_in_whitespace = false;
+            continue;
+        }
+
         float natural_width = available_width;
         if (child_is_inline_level) {
             // Measured against the whole line: an inline box shrinks to fit what it is given, so laying it
@@ -493,9 +509,6 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
             layout_node(*child, cursor_x, cursor_y, available_width);
         } else if (natural_width > x + available_width - cursor_x) {
             // It fits nowhere on this line without shrinking: place it against what is left.
-            layout_node(*child, cursor_x, cursor_y, x + available_width - cursor_x);
-        } else if (!child_is_inline_level) {
-            // A block child that was not measured has not been placed either.
             layout_node(*child, cursor_x, cursor_y, x + available_width - cursor_x);
         }
         // Otherwise the measuring pass above already placed it: it was laid out at this origin with
