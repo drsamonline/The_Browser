@@ -4,6 +4,7 @@
 #include "css_parser.hpp"
 #include "document.hpp"
 #include "layout.hpp"
+
 #include "render_document.hpp"
 #include "user_agent_stylesheet.hpp"
 
@@ -114,6 +115,18 @@ int main(int argc, char** argv)
         }
         if (printed == 0)
             std::printf("  (no rule sets a box property on it)\n");
+
+        // Two measurements of the same text: what the flex base used, and what the box ended up.
+        if (!h1->text_fragments.empty() || (h1->dom_node && !h1->dom_node->children.empty())) {
+            std::printf("\n  h1 rect.width = %.2f\n", h1->rect.width);
+            std::printf("  h1 text fragments = %zu\n", h1->text_fragments.size());
+            if (!h1->text_fragments.empty()) {
+                float widest = 0;
+                for (auto const& fragment : h1->text_fragments)
+                    widest = std::max(widest, fragment.rect.width);
+                std::printf("  widest fragment = %.2f\n", widest);
+            }
+        }
 
         // Walk up from the h1: its placement is decided by an ancestor's formatting context.
         std::printf("\nancestors of the first h1:\n");
