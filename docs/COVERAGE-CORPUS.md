@@ -104,3 +104,29 @@ is I/O, and it is row **0.4**.
 Row 3j's earlier reading of this page — "did not finish in 280 s" — was layout doing 2^depth work
 (row 3k); that is gone. What is left is a serial fetch loop, which is a different problem with a
 different fix.
+
+## Third run, 2026-11-24 — rendered from the URL, with subresources
+
+The runner no longer renders a local copy. It renders **from the site's URL**, so relative URLs
+resolve against the real origin and the page's own stylesheets, images and scripts are fetched the way
+a browser fetches them - which the engine can now do through the environment's proxy (row 0.3). The
+curl path survives only as a fallback for a host the proxy refuses, and the summary says which ran.
+
+| site | bytes | mode | subresources | result |
+| --- | --- | --- | --- | --- |
+| `example.com` | 577 | url | **0** | rendered (it has none) |
+| `en.wikipedia.org/wiki/Web_browser` | 416,975 | url | **42** | rendered |
+| `www.debian.org` | 15,863 | url | **26** | rendered |
+| the other 17 | — | — | — | **refused by the proxy** |
+
+Every earlier run in this file rendered a local copy, which resolves every relative URL against
+`file://`, so it fetched **none** of a page's subresources. Those measurements tested markup, CSS and
+layout with none of the page's own assets - worth remembering when reading the numbers above them.
+
+### Two reporting faults fixed here
+
+- **A refused host was reported as "rendered".** The proxy answers 502 with a short error body; the
+  runner fetched it, wrote it to disk and rendered it as though it were a site, so 17 of 20 lines
+  said "rendered" for hosts that never loaded. A non-2xx is now `refused`, not `rendered`.
+- **The subresource count was not recorded.** It is the number that distinguishes a real render from a
+  body of text, so it is in the summary now.

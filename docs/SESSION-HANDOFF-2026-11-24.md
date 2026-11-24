@@ -226,3 +226,34 @@ Mid-session `git log` showed `fed64d9c` while `origin/main` was four commits ahe
 the trap the project's own prompt lists. The work was saved as a patch, the tree reset to
 `origin/main`, the patch re-applied (`git apply --check` first) and everything rebuilt before the
 suite was run. The first suite run of the session had been against the stale tree and was thrown away.
+
+## 6. Sixth commit — row 0.6: the corpus finally renders pages, not files
+
+`tools/run-corpus.sh` rendered `file://<local path>`, which resolves every relative URL against
+`file://`. So the corpus had never fetched a page's stylesheets, images or scripts - every measurement
+in `docs/COVERAGE-CORPUS.md` before today tested markup, CSS and layout with none of the page's own
+assets.
+
+It now renders **from the URL**. The curl path stays as a fallback for a host the proxy refuses, and
+the summary records which of the two ran.
+
+| site | mode | subresources |
+| --- | --- | --- |
+| `example.com` | url | 0 (it has none) |
+| `en.wikipedia.org/wiki/Web_browser` | url | **42** |
+| `www.debian.org` | url | **26** |
+| the other 17 | — | refused by the proxy |
+
+### Two reporting faults found while doing it
+
+1. **A refused host was reported as "rendered".** The proxy answers 502 with a 225-byte error body.
+   The runner fetched it, wrote it to disk and rendered it as if it were a site, so 17 of 20 summary
+   lines said "rendered" for hosts that never loaded. A non-2xx is now `refused`.
+2. **The subresource count was not recorded**, and it is the number that separates a real render from
+   a body of text. It is a column now.
+
+Both are the same lesson as row 0.4's: a summary line that says "ok" is a claim, and a claim needs
+the number behind it to be checked.
+
+Row 0.1 remains blocked on the allowlist - 17 of 20 hosts still refused - but the tool is now honest
+and, on a network that admits the corpus, would measure something real.
