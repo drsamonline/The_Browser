@@ -257,3 +257,40 @@ the number behind it to be checked.
 
 Row 0.1 remains blocked on the allowlist - 17 of 20 hosts still refused - but the tool is now honest
 and, on a network that admits the corpus, would measure something real.
+
+## 7. Seventh commit — row 0.5's tail: unfetchable schemes and `<base href>`
+
+Row 0.5 closed with two named remainders. Both are done, and they are small because the diagnosis was
+already precise.
+
+### 47 of the 102 were unfetchable
+
+A wikipedia page carries one `<link href="mw-data:TemplateStyles:r...">` per transcluded template
+style. `mw-data:` is a Wikipedia-internal pseudo-scheme: no backend can serve it, so every one was
+fetched and failed. Discovery now queues only a scheme a backend can serve - `http`, `https`, `file`,
+`data` - which removed all 47.
+
+### `<base href>` was ignored
+
+Every relative URL was resolved against the request URL. A document that rebases itself was therefore
+resolved against the wrong directory. The first `<base href>` in the document now becomes the
+resolution base.
+
+### Result
+
+| | discovered |
+| --- | --- |
+| before row 0.5 | 1,324 |
+| after skipping hyperlinks (0.5) | 102 |
+| after the scheme filter and `<base href>` | **44** |
+
+97% fewer requests, and the render still loads its **42** real subresources - the count is unchanged,
+which is the check that matters: fewer requests, same resources.
+
+### Where the plan stands
+
+The checklist has no open rows. Row 0.1 stays blocked on the allowlist (3 of 20 hosts, unchanged
+today). The other twelve rows carry named tails, which the convention keeps in the row that owns them
+rather than as new rows; the highest-value ones still outstanding are remote `@font-face` sources
+(3d1), CSP nonces and hashes (5a), transitions started by a style change (3d2), and persistence for
+history and bookmarks (4.2).

@@ -141,6 +141,25 @@ std::vector<Url> ResourceLoader::discover_dependencies(ResourceData const& docum
         return text;
     };
 
+    // `<base href>` rebases every relative URL in the document. It is the first one in the head that
+    // counts, and without it a page served from a subdirectory resolves its assets against the wrong
+    // directory (row 0.5's tail).
+    Url resolution_base = base_url;
+    std::regex const base_tag(R"(<\s*base\s[^>]*\bhref\s*=\s*[\"']([^\"']+)[\"'])", std::regex::icase);
+    if (std::smatch base_match; std::regex_search(text, base_match, base_tag)) {
+        auto rebased = Url::resolve(base_url, decode_entities(base_match[1].str()));
+        if (rebased.is_valid())
+            resolution_base = std::move(rebased);
+    }
+
+    // Only a scheme a backend can serve is worth queueing. A wikipedia page carries 47
+    // `mw-data:TemplateStyles:...` links, one per transcluded template style, and every one of them
+    // was fetched and failed (row 0.5's tail).
+    auto const fetchable = [](Url const& url) {
+        auto const& scheme = url.scheme();
+        return scheme == "http" || scheme == "https" || scheme == "file" || scheme == "data";
+    };
+
     for (std::sregex_iterator it(text.begin(), text.end(), tag), end; it != end; ++it) {
         std::string const name = lower((*it)[1].str());
         bool const hyperlink = name == "a" || name == "area";
@@ -155,8 +174,8 @@ std::vector<Url> ResourceLoader::discover_dependencies(ResourceData const& docum
             auto raw = decode_entities((*a)[2].str());
             if (std::getenv("AETHERIS_TRACE_DOC"))
                 std::fprintf(stderr, "STYLE dep raw=[%s]\n", raw.c_str());
-            auto resolved = Url::resolve(base_url, raw);
-            if (resolved.is_valid())
+            auto resolved = Url::resolve(resolution_base, raw);
+            if (resolved.is_valid() && fetchable(resolved))
                 urls.push_back(std::move(resolved));
         }
     }
