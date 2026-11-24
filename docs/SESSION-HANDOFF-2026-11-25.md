@@ -138,3 +138,32 @@ percentage would have made this commit look like a regression.
 
 The header - logo, "Donate / Create account / Log in" - renders as an empty strip in the engine where
 chromium puts it at y=16-46. That is now the largest remaining difference, and it is the next question.
+
+## 5. Fifth commit — the header, and `alt` text for an image that fails
+
+The reference render left one large difference: the header. Chromium puts the Wikipedia wordmark and
+"Donate / Create account / Log in" in the top 46 pixels; the engine painted an empty strip.
+
+`tools/article-position.cpp --top` (new) lists every layout node starting above a given y, in document
+order. It settled it in one run:
+
+- the header **is** laid out - `div` flex at y=0 h=66, `header` at y=0 h=66 w=949;
+- the logo images **are** laid out - `img y=14 h=22 w=140` and `img y=41 h=11 w=140`;
+- they are simply never painted, because their URLs (`/w/skins/...`) do not resolve when the page is
+  rendered from a local file.
+
+And chromium, in the same situation, draws the **alt text** - which is why the reference shows
+"Wikipedia" and "The Free" where the logo would be. The engine drew an empty box.
+
+`RenderTree` now emits a `DrawText` carrying the `alt` attribute when an `<img>` has no loaded image,
+with the element's own font size and colour, and emits nothing when there is no `alt`.
+
+| | before | after | chromium |
+| --- | --- | --- | --- |
+| failed logo | empty box | "Wikipedia" / "The Free Encyclopedia" | "Wikipedia" / "The Free" (clipped) |
+
+### A note on what moved and what did not
+
+Pixel agreement barely changed: 76.9% to 76.6%. The header is a small area, so a percentage over the
+whole viewport cannot see it. The picture is the better evidence for this row, and that is worth
+remembering about the metric - it is a guide, not a verdict.

@@ -9,6 +9,7 @@
 #include "user_agent_stylesheet.hpp"
 
 #include <cstdio>
+#include <functional>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -67,12 +68,15 @@ int main(int argc, char** argv)
     }
     std::string wanted_id;
     std::string wanted_tag;
+    bool show_top = false;
     for (int i = 3; i < argc; ++i) {
         std::string const argument = argv[i];
         if (argument.rfind("id=", 0) == 0)
             wanted_id = argument.substr(3);
         else if (argument.rfind("tag=", 0) == 0)
             wanted_tag = argument.substr(4);
+        else if (argument == "--top")
+            show_top = true;
     }
     auto const html = read_file(argv[1]);
     auto const css = read_file(argv[2]);
@@ -85,6 +89,34 @@ int main(int argc, char** argv)
     auto const rect = document.document_rect();
     std::printf("page: %s (%zu bytes html, %zu bytes css)\n", argv[1], html.size(), css.size());
     std::printf("document: %.0f x %.0f\n\n", rect.width, rect.height);
+
+    if (show_top) {
+        // What the engine actually places in the first band of the page, in document order. Comparing this
+        // against a reference render says what is missing rather than guessing from a picture.
+        std::printf("layout nodes starting above y=160, in document order:\n");
+        int shown = 0;
+        std::function<void(LayoutNode const&)> walk = [&](LayoutNode const& node) {
+            if (shown > 40)
+                return;
+            if (node.rect.height > 0 && node.rect.y < 160 && node.dom_node && !node.dom_node->name.empty()) {
+                auto const value = [&](char const* property) {
+                    auto const* found = node.style.get(property);
+                    return found ? *found : std::string("-");
+                };
+                std::printf("  %-8s y=%6.1f h=%6.1f w=%6.1f x=%6.1f display=%-12s %s\n",
+                    node.dom_node->name.c_str(), node.rect.y, node.rect.height, node.rect.width, node.rect.x,
+                    value("display").c_str(),
+                    node.dom_node->attribute("id") ? node.dom_node->attribute("id")->c_str() : "");
+                ++shown;
+            }
+            for (auto const& child : node.children)
+                walk(*child);
+        };
+        walk(document.layout_root());
+        if (shown == 0)
+            std::printf("  (nothing)\n");
+        return 0;
+    }
 
     if (!wanted_id.empty() || !wanted_tag.empty()) {
         int found_depth = 0;

@@ -148,5 +148,30 @@ int main()
             "a list item holding one block line is one line tall, not two");
     }
 
+    // Row 0.12: an image that did not load paints its `alt` text, as a browser does. A page whose logo
+    // fails to fetch showed an empty box where the reference render shows the alt text.
+    {
+        auto rendered = RenderDocument::create(
+            "<img src='file:///nope/missing.png' alt='Wikipedia' width='140' height='22'>", "", 400);
+        bool drew_alt = false;
+        bool drew_image = false;
+        for (auto const& command : rendered.render_tree().commands()) {
+            if (command.type == PaintCommand::Type::DrawImage)
+                drew_image = true;
+            if (command.type == PaintCommand::Type::DrawText && command.text == "Wikipedia")
+                drew_alt = true;
+        }
+        require(!drew_image, "a missing image does not paint an image");
+        require(drew_alt, "and its alt text is painted instead");
+
+        // An image with no alt paints nothing rather than an empty string.
+        auto bare = RenderDocument::create("<img src='file:///nope/other.png' width='10' height='10'>", "", 400);
+        bool any_text = false;
+        for (auto const& command : bare.render_tree().commands())
+            if (command.type == PaintCommand::Type::DrawText)
+                any_text = true;
+        require(!any_text, "an image with no alt adds no text command");
+    }
+
     return 0;
 }
