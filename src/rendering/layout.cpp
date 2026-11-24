@@ -412,6 +412,11 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
     // inline_formatting_context.rs, text_item_wrap_opportunity() - `line_ends_in_whitespace` or
     // `item.can_break_before`. Without it, two adjacent spans with no space between them wrap.
     bool line_ends_in_whitespace = false;
+    // Whether an inline line is open. `cursor_y` means the *top* of that line while one is open, and the
+    // *bottom* of the last block once a block-level child has been placed. The tail below used to add a
+    // line either way, so a block inside an inline context was counted twice - a list item measured 33.6px
+    // where chromium gives 16.8 (row 0.11).
+    bool line_is_open = false;
 
     for (auto& child : node.children) {
         if (child->display == LayoutDisplay::None || is_positioned(*child))
@@ -443,6 +448,7 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
                 child_is_generated_text ? child->generated_text : child->dom_node->data,
                 cursor_x, cursor_y, std::max(0.0f, x + available_width - cursor_x), child->style);
             if (!child->text_fragments.empty()) {
+                line_is_open = true;
                 for (auto const& fragment : child->text_fragments) {
                     if (fragment.rect.x < cursor_x && cursor_x > x)
                         cursor_y += line_height;
@@ -484,6 +490,7 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
             cursor_x = x;
             max_bottom = child->rect.y + child->rect.height;
             cursor_y = max_bottom;
+            line_is_open = false;
             line_ends_in_whitespace = false;
             continue;
         }
@@ -519,6 +526,7 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
         // nested d deep cost 2^d passes over the same nodes.
         cursor_x = child->rect.x + child->rect.width;
         max_bottom = std::max(max_bottom, child->rect.y + child->rect.height);
+        line_is_open = true;
         line_ends_in_whitespace = false;
         if (cursor_x >= x + available_width) {
             cursor_x = x;
@@ -526,7 +534,9 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
         }
     }
 
-    cursor_y = std::max(max_bottom, cursor_y + line_height);
+    // Add the open line's height, or - when the last thing placed was a block - stop at its bottom. Adding
+    // a line unconditionally is what doubled the height of any block inside an inline formatting context.
+    cursor_y = line_is_open ? std::max(max_bottom, cursor_y + line_height) : std::max(max_bottom, cursor_y);
 }
 
 // The widest a node's content can be, used as the flex base size when an item names neither a basis nor a

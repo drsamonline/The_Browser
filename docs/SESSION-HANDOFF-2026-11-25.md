@@ -100,3 +100,41 @@ placed on it. That is the next thing to read.
 Skipping whitespace-only text nodes is the obvious fix and it did not move the number. It was reverted
 rather than shipped: a plausible-looking change that leaves the measurement identical is a guess, and
 this engine has already been bitten by one of those (the `reserve(24)` that measured 33% slower).
+
+## 4. Fourth commit — the double line, and a metric that went the wrong way
+
+The suspect named in the previous commit was the tail of `layout_inline_children`:
+
+```cpp
+cursor_y = std::max(max_bottom, cursor_y + line_height);
+```
+
+It closed an open line unconditionally. After a block-level child, `cursor_y` is already that block's
+bottom - so the tail added a second line on top, and every block inside an inline formatting context was
+counted twice. A `<li>` holding one block `<a>` measured **33.6px where chromium gives 16.8**.
+
+The function now tracks whether a line is actually open and closes only that.
+
+| | before | after | chromium |
+| --- | --- | --- | --- |
+| `<li>` with one block line | **33.6px** | **16.8px** | 16.8px |
+| contents-list spacing, real page | **79-80px** | **28-29px** | 27-28px |
+
+`AetherisAdvancedLayout` pins it by comparing the item's height with the block's height rather than a
+hard-coded 16.8 - so the assertion stays true at any font size.
+
+### The metric went down and the layout got better
+
+Pixel agreement fell from **90.3% to 76.9%**. That is not a regression; it is the metric. The earlier
+score was mostly blank page matching blank page, and compacting the contents list moved real text into
+areas where the reference has the article title and body. A fix that brings content into view will often
+lower this number while making the page more correct.
+
+So the tool prints both, and they must be read together: **agreement** says "is the same content in the
+same place", **row positions** say "is the spacing right". Neither alone is the answer, and a single
+percentage would have made this commit look like a regression.
+
+### What is left at the top of the page
+
+The header - logo, "Donate / Create account / Log in" - renders as an empty strip in the engine where
+chromium puts it at y=16-46. That is now the largest remaining difference, and it is the next question.

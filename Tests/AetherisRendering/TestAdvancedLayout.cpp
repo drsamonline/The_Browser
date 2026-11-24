@@ -128,5 +128,25 @@ int main()
             "and the second follows it, rather than overlapping");
     }
 
+    // Row 0.11: a block inside an inline formatting context is not counted twice. The inline layout closes
+    // an open line by adding its height; when the last thing placed was a block, cursor_y is already that
+    // block's bottom, so adding a line again doubled it. A list item measured 33.6px where chromium gives
+    // 16.8, and a real page's contents list sat 79px apart against the reference's 27.
+    {
+        auto rendered = RenderDocument::create(
+            "<ul style='margin: 0; padding: 0; list-style: none'><li>"
+            "<a href='#x' style='display: block'>Function</a></li></ul>",
+            "body { margin: 0; font-size: 14px; line-height: 1.2 } li { margin: 0; padding: 0 }", 400);
+        auto const& list = *rendered.layout_root().children[0];
+        auto const& item = *list.children[0];
+        // One line, not two: the item is as tall as the block it holds, not twice that. Comparing against
+        // the child rather than a hard-coded number keeps the assertion true at any font size.
+        require(!item.children.empty(), "the item holds the block");
+        float const line = item.children[0]->rect.height;
+        require(line > 0, "the block has a height");
+        require(item.rect.height < line * 1.5f,
+            "a list item holding one block line is one line tall, not two");
+    }
+
     return 0;
 }
