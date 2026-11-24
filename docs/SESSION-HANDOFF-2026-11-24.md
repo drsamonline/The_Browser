@@ -56,3 +56,52 @@ No engine source changed in this commit: `docs/CHECKLIST.md`, `docs/COVERAGE-COR
 `tools/check-build.py` reports the full 300-step rebuild as pending. That is the guard doing its job,
 not a broken tree: the commit is byte-identical to `fed64d9c` outside `docs/` and `tools/`, where the
 last verified suite run stands at **67/67 twice**.
+
+## 2. Second commit — row 0.4's ceiling, measured, and the fix deliberately not started
+
+Row 0.4 asks for a probe before anything is rewritten: 188 sequential fetches against 188 concurrent
+ones, so the ceiling is a number. That is `tools/fetch-cost.cpp`.
+
+### The number
+
+188 requests against a loopback server that models 20 ms of round trip:
+
+| workers | time | speedup |
+| --- | --- | --- |
+| serial | 4,153 ms | 1.0x |
+| 2 | 2,058 ms | 2.0x |
+| 4 | 1,041 ms | 4.0x |
+| 6 | 705 ms | 5.9x |
+| 8 | 545 ms | **7.6x** |
+
+Essentially linear, and the serial time sits on the arithmetic floor (188 x 20 ms = 3,760 ms). Applied
+to the real page, whose fetches cost about 300 ms each, 57.8 s becomes roughly **8 s**.
+
+### Two wrong probes before the right one
+
+Worth recording, because both would have produced a confident wrong answer.
+
+1. **The server answered one connection at a time.** The first version accepted, slept, replied and
+   looped, so concurrency bought nothing and x2 measured 4,200 ms - a fact about the server, not the
+   client. A real server answers concurrently; the probe's now uses a 16-thread pool.
+2. **One thread per connection** then hit this box's thread limit ("Resource temporarily unavailable",
+   the same trap the handover already lists) at 376 threads. A fixed pool of 16 fixed it.
+
+The third version also had to detach the server thread: it accepts until the process ends, so joining
+it hung the probe.
+
+### The probe is raw sockets on purpose
+
+The first version called `HttpClient::get()` from several threads, which races: the cookie jar, the
+response cache and the connection pool are function-local statics shared by every thread. Making them
+`thread_local` was written and measured, and then **reverted**, because verifying it needs a full
+rebuild and the pod's recycled CMake cache put that at roughly forty minutes. Committing unverified
+engine code to save a compile is not a trade this project makes, so the probe uses raw sockets and the
+`thread_local` change ships with the fix.
+
+### What the fix is, and why it is not a loop swap
+
+`src/main.cpp` fetches every discovered dependency in a plain `for`. Making that concurrent needs two
+things first: `SecureResourceLoader::load()` writes through to the shared `ResourceCache`, so only the
+network part can be concurrent and the cache write has to stay on one thread; and `HttpClient`'s three
+statics have to become per-thread. Both are named in the row, which stays `[ ]`.
