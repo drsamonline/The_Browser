@@ -543,6 +543,54 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
 // width. A block's max-content width is the widest of its children's; a text run's is the width its text
 // measures at. It is an approximation of css-sizing-3's intrinsic width, and it is the part this engine was
 // missing: without it an auto-basis flex item started at zero, so a row of text items vanished (row 0.10).
+// The narrowest a box can be without its content overflowing: for a text run, the widest single word; for a
+// block, the widest of its children; for a row of inline children, the sum. css-flexbox-1 floors an item's
+// shrink at its automatic minimum size (min-width: auto), and without that floor a flex line narrower than
+// its items collapses them to zero - a menu of three links measured 0px wide (row 0.13).
+float LayoutEngine::min_content_width(LayoutNode const& node)
+{
+    if (auto const* width = node.style.get("width"); width && !width->empty() && *width != "auto") {
+        float const specified = parse_length(width, -1, 0);
+        if (specified >= 0)
+            return specified;
+    }
+
+    auto const widest_word = [](std::string_view text, float font_size, StyleProperties const& style) {
+        float widest = 0;
+        std::size_t begin = 0;
+        while (begin < text.size()) {
+            auto const end = text.find(' ', begin);
+            auto const word = text.substr(begin, end == std::string_view::npos ? std::string_view::npos : end - begin);
+            if (!word.empty())
+                widest = std::max(widest, TextLayout::measure_text(word, font_size, style));
+            if (end == std::string_view::npos)
+                break;
+            begin = end + 1;
+        }
+        return widest;
+    };
+
+    if (!node.generated_text.empty())
+        return widest_word(node.generated_text, TextLayout::font_size(node.style), node.style);
+    if (node.dom_node && node.dom_node->type == DomNodeType::Text && !node.dom_node->data.empty())
+        return widest_word(node.dom_node->data, TextLayout::font_size(node.style), node.style);
+
+    float widest = 0;
+    float inline_sum = 0;
+    bool has_inline = false;
+    for (auto const& child : node.children) {
+        if (child->display == LayoutDisplay::None)
+            continue;
+        float const child_width = min_content_width(*child);
+        widest = std::max(widest, child_width);
+        if (child->display == LayoutDisplay::Inline || child->display == LayoutDisplay::InlineBlock) {
+            inline_sum += child_width;
+            has_inline = true;
+        }
+    }
+    return has_inline ? std::max(widest, inline_sum) : widest;
+}
+
 float LayoutEngine::max_content_width(LayoutNode const& node)
 {
     if (auto const* width = node.style.get("width"); width && !width->empty() && *width != "auto") {
@@ -679,6 +727,9 @@ void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width,
         } else if (free_space < 0 && total_scaled_shrink > 0) {
             // Shrinking is proportional to shrink factor * base size, so the widest item gives up the most.
             width += free_space * (item.shrink * item.base) / total_scaled_shrink;
+            // css-flexbox-1: an item's automatic minimum size floors the shrink. Without it a line narrower
+            // than its items squeezes them to nothing instead of letting them overflow.
+            width = std::max(min_content_width(*item.node), width);
             width = std::max(0.0f, width);
         }
         // `width` is the item's outer size, so the content box it is laid out with is what remains after the

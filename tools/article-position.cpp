@@ -173,6 +173,20 @@ int main(int argc, char** argv)
             }
             if (shown == 0)
                 std::printf("  (no rule sets spacing on it)\n");
+
+            // What the flex sizing sees, level by level: the number that decides whether an item gets a width.
+            std::printf("\nintrinsic widths (what the flex base size would be):\n");
+            std::function<void(LayoutNode const&, int)> widths = [&](LayoutNode const& node, int level) {
+                if (level > 4)
+                    return;
+                std::printf("  %*s%-8s intrinsic=%7.2f  rect.w=%7.2f  %s\n", level * 2, "",
+                    node.dom_node && !node.dom_node->name.empty() ? node.dom_node->name.c_str() : "(anonymous)",
+                    LayoutEngine::intrinsic_width(node), node.rect.width,
+                    node.dom_node && node.dom_node->type == DomNodeType::Text ? "text" : "");
+                for (auto const& child : node.children)
+                    widths(*child, level + 1);
+            };
+            widths(*target, 0);
         }
         return 0;
     }

@@ -198,3 +198,39 @@ has a DOM text node.
 Expose `max_content_width()` to the probe (it is a private static) or replicate it there, and print what
 it returns at each level of one of these items, next to the text's measured width. That turns "0" into
 "0 because this box has no DOM node" and the fix follows.
+
+## 7. Sixth commit — the flex shrink had no floor, and the probe corrected me
+
+The row's own next step was to expose the sizing and see what it returns. That was the right move,
+because it **falsified my hypothesis**.
+
+I expected `max_content_width()` to return 0 for these items - an anonymous box it could not measure.
+Instead:
+
+```
+li       intrinsic=  59.30  rect.w=   0.00
+  a        intrinsic=  50.89  rect.w=   0.00
+    span     intrinsic=  50.89  rect.w=   0.00
+```
+
+The base size was **right**. The item was then shrunk to zero: the flex line had 54.1px and the items
+totalled about 180. css-flexbox-1 floors an item's shrink at its **automatic minimum size**
+(`min-width: auto`, the min-content size), and the engine had no floor at all.
+
+`LayoutEngine::min_content_width()` now answers it - a text run's widest word, the widest of a block's
+children, or the sum of a row of inline ones - and the shrink pass floors there.
+
+| | before | after | chromium |
+| --- | --- | --- | --- |
+| menu item width | **0.0** | **43.3** | ~43 |
+| "Donate" painted | no | yes | yes |
+| pixel agreement | 76.6% | **81.1%** | — |
+
+That is the first fix today that moved the agreement number in the right direction, which is worth
+noting: the double-line fix lowered it while improving the layout, and this one raised it.
+
+### What is left, and it is one level up
+
+The items no longer collapse, but they now **overflow** to the right - "Create account" runs past the
+viewport - because the outer container still allocates only 54.1px. So the next question is what sizes
+*that* box. It is the same shape of question as this one, and the probe now has the tool for it.

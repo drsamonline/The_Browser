@@ -173,5 +173,22 @@ int main()
         require(!any_text, "an image with no alt adds no text command");
     }
 
+    // Row 0.13: a flex item's shrink is floored at its automatic minimum size, so a line narrower than its
+    // items does not collapse them to zero. Without the floor a menu of three links measured 0px wide and
+    // painted nothing.
+    {
+        auto rendered = RenderDocument::create(
+            "<div style='display: flex; width: 60px; height: 20px'>"
+            "<div id='a' style='height: 20px'>Donate</div>"
+            "<div id='b' style='height: 20px'>Log in</div></div>",
+            "", 400);
+        auto const& row = *rendered.layout_root().children[0];
+        require(row.children.size() == 2, "two flex items");
+        for (auto const& item : row.children) {
+            require(item->rect.width > 0,
+                "an item narrower than the line keeps its minimum size instead of collapsing to zero");
+        }
+    }
+
     return 0;
 }

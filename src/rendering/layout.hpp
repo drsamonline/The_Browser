@@ -139,6 +139,13 @@ private:
     // True when the subtree's geometry from the last pass is still valid at this origin: the
     // node is clean, and it sits where it sat. `layout_node` then copies the recorded geometry
     // for the whole subtree instead of laying it out.
+public:
+    // "How wide does this box want to be?" - the max-content width the flex sizing uses. Exposed so the
+    // layout probe can compare it with what the box actually gets, which is how a zero-width flex item is
+    // traced back to the node it started at (row 0.13).
+    static float intrinsic_width(LayoutNode const& node) { return max_content_width(node); }
+
+private:
     bool reuse_subtree(LayoutNode& node, float x, float y, float available_width) const;
 
     void layout_node(LayoutNode& node, float x, float y, float available_width) const;
@@ -151,6 +158,9 @@ private:
     // children, the sum) of its children's. Used as the flex base size when an item names neither a basis nor
     // a width, which this engine had no answer for (row 0.10).
     static float max_content_width(LayoutNode const& node);
+    // The narrowest a box can be before its content overflows - the automatic minimum size a flex item's
+    // shrink is floored at.
+    static float min_content_width(LayoutNode const& node);
     static float resolve_dimension(StyleProperties const&, char const* property, float available_width, float fallback);
     static BoxEdges resolve_edges(StyleProperties const& style, char const* prefix, float percentage_base);
     static bool is_positioned(LayoutNode const& node);
