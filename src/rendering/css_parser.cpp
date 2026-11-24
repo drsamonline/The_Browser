@@ -363,6 +363,17 @@ void CssParser::parse_block(std::vector<CssToken> const& tokens, size_t& positio
             continue;
         }
 
+        // @supports <condition> { rules }, and the grouping rules @layer and @container: their conditions are
+        // not evaluated here, so the inner rules are included as written. They must not fall through to the
+        // rule path below - there the at-rule's own condition was compiled as a *selector* and everything
+        // after the block was lost, which is how a 216 KB stylesheet yielded 7 rules (row 0.7).
+        if (!selectors.empty() && (selectors.front().rfind("@supports", 0) == 0
+                || selectors.front().rfind("@layer", 0) == 0
+                || selectors.front().rfind("@container", 0) == 0)) {
+            parse_block(tokens, position, sheet, source_order, include);
+            continue;
+        }
+
         if (!include) {
             skip_block(tokens, position);
             continue;

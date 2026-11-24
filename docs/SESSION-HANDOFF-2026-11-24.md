@@ -333,3 +333,50 @@ percent-encoded `data:` URI is skipped; a face whose bytes are cached registers;
 is skipped rather than invented. The last two run without a network by seeding the cache directly.
 
 Still open in this row: `font-weight`/`font-style` do not select among several faces of one family.
+
+## 9. Ninth commit — the coverage probe, and why the page was unstyled
+
+This was the plan I proposed rather than another tail: stop guessing which gap matters and measure
+what a real page's stylesheet gets from this engine.
+
+### The probe said the properties were fine
+
+`tools/css-coverage.cpp` resolves one element twice per declaration - once with nothing, once with that
+declaration - and compares `fingerprint()`. Of wikipedia's **2,869** declarations, **2,821 (98.3%)**
+changed the resolved style. The 48 that did not were all setting a property to its own initial value
+(`display: block`, `opacity: 1`, `border-style: solid`), which changes nothing and therefore cannot be
+seen this way.
+
+So "the engine drops properties" was wrong. That is worth knowing before writing another row about CSS
+property support.
+
+### The next question found it
+
+`215,771 bytes of real CSS parsed to 7 rules.` Two causes, both one layer below the property question:
+
+**Stylesheets were classified by their `.css` suffix.** Wikipedia serves its CSS from
+`/w/load.php?...&only=styles`, so all 41 stylesheets were fetched, cached as **images**, and never
+concatenated into the cascade. The render said "12330 bytes of CSS" - which was only the inline
+`<style>`, and that number was sitting in the output the whole time. `ResourceDependency` now carries
+the kind, taken from where the URL appeared: `href` on `<link>` is a stylesheet, `src` is not. The
+render now reports **3.9 MB of CSS**.
+
+**`@supports`, `@layer` and `@container` fell through to the rule path**, where the at-rule's own
+condition was compiled as a *selector* and everything after the block was lost. The page carries **70**
+`@supports` blocks. They now recurse like `@media`.
+
+**7 -> 922 rules, 1,818 selectors.** The page renders styled for the first time: tabs, blue section
+links, real layout, where before it was a column of unstyled text.
+
+### What the first styled render exposed
+
+Large **black boxes** where backgrounds should be light - the table-of-contents boxes and the section
+bars are filled solid black. That defect was invisible while the page was unstyled, because nothing
+painted a background at all. It is row 0.8, with the probe to run named in it.
+
+### Also in this commit
+
+`tools/setup.sh` - one command to reinstall the toolchain, fetch HarfBuzz if it is missing, configure
+whichever build directory is stale and build both. The pod recycled four times today; each time cost
+ten to forty minutes of rediscovery, twice on the compiler and once on the CMake cache. It reports
+what is missing under `--check` and changes nothing.

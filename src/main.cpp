@@ -3141,7 +3141,7 @@ static int run_render(std::string const& url, std::string const& output_path, st
 
     std::string css;
     std::size_t fetched_count = 0;
-    auto const dependencies = loader.discover_dependencies(document_resource, base);
+    auto const dependencies = loader.discover_dependencies_detailed(document_resource, base);
 
     // Fetch them concurrently (row 0.4). A real page carries a hundred or more of these and each one
     // costs a round trip: the wikipedia page has 188 and spent 57 s of its 58 s waiting for them one
@@ -3152,10 +3152,12 @@ static int run_render(std::string const& url, std::string const& output_path, st
     // policy's decision, so sharing one across threads would be a data race rather than a saving.
     // Only the finished results cross back, and they are applied here on one thread, in discovery
     // order, so the cascade is built in the order the document declared.
-    auto const context_for = [](rendering::Url const& dependency) {
-        std::string const path = dependency.path();
-        bool const is_css = path.size() >= 4 && path.compare(path.size() - 4, 4, ".css") == 0;
-        return is_css ? rendering::ResourceRequestContext::Style : rendering::ResourceRequestContext::Image;
+    // The kind comes from where the URL appeared, not from its suffix: a stylesheet served by a script
+    // endpoint has no `.css` to look for, and testing for one meant a real page's stylesheets were cached
+    // as images and never entered the cascade (row 0.7).
+    auto const context_for = [](rendering::ResourceDependency const& dependency) {
+        return dependency.is_stylesheet ? rendering::ResourceRequestContext::Style
+                                        : rendering::ResourceRequestContext::Image;
     };
     std::vector<std::optional<rendering::ResourceLoadResult>> fetched_results(dependencies.size());
 
@@ -3166,7 +3168,7 @@ static int run_render(std::string const& url, std::string const& output_path, st
         std::fprintf(stderr, "TRACE dependencies=%zu workers=%zu\n", dependencies.size(), worker_count);
     if (worker_count < 2) {
         for (std::size_t i = 0; i < dependencies.size(); ++i)
-            fetched_results[i] = fetcher.fetch(context_for(dependencies[i]), dependencies[i]);
+            fetched_results[i] = fetcher.fetch(context_for(dependencies[i]), dependencies[i].url);
     } else {
         std::atomic<std::size_t> next { 0 };
         std::vector<std::thread> workers;
@@ -3179,7 +3181,7 @@ static int run_render(std::string const& url, std::string const& output_path, st
                     std::size_t const i = next.fetch_add(1);
                     if (i >= dependencies.size())
                         break;
-                    fetched_results[i] = worker_fetcher.fetch(context_for(dependencies[i]), dependencies[i]);
+                    fetched_results[i] = worker_fetcher.fetch(context_for(dependencies[i]), dependencies[i].url);
                 }
             });
         }
@@ -3191,7 +3193,7 @@ static int run_render(std::string const& url, std::string const& output_path, st
         if (!fetched_results[i] || !fetched_results[i]->succeeded())
             continue;
         auto const& dependency = dependencies[i];
-        bool const is_css = context_for(dependency) == rendering::ResourceRequestContext::Style;
+        bool const is_css = dependency.is_stylesheet;
         auto fetched = std::move(*fetched_results[i]);
         ++fetched_count;
         std::string fetched_text(fetched.resource->bytes.begin(), fetched.resource->bytes.end());
@@ -3200,9 +3202,9 @@ static int run_render(std::string const& url, std::string const& output_path, st
             if (!css.empty())
                 css.push_back('\n');
             css += fetched_text;
-            resources.put({ rendering::ResourceType::Stylesheet, dependency.serialized(), std::move(bytes) });
+            resources.put({ rendering::ResourceType::Stylesheet, dependency.url.serialized(), std::move(bytes) });
         } else {
-            resources.put({ rendering::ResourceType::Image, dependency.serialized(), std::move(bytes) });
+            resources.put({ rendering::ResourceType::Image, dependency.url.serialized(), std::move(bytes) });
         }
     }
     // Inline <style> blocks join the cascade after the linked stylesheets.

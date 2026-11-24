@@ -123,6 +123,14 @@ std::string decode_entities(std::string const& text)
 std::vector<Url> ResourceLoader::discover_dependencies(ResourceData const& document, Url const& base_url) const
 {
     std::vector<Url> urls;
+    for (auto const& dependency : discover_dependencies_detailed(document, base_url))
+        urls.push_back(dependency.url);
+    return urls;
+}
+
+std::vector<ResourceDependency> ResourceLoader::discover_dependencies_detailed(ResourceData const& document, Url const& base_url) const
+{
+    std::vector<ResourceDependency> urls;
     if (document.type != ResourceType::Document)
         return urls;
     auto text = std::string(document.bytes.begin(), document.bytes.end());
@@ -175,8 +183,12 @@ std::vector<Url> ResourceLoader::discover_dependencies(ResourceData const& docum
             if (std::getenv("AETHERIS_TRACE_DOC"))
                 std::fprintf(stderr, "STYLE dep raw=[%s]\n", raw.c_str());
             auto resolved = Url::resolve(resolution_base, raw);
-            if (resolved.is_valid() && fetchable(resolved))
-                urls.push_back(std::move(resolved));
+            if (!resolved.is_valid() || !fetchable(resolved))
+                continue;
+            // `href` is only kept on `<link>`, which is how a stylesheet is declared; `src` is an image,
+            // a script or a font.
+            bool const from_href = lower((*a)[1].str()) == "href";
+            urls.push_back({ std::move(resolved), from_href });
         }
     }
     return urls;

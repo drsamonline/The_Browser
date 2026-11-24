@@ -514,6 +514,27 @@ The CMake cache does **not** survive a recycle either, so the first `ninja` afte
 
 ---
 
+## 7g. Measure coverage, don't guess at gaps
+
+`tools/css-coverage.cpp` answers "which declarations does this engine act on?" by resolving one element
+twice per declaration and comparing `fingerprint()`.
+
+- **The properties are not the problem.** 98.3% of wikipedia's 2,869 declarations change the resolved
+  style. The rest set a property to its own initial value, which cannot be seen that way.
+- **The rule count is the problem.** A real stylesheet parsing to 7 rules means the stylesheet is not
+  reaching the engine, not that properties are missing. Check `rules.size()` before writing a row about
+  property support.
+- **Two traps found that way:** classifying a stylesheet by its `.css` suffix (a page served from
+  `load.php?...&only=styles` has none, so its 41 stylesheets were cached as images), and letting
+  `@supports`/`@layer`/`@container` fall through to the rule path, where the condition became a selector
+  and everything after the block was lost.
+- **A number already in the output was the clue**: "12330 bytes of CSS" for a 417 KB page.
+
+`tools/setup.sh` rebuilds the toolchain and both build directories after a pod recycle; `--check` reports
+what is missing without changing anything.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.
