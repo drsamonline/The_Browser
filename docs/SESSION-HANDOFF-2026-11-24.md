@@ -105,3 +105,19 @@ engine code to save a compile is not a trade this project makes, so the probe us
 things first: `SecureResourceLoader::load()` writes through to the shared `ResourceCache`, so only the
 network part can be concurrent and the cache write has to stay on one thread; and `HttpClient`'s three
 statics have to become per-thread. Both are named in the row, which stays `[ ]`.
+
+## 3. The rebuild, finished
+
+The pod's recycled CMake cache left 300 steps pending across the two commits above. They are done:
+
+| check | result |
+| --- | --- |
+| `ninja -C build -j2` | complete, no errors |
+| `tools/check-build.py` | all 68 binaries current, exit 0 |
+| suite, run 1 | **67/67**, 123.47 s |
+| suite, run 2 | **67/67**, 126.28 s |
+
+So the tree at `73eaafbc` builds and is green, and the two commits that claimed no suite run are
+covered by this one. **The next session does not need to rebuild**: `/scratch/work` survives a pod
+recycle with both build directories intact, and only the pip toolchain has to be reinstalled (see
+`docs/HANDOVER.md` 7f).
