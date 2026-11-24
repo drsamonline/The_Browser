@@ -121,3 +121,58 @@ So the tree at `73eaafbc` builds and is green, and the two commits that claimed 
 covered by this one. **The next session does not need to rebuild**: `/scratch/work` survives a pod
 recycle with both build directories intact, and only the pip toolchain has to be reinstalled (see
 `docs/HANDOVER.md` 7f).
+
+## 4. Fourth commit — row 0.4: concurrent subresources, and a premise that was wrong twice
+
+The fetch loop in `src/main.cpp` is now a bounded pool: one worker per sixteen dependencies, capped
+at eight. Each worker builds its **own** `SecureFetcher` - cache, backends and security policy -
+because a fetch writes into all three, so sharing one across threads is a data race rather than a
+saving. Results come back into a vector and are applied on one thread in discovery order, so the
+cascade keeps the order the document declared. `HttpClient`'s cookie jar, response cache and
+connection pool are `thread_local` for the same reason.
+
+### What it actually bought: about 10%, not 7.6x
+
+The probe said 7.6x at eight workers. The page says ~10%. Both are right, and the difference is where
+they ran:
+
+| | |
+| --- | --- |
+| probe | **loopback** server, 20 ms modelled latency, no gateway |
+| the page | fetches through this sandbox's **egress proxy** |
+| the proxy at 8-way, measured with curl (12 fetches) | **5.0 s serial, 2.0 s parallel - 2.5x** |
+
+So the ceiling on this network is the gateway, not the client. The change is still correct and is
+worth the probe's figure on a network without that gateway.
+
+### The premise was wrong twice over
+
+The row was written from a run that reported "188 linked resources". Tracing says otherwise:
+
+| phase | cost |
+| --- | --- |
+| discover + fetch resources | **~47 s** (1,324 dependencies, 8 workers) |
+| `create_scripted_document` | **~14.4 s** |
+| paint | 68 ms |
+
+Two corrections. **188 is how many resources load, not how many are asked for: the page discovers
+1,324.** And the arithmetic that produced "188 x 300 ms = 57 s" was a coincidence - the phase costs
+what it costs for 1,324 requests, not 188.
+
+### How the wrong reading survived two tests
+
+Removing the `<link>` tags changed nothing, and removing the `<script>` tags changed nothing, which
+looked like proof that the fetches were not the cost. It was not: the dependencies come from the
+stylesheet's `url()` references as much as from the markup, so stripping the tags left all 1,324 of
+them in place. Both runs still printed "188 linked resources", which was the clue I read past.
+
+The lesson is the one this row keeps repeating: a phase timing printed by the program is evidence, and
+a variant of the input that "should" have removed the work is a hypothesis.
+
+### What is left
+
+Row **0.5**: 1,324 discovered against 188 loadable - 1,136 requests for resources that are not there,
+at ~250 ms each through the proxy. The next step is a probe that prints all of them with their
+resolved absolute URLs and where each came from, which tells duplicates and bad resolution apart.
+
+The traces used here are kept behind `AETHERIS_TRACE_RENDER=1`.

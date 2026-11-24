@@ -151,7 +151,10 @@ inline std::string http_resolve_url(std::string const& base, std::string const& 
 
 inline std::vector<HttpCookie>& http_cookie_jar()
 {
-    static std::vector<HttpCookie> jar;
+    // Per thread, so a page's subresources can be fetched at once (row 0.4). Each worker keeps its
+    // own jar, response cache and connection pool: sharing them would need a lock on every read, and
+    // the fetch itself is the expensive part.
+    thread_local std::vector<HttpCookie> jar;
     return jar;
 }
 
@@ -347,7 +350,7 @@ struct HttpCacheEntry {
 
 inline std::vector<HttpCacheEntry>& http_cache_entries()
 {
-    static std::vector<HttpCacheEntry> entries;
+    thread_local std::vector<HttpCacheEntry> entries;
     return entries;
 }
 
@@ -384,7 +387,7 @@ struct HttpConnection {
 
 inline std::vector<std::pair<std::string, HttpConnection>>& http_connection_pool()
 {
-    static std::vector<std::pair<std::string, HttpConnection>> pool;
+    thread_local std::vector<std::pair<std::string, HttpConnection>> pool;
     return pool;
 }
 

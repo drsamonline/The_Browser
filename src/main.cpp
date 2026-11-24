@@ -35,6 +35,7 @@
 #include "scroll_bar.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <chrono>
 #include <functional>
@@ -3105,6 +3106,12 @@ static rendering::RenderDocument create_scripted_document(
 }
 
 static int run_render(std::string const& url, std::string const& output_path, std::string const& dispatch_id = {}, std::string const& dispatch_type = {}, float click_x = -1, float click_y = -1) {
+    auto const trace_begin = std::chrono::steady_clock::now();
+    auto const trace_at = [&](char const* what) {
+        if (std::getenv("AETHERIS_TRACE_RENDER"))
+            std::fprintf(stderr, "TRACE %-28s %.1f ms\n", what,
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - trace_begin).count());
+    };
     if (network::Socket::initialize() != network::SocketError::None) {
         std::cerr << "Failed to initialize network subsystem" << std::endl;
         return 1;
@@ -3133,14 +3140,58 @@ static int run_render(std::string const& url, std::string const& output_path, st
 
     std::string css;
     std::size_t fetched_count = 0;
-    for (auto const& dependency : loader.discover_dependencies(document_resource, base)) {
-        std::string path = dependency.path();
-        bool is_css = path.size() >= 4 && path.compare(path.size() - 4, 4, ".css") == 0;
-        auto fetched = fetcher.fetch(is_css ? rendering::ResourceRequestContext::Style
-                                            : rendering::ResourceRequestContext::Image,
-            dependency);
-        if (!fetched.succeeded())
+    auto const dependencies = loader.discover_dependencies(document_resource, base);
+
+    // Fetch them concurrently (row 0.4). A real page carries a hundred or more of these and each one
+    // costs a round trip: the wikipedia page has 188 and spent 57 s of its 58 s waiting for them one
+    // at a time. Eight workers measured 7.6x against a loopback server (tools/fetch-cost.cpp).
+    //
+    // Each worker gets its **own** `SecureFetcher`, and that is not an optimisation but the only
+    // correct shape: a fetch writes into the resource cache, the backend list and the security
+    // policy's decision, so sharing one across threads would be a data race rather than a saving.
+    // Only the finished results cross back, and they are applied here on one thread, in discovery
+    // order, so the cascade is built in the order the document declared.
+    auto const context_for = [](rendering::Url const& dependency) {
+        std::string const path = dependency.path();
+        bool const is_css = path.size() >= 4 && path.compare(path.size() - 4, 4, ".css") == 0;
+        return is_css ? rendering::ResourceRequestContext::Style : rendering::ResourceRequestContext::Image;
+    };
+    std::vector<std::optional<rendering::ResourceLoadResult>> fetched_results(dependencies.size());
+
+    // One worker per sixteen resources, capped at eight: below that the threads cost more than the
+    // round trips they overlap, and this box has a hard thread limit.
+    std::size_t const worker_count = std::min<std::size_t>(8, dependencies.size() / 16);
+    if (std::getenv("AETHERIS_TRACE_RENDER"))
+        std::fprintf(stderr, "TRACE dependencies=%zu workers=%zu\n", dependencies.size(), worker_count);
+    if (worker_count < 2) {
+        for (std::size_t i = 0; i < dependencies.size(); ++i)
+            fetched_results[i] = fetcher.fetch(context_for(dependencies[i]), dependencies[i]);
+    } else {
+        std::atomic<std::size_t> next { 0 };
+        std::vector<std::thread> workers;
+        workers.reserve(worker_count);
+        for (std::size_t w = 0; w < worker_count; ++w) {
+            workers.emplace_back([&]() {
+                SecureFetcher worker_fetcher(base);
+                worker_fetcher.secure->set_content_security_policy(fetcher.secure->content_security_policy());
+                for (;;) {
+                    std::size_t const i = next.fetch_add(1);
+                    if (i >= dependencies.size())
+                        break;
+                    fetched_results[i] = worker_fetcher.fetch(context_for(dependencies[i]), dependencies[i]);
+                }
+            });
+        }
+        for (auto& worker : workers)
+            worker.join();
+    }
+
+    for (std::size_t i = 0; i < dependencies.size(); ++i) {
+        if (!fetched_results[i] || !fetched_results[i]->succeeded())
             continue;
+        auto const& dependency = dependencies[i];
+        bool const is_css = context_for(dependency) == rendering::ResourceRequestContext::Style;
+        auto fetched = std::move(*fetched_results[i]);
         ++fetched_count;
         std::string fetched_text(fetched.resource->bytes.begin(), fetched.resource->bytes.end());
         std::vector<unsigned char> bytes(fetched.resource->bytes.begin(), fetched.resource->bytes.end());
@@ -3160,6 +3211,7 @@ static int run_render(std::string const& url, std::string const& output_path, st
         css += block;
     }
 
+    trace_at("resources fetched");
     network::Socket::cleanup();
 
     // Scripts run through the same path the window uses, so --render and --window
@@ -3169,7 +3221,11 @@ static int run_render(std::string const& url, std::string const& output_path, st
     aetheris::js::Interpreter js;
     DomHost dom;
     auto viewport_state = std::make_shared<std::array<double, 4>>(std::array<double, 4> { 0.0, 0.0, 0.0, 768.0 });
+    auto const trace_start = std::chrono::steady_clock::now();
     auto rendered = create_scripted_document(html, css, url, &resources, js, dom, viewport_state, -1.0, &fetcher);
+    if (std::getenv("AETHERIS_TRACE_RENDER"))
+        std::fprintf(stderr, "TRACE create_scripted_document %.1f ms\n",
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - trace_start).count());
 
     // --dispatch fires an element event after load, then re-lays out so the
     // handler's changes are in the image. It lives here rather than in the shared
@@ -3199,7 +3255,11 @@ static int run_render(std::string const& url, std::string const& output_path, st
     }
     // A PPM has no alpha channel, so render onto an opaque white background to
     // keep the output viewable.
+    auto const paint_start = std::chrono::steady_clock::now();
     auto surface = rendered.render_to_surface(1024, 768, rendering::Color { 255, 255, 255, 255 });
+    if (std::getenv("AETHERIS_TRACE_RENDER"))
+        std::fprintf(stderr, "TRACE render_to_surface %.1f ms\n",
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - paint_start).count());
     if (!rendering::ImageOutput::write_ppm(surface, output_path)) {
         std::cerr << "Failed to write " << output_path << std::endl;
         return 1;
