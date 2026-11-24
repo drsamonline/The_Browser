@@ -469,3 +469,43 @@ else: "188 linked resources" (the count of ones that loaded, not the ones asked 
 unstyled" (its stylesheets were cached as images), and "it shows the contents instead of the article"
 (the contents *are* at the top of a 41,000-pixel page). Each time the fix was to ask the layout or the
 engine for a number rather than to look harder at the picture.
+
+## 12. Twelfth commit — row 0.10: flex items had no width at all
+
+The row said a flex item is sized to its container, so `justify-content` overflows. The fixture it asked
+for - one item, four `justify-content` values, asserting the **width** as well as the position - found
+something worse.
+
+### The items did not exist
+
+Four rows, one item each: the rows painted their background and **no item appeared at all**. A flex item
+with no basis and no width was laid out at **zero width**. That is the limitation row 3c1 had already
+named in a parenthetical - "`flex-basis: auto` with no width starts at 0 - no intrinsic-width pass" - and
+it had been sitting there as a footnote.
+
+The row's own case was the same defect showing the other way round: on the real page the `h1` was given
+the container's full width and pushed off the edge by `justify-content: flex-end`.
+
+### The fix
+
+`LayoutEngine::max_content_width()` answers "how wide is this thing?": a text run's measured width, or
+the widest of a block's children, or the sum of a row of inline ones. An auto-basis flex item uses it,
+capped at the row it sits in.
+
+| fixture | before | after |
+| --- | --- | --- |
+| text item, auto width | **0px, invisible** | **29px** |
+| two 40px items, `flex-start` | 0-79 | 0-79 (unchanged) |
+| one 40px item, `flex-end` | 260-299 | 260-299 (unchanged) |
+
+On the real page the `h1` moved from **x=1000, w=976** to **x=487, w=535** - content-sized and on screen.
+
+### Why the width assertion mattered
+
+The row asked for it explicitly, and it is the half that would have passed while the bug was live: the
+`flex-end` item was in the right *place* at 260-299 both before and after. Only its width told the truth.
+
+### Still open
+
+The `h1`'s right edge lands at 1022 in a container ending at 1000 - a 22px overshoot - so the `flex-end`
+arithmetic is not exact yet. It is named in the row rather than left to be discovered.

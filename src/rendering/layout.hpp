@@ -147,6 +147,10 @@ private:
     void layout_flex_children(LayoutNode& node, float available_width, float& cursor_y) const;
     void layout_grid_children(LayoutNode& node, float available_width, float& cursor_y) const;
     static float parse_length(std::string const* value, float fallback, float percentage_base = 0);
+    // The widest a node's content can be: a text run's measured width, or the widest (or, for a row of inline
+    // children, the sum) of its children's. Used as the flex base size when an item names neither a basis nor
+    // a width, which this engine had no answer for (row 0.10).
+    static float max_content_width(LayoutNode const& node);
     static float resolve_dimension(StyleProperties const&, char const* property, float available_width, float fallback);
     static BoxEdges resolve_edges(StyleProperties const& style, char const* prefix, float percentage_base);
     static bool is_positioned(LayoutNode const& node);

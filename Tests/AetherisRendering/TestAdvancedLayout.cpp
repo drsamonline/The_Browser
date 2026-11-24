@@ -107,5 +107,26 @@ int main()
             "and below the line of text, not on top of it");
     }
 
+    // Row 0.10: a flex item that names neither a basis nor a width is sized by its content. It used to start
+    // at zero, so a row of text items vanished; on a real page the same defect showed the other way round, a
+    // heading given the container's full width and pushed off the edge by justify-content.
+    {
+        auto rendered = RenderDocument::create(
+            "<div style='display: flex; width: 300px; height: 30px'>"
+            "<div id='a' style='height: 30px'>abc</div>"
+            "<div id='b' style='height: 30px; width: 40px'></div></div>",
+            "", 400);
+        auto const& row = *rendered.layout_root().children[0];
+        require(row.children.size() == 2, "two flex items");
+        auto const& text_item = *row.children[0];
+        auto const& fixed_item = *row.children[1];
+        require(fixed_item.rect.width == 40, "an item with a width keeps it");
+        require(text_item.rect.width > 0, "an auto-width item is not zero - it is as wide as its text");
+        require(text_item.rect.width < 300, "and it does not take the whole row");
+        require(text_item.rect.x == row.box.content.x, "flex-start puts the first item at the content edge");
+        require(fixed_item.rect.x == text_item.rect.x + text_item.rect.width,
+            "and the second follows it, rather than overlapping");
+    }
+
     return 0;
 }

@@ -529,6 +529,47 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
     cursor_y = std::max(max_bottom, cursor_y + line_height);
 }
 
+// The widest a node's content can be, used as the flex base size when an item names neither a basis nor a
+// width. A block's max-content width is the widest of its children's; a text run's is the width its text
+// measures at. It is an approximation of css-sizing-3's intrinsic width, and it is the part this engine was
+// missing: without it an auto-basis flex item started at zero, so a row of text items vanished (row 0.10).
+float LayoutEngine::max_content_width(LayoutNode const& node)
+{
+    if (auto const* width = node.style.get("width"); width && !width->empty() && *width != "auto") {
+        float const specified = parse_length(width, -1, 0);
+        if (specified >= 0)
+            return specified;
+    }
+
+    float widest = 0;
+    bool has_text = false;
+    if (!node.generated_text.empty()) {
+        widest = std::max(widest, TextLayout::measure_text(node.generated_text, TextLayout::font_size(node.style), node.style));
+        has_text = true;
+    } else if (node.dom_node && node.dom_node->type == DomNodeType::Text && !node.dom_node->data.empty()) {
+        widest = std::max(widest, TextLayout::measure_text(node.dom_node->data, TextLayout::font_size(node.style), node.style));
+        has_text = true;
+    }
+    if (has_text)
+        return widest;
+
+    // A block: the widest child, which is what "as wide as the widest thing inside it" means for a single
+    // line. A row of inline children would be wider, so their widths are summed.
+    float inline_sum = 0;
+    bool has_inline = false;
+    for (auto const& child : node.children) {
+        if (child->display == LayoutDisplay::None)
+            continue;
+        float const child_width = max_content_width(*child);
+        widest = std::max(widest, child_width);
+        if (child->display == LayoutDisplay::Inline || child->display == LayoutDisplay::InlineBlock) {
+            inline_sum += child_width;
+            has_inline = true;
+        }
+    }
+    return has_inline ? std::max(widest, inline_sum) : widest;
+}
+
 void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width, float& cursor_y) const
 {
     std::vector<LayoutNode*> items;
@@ -587,6 +628,9 @@ void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width,
             item.base = std::max(0.0f, parse_length(basis, 0, available_width));
         else if (auto const* width = child->style.get("width"); width && !width->empty() && *width != "auto")
             item.base = std::max(0.0f, parse_length(width, 0, available_width));
+        else
+            // `auto`/`content`: the item's own content decides, never more than the row it sits in.
+            item.base = std::min(available_width, max_content_width(*child));
 
         total_base += item.base;
         total_grow += item.grow;
