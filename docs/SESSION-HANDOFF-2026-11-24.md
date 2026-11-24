@@ -509,3 +509,33 @@ The row asked for it explicitly, and it is the half that would have passed while
 
 The `h1`'s right edge lands at 1022 in a container ending at 1000 - a 22px overshoot - so the `flex-end`
 arithmetic is not exact yet. It is named in the row rather than left to be discovered.
+
+## 13. Thirteenth commit — row 0.10's tail: the flex line divides outer sizes
+
+The row closed with a 22px overshoot on the real page's `h1` named as still open. The fixture for it was
+one item at `flex-end` with a width, then with padding, margin and border - four cases, because the
+overshoot had to be attributed to one of them before anything was changed.
+
+| item | before | after |
+| --- | --- | --- |
+| `width: 40px` | 260-299 | 260-299 |
+| `padding: 0 10px` | 260-**319** | **240-299** |
+| `margin: 0 10px` | 270-**309** | 260-299 |
+| `border-left: 5px` | 265-**304** | **260-299** |
+
+So the cause was real and it was the box model: the flex line was divided between **content** widths,
+so `flex-end` put a padded item's content box at the row's edge and its padding over the top. Margin,
+padding and border are now counted when the free space is computed, and the border box is placed inside
+its margin.
+
+### And it is not what the page's `h1` is doing
+
+The `h1` is unchanged at x=487 w=535. The free space is computed from a base of 513 while the placed box
+ends 535 wide - 22px that is **not** padding or border. That is a different question, and the row now
+says so rather than implying this commit closed it.
+
+### The fixture earned its keep twice
+
+It found a real overflow that no screenshot would have isolated, and it also proved that the page's
+22px had a different cause - which is the difference between "fixed the symptom I could see" and "fixed
+the defect the fixture named".

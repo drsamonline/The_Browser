@@ -609,6 +609,11 @@ void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width,
         float base { 0 };
         float grow { 0 };
         float shrink { 1 }; // css-flexbox-1: flex-shrink's initial value is 1
+        // Margin, padding and border, which sit outside the content box. The flex line is divided between
+        // *outer* sizes: leaving them out put a padded item's content at the row's edge and its padding over
+        // it - a 20px overflow at flex-end, and 22px on a real page's heading (row 0.10's tail).
+        float extras { 0 };
+        float margin_left { 0 };
     };
     std::vector<FlexItem> flex_items;
     flex_items.reserve(items.size());
@@ -632,7 +637,15 @@ void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width,
             // `auto`/`content`: the item's own content decides, never more than the row it sits in.
             item.base = std::min(available_width, max_content_width(*child));
 
-        total_base += item.base;
+        {
+            auto const margin = resolve_edges(child->style, "margin", available_width);
+            auto const padding = resolve_edges(child->style, "padding", available_width);
+            auto const border = resolve_edges(child->style, "border", available_width);
+            item.margin_left = margin.left;
+            item.extras = margin.left + margin.right + padding.left + padding.right + border.left + border.right;
+        }
+
+        total_base += item.base + item.extras;
         total_grow += item.grow;
         total_scaled_shrink += item.shrink * item.base;
         flex_items.push_back(item);
@@ -658,7 +671,10 @@ void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width,
             width += free_space * (item.shrink * item.base) / total_scaled_shrink;
             width = std::max(0.0f, width);
         }
-        layout_node(*item.node, cursor_x, node.box.content.y, width);
+        // `width` is the item's outer size, so the content box it is laid out with is what remains after the
+        // margin, padding and border, and the box starts inside its left margin.
+        float const content_width = std::max(0.0f, width - item.extras);
+        layout_node(*item.node, cursor_x + item.margin_left, node.box.content.y, content_width);
         auto align = node.style.get("align-items");
         if (align && *align == "center") {
             item.node->rect.y += std::max(0.0f, max_height - item.node->rect.height) / 2;
