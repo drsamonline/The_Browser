@@ -68,3 +68,35 @@ a render, and it costs about a minute per page.
 Extend `tools/article-position.cpp` to report the rules that set `margin`/`padding`/`line-height` on a
 node named on the command line, and ask it about a contents item - the same way the `h1` at x=1000 was
 explained by printing its ancestor chain.
+
+## 3. Third commit — row 0.11 narrowed to an anonymous line box
+
+The reference said the contents list sits 79-80px apart where chromium puts it 27-28. The probe was
+extended to point at a node (`id=<id>` or `tag=<tag>`), print its box, its children with `display`,
+`line-height` and height, and the rules that change it.
+
+### What it ruled out
+
+| question | answer |
+| --- | --- |
+| Is it a margin on the list item? | No - the rules only add `margin: 0.2em 0`, about 3px |
+| Is it the anchor inside? | No - the `<a>` is 45.6px in a 79.2px item |
+| Is it list layout in general? | No - a minimal `<ul><li>` agrees with chromium at 99.8% |
+| Is it whitespace text nodes? | No - skipping them changed nothing (33.6px either way), so that change was reverted |
+
+### What it found
+
+A 156-byte fixture reproduces the defect: a `<li>` holding one block `<a>` is **33.6px where chromium
+gives 16.8** - exactly double. The children print shows the doubling is not the DOM: the `<li>` has a
+**second inline child of 16.8px with no DOM tag at all**. The engine is producing a line box with no
+node behind it.
+
+The suspect is the tail of `layout_inline_children`:
+`cursor_y = std::max(max_bottom, cursor_y + line_height)` - it adds a line whether or not anything was
+placed on it. That is the next thing to read.
+
+### The change that was reverted
+
+Skipping whitespace-only text nodes is the obvious fix and it did not move the number. It was reverted
+rather than shipped: a plausible-looking change that leaves the measurement identical is a guess, and
+this engine has already been bitten by one of those (the `reserve(24)` that measured 33% slower).

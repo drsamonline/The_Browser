@@ -62,8 +62,17 @@ static void report(RenderDocument const& document, char const* label, std::strin
 int main(int argc, char** argv)
 {
     if (argc < 3) {
-        std::printf("usage: article-position page.html page.css\n");
+        std::printf("usage: article-position page.html page.css [id=<element id> | tag=<element name>]\n");
         return 1;
+    }
+    std::string wanted_id;
+    std::string wanted_tag;
+    for (int i = 3; i < argc; ++i) {
+        std::string const argument = argv[i];
+        if (argument.rfind("id=", 0) == 0)
+            wanted_id = argument.substr(3);
+        else if (argument.rfind("tag=", 0) == 0)
+            wanted_tag = argument.substr(4);
     }
     auto const html = read_file(argv[1]);
     auto const css = read_file(argv[2]);
@@ -76,6 +85,65 @@ int main(int argc, char** argv)
     auto const rect = document.document_rect();
     std::printf("page: %s (%zu bytes html, %zu bytes css)\n", argv[1], html.size(), css.size());
     std::printf("document: %.0f x %.0f\n\n", rect.width, rect.height);
+
+    if (!wanted_id.empty() || !wanted_tag.empty()) {
+        int found_depth = 0;
+        auto const* target = find_layout(document.layout_root(), wanted_id, wanted_tag, found_depth);
+        report(document, wanted_id.empty() ? wanted_tag.c_str() : wanted_id.c_str(), wanted_id, wanted_tag);
+        if (target) {
+            std::printf("\nits children:\n");
+            for (auto const& child : target->children) {
+                auto const value = [&](char const* property) {
+                    auto const* found = child->style.get(property);
+                    return found ? *found : std::string("-");
+                };
+                std::printf("  %-10s y=%7.1f h=%6.1f  display=%-12s line-height=%-18s font-size=%s\n",
+                    child->dom_node ? child->dom_node->name.c_str() : "?",
+                    child->rect.y, child->rect.height, value("display").c_str(),
+                    value("line-height").c_str(), value("font-size").c_str());
+                for (auto const& grandchild : child->children) {
+                    auto const inner = [&](char const* property) {
+                        auto const* found = grandchild->style.get(property);
+                        return found ? *found : std::string("-");
+                    };
+                    std::printf("    %-8s y=%7.1f h=%6.1f  display=%-12s line-height=%-18s font-size=%s\n",
+                        grandchild->dom_node ? grandchild->dom_node->name.c_str() : "?",
+                        grandchild->rect.y, grandchild->rect.height, inner("display").c_str(),
+                        inner("line-height").c_str(), inner("font-size").c_str());
+                }
+            }
+        }
+
+        if (target && target->dom_node) {
+            StyleResolver resolver;
+            CssStyleSheet const empty;
+            auto const baseline = resolver.resolve(*target->dom_node, empty, nullptr, nullptr).fingerprint();
+            std::printf("\nrules that change this node:\n");
+            int shown = 0;
+            for (auto const& rule : document.stylesheet().rules) {
+                CssStyleSheet single;
+                single.rules.push_back(rule);
+                if (resolver.resolve(*target->dom_node, single, nullptr, nullptr).fingerprint() == baseline)
+                    continue;
+                bool any = false;
+                for (auto const& declaration : rule.declarations) {
+                    auto const& property = declaration.property;
+                    if (property.find("margin") == std::string::npos && property.find("padding") == std::string::npos
+                        && property.find("line-height") == std::string::npos && property != "display"
+                        && property != "height" && property != "font-size")
+                        continue;
+                    if (!any)
+                        std::printf("  [%s]\n", rule.selectors.empty() ? "" : rule.selectors.front().c_str());
+                    any = true;
+                    std::printf("      %-20s %s\n", property.c_str(), declaration.value.c_str());
+                    ++shown;
+                }
+            }
+            if (shown == 0)
+                std::printf("  (no rule sets spacing on it)\n");
+        }
+        return 0;
+    }
 
     report(document, "body", "mw-content-text", "");
     report(document, "article container", "content", "");
