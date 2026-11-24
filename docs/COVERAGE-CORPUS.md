@@ -72,3 +72,35 @@ than even that, which the synthetic shapes do not reproduce.
 
 The corpus has not been run against twenty sites. Two sites were reachable, one of them rendered, and the other
 produced the measurements above. Anything said about "real pages" in general is said from those two.
+
+## Second run, 2026-11-24 — the page that did not finish now does
+
+Re-run after row 3k's layout fix and row 0.3's proxy support. The allowlist has moved slightly:
+**three** of the twenty are reachable now (`www.debian.org` answers where it was 502), seventeen still
+return 502 or 403 from the proxy, so the row stays blocked on the network rather than on the work.
+
+| site | bytes | result |
+| --- | --- | --- |
+| `example.com` | 577 | rendered |
+| `en.wikipedia.org/wiki/Web_browser` | 416,975 | **rendered, 57.8 s** (was: *did not finish in 280 s*) |
+| `www.debian.org` | 15,863 | rendered |
+
+### Where the 57.8 s goes
+
+Not layout. The same page through `tools/layout-cost.cpp` and `tools/css-cost.cpp` at `-O2`:
+
+| stage | cost |
+| --- | --- |
+| parse | 43.7 ms |
+| CSS parse (UA + the page's 12,331 bytes of `<style>`) | 1.6 ms |
+| style, 7,581 elements against 137 rules | 905.5 ms |
+| layout | 67.9 ms |
+
+About **1 second of compute** for a 417 KB page. The other 57 seconds are the page's **188 linked
+resources, fetched one at a time**: the render took 57.8 s with the proxy (fetches succeed) and 60.0 s
+with it unset (fetches fail), i.e. the same wall clock either way, at about 300 ms per resource. That
+is I/O, and it is row **0.4**.
+
+Row 3j's earlier reading of this page — "did not finish in 280 s" — was layout doing 2^depth work
+(row 3k); that is gone. What is left is a serial fetch loop, which is a different problem with a
+different fix.

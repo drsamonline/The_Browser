@@ -496,6 +496,24 @@ nested 12 deep cost 22,526 layout steps, and a 14 KB wikipedia prefix cost 1.16M
 
 ---
 
+## 7f. A pod that recycles costs you the toolchain, not the build
+
+The sandbox is a new container most days. What survives is `/scratch/work` — the repo and both build
+directories. What does not is everything `pip` installed, so `toolchain/zigcc` points at a zig that is
+gone and every probe fails with `exec: .../zig: not found`. Reinstall and re-point before anything else:
+
+```sh
+pip install -q ziglang cmake ninja
+ZIG=$(python3 -c 'import ziglang,os;print(os.path.join(os.path.dirname(ziglang.__file__),"zig"))')
+printf '#!/bin/sh\nexec %s cc "$@"\n'  "$ZIG" > /scratch/work/toolchain/zigcc
+printf '#!/bin/sh\nexec %s c++ "$@"\n' "$ZIG" > /scratch/work/toolchain/zigcxx
+```
+
+The CMake cache does **not** survive a recycle either, so the first `ninja` after one rebuilds all
+300 steps. `tools/check-build.py` says so; believe it rather than a directory that has binaries in it.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.
