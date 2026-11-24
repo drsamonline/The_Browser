@@ -1,6 +1,8 @@
 #include "resource_loader.hpp"
 
 #include <cstdio>
+#include <cctype>
+#include <cstring>
 #include <cstdlib>
 #include <regex>
 
@@ -76,20 +78,87 @@ ResourceLoadResult ResourceLoader::load(ResourceType expected_type, Url const& u
     return result;
 }
 
+namespace {
+
+// The five entities an attribute value can carry that change the meaning of a URL.
+std::string decode_entities(std::string const& text)
+{
+    if (text.find('&') == std::string::npos)
+        return text;
+    std::string out;
+    out.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] != '&') {
+            out.push_back(text[i]);
+            continue;
+        }
+        auto const matches = [&](char const* entity) {
+            auto const length = std::strlen(entity);
+            return text.compare(i, length, entity) == 0;
+        };
+        if (matches("&amp;")) {
+            out.push_back('&');
+            i += 4;
+        } else if (matches("&lt;")) {
+            out.push_back('<');
+            i += 3;
+        } else if (matches("&gt;")) {
+            out.push_back('>');
+            i += 3;
+        } else if (matches("&quot;")) {
+            out.push_back('"');
+            i += 5;
+        } else if (matches("&#39;")) {
+            out.push_back('\'');
+            i += 4;
+        } else {
+            out.push_back(text[i]);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 std::vector<Url> ResourceLoader::discover_dependencies(ResourceData const& document, Url const& base_url) const
 {
     std::vector<Url> urls;
     if (document.type != ResourceType::Document)
         return urls;
     auto text = std::string(document.bytes.begin(), document.bytes.end());
-    std::regex pattern(R"((?:href|src)\s*=\s*[\"']([^\"']+)[\"'])", std::regex::icase);
-    for (std::sregex_iterator it(text.begin(), text.end(), pattern), end; it != end; ++it) {
-        auto raw = (*it)[1].str();
-        if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "STYLE dep raw=[%s]\n", raw.c_str());
-        auto resolved = Url::resolve(base_url, raw);
-        if (std::getenv("AETHERIS_TRACE_DOC")) std::fprintf(stderr, "STYLE dep resolved=[%s]\n", resolved.serialized().c_str());
-        if (resolved.is_valid())
-            urls.push_back(std::move(resolved));
+
+    // Walk the tags, not the text. This used to take every `href` or `src` in the document, so every
+    // `<a href>` became a dependency and a page's entire link graph was downloaded: the wikipedia
+    // article named 1,324 dependencies, of which 1,136 were hyperlinks the page never loads (row 0.5).
+    //
+    // A hyperlink is navigation; `<link href>` is a subresource. Only the second is fetched here.
+    std::regex const tag(R"(<\s*([a-zA-Z][a-zA-Z0-9-]*)((?:[^>\"']|\"[^\"]*\"|'[^']*')*)>)");
+    std::regex const attribute(R"(\b(href|src)\s*=\s*[\"']([^\"']+)[\"'])", std::regex::icase);
+
+    auto lower = [](std::string text) {
+        for (auto& c : text)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return text;
+    };
+
+    for (std::sregex_iterator it(text.begin(), text.end(), tag), end; it != end; ++it) {
+        std::string const name = lower((*it)[1].str());
+        bool const hyperlink = name == "a" || name == "area";
+        std::string const attributes = (*it)[2].str();
+        for (std::sregex_iterator a(attributes.begin(), attributes.end(), attribute), aend; a != aend; ++a) {
+            if (lower((*a)[1].str()) == "href" && hyperlink)
+                continue;
+            // An attribute value is HTML text, so `&amp;` in a query string has to become `&` before it
+            // is a URL. Without this every `load.php?...&amp;...` stylesheet 404s - which is why a real
+            // page rendered unstyled, and it stayed invisible while hyperlinks were being fetched
+            // instead (row 0.5).
+            auto raw = decode_entities((*a)[2].str());
+            if (std::getenv("AETHERIS_TRACE_DOC"))
+                std::fprintf(stderr, "STYLE dep raw=[%s]\n", raw.c_str());
+            auto resolved = Url::resolve(base_url, raw);
+            if (resolved.is_valid())
+                urls.push_back(std::move(resolved));
+        }
     }
     return urls;
 }

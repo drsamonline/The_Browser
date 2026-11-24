@@ -176,3 +176,53 @@ at ~250 ms each through the proxy. The next step is a probe that prints all of t
 resolved absolute URLs and where each came from, which tells duplicates and bad resolution apart.
 
 The traces used here are kept behind `AETHERIS_TRACE_RENDER=1`.
+
+## 5. Fifth commit — row 0.5: the engine was downloading the page's link graph
+
+Row 0.5 said 1,324 dependencies were discovered for 188 loadable resources. `tools/dep-cost.cpp`
+prints all of them with their resolved URL and whether the markup or the CSS named them, and the
+answer was immediate:
+
+| before | |
+| --- | --- |
+| discovered | **1,324** |
+| distinct | 927 |
+| duplicates | 397 over 140 URLs |
+| the most repeated | `Google_Chrome` 47x, `Firefox_version_history` 21x, `Pale_Moon` 19x |
+
+Those are **article hyperlinks**. `discover_dependencies` took every `href` or `src` in the document
+text with one regex, so `<a href>` was a dependency and the engine downloaded the page's link graph.
+
+### Fix one: walk tags, not text
+
+Skip `href` on `<a>` and `<area>`; keep `src` anywhere and `href` on `<link>`. **1,324 -> 102**
+discovered, 49 distinct.
+
+### Fix two: the bug the first one was hiding
+
+With the hyperlinks gone, the render reported **0 linked resources** - every remaining fetch failed.
+The URLs were `load.php?lang=en&amp;modules=...`: attribute values were never HTML-decoded, so the
+`&amp;` reached the wire and the page's own stylesheets had **never loaded at all**. The old 188
+"successes" were the hyperlinks.
+
+Decoding `&amp;`/`&lt;`/`&gt;`/`&quot;`/`&#39;` before resolving took it from 0 to **41 real
+subresources** when the page is rendered from its URL.
+
+### What this does not change
+
+The render still looks unstyled: 41 stylesheets load now, but this engine cannot reproduce Vector
+2022's CSS. The win is that the fetches are correct, not that the page looks like wikipedia yet.
+
+### A harness fact worth keeping
+
+Rendering `file://<local path>` makes every relative URL resolve to `file://`, so the corpus harness
+fetches **none** of a page's subresources. That is row **0.6**, and it means every corpus measurement
+before today exercised markup, CSS and layout with none of the page's own stylesheets, images or
+scripts.
+
+### The pod came back stale, again
+
+Mid-session `git log` showed `fed64d9c` while `origin/main` was four commits ahead at `26a4ee55` -
+the trap the project's own prompt lists. The work was saved as a patch, the tree reset to
+`origin/main`, the patch re-applied (`git apply --check` first) and everything rebuilt before the
+suite was run. The first suite run of the session had been against the stale tree and was thrown away.
