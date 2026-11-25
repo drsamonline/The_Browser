@@ -259,3 +259,37 @@ A spec-correct change that makes the page worse is not a fix, and this engine ha
 
 In `layout_flex_children`, place each item from the width it **ends up with** rather than from its base
 size. That is the same stale-size question one level up, and it is what the row now says.
+
+## 9. Eighth commit — three variants, three regressions, and a stop
+
+I proposed going after the *pattern* rather than the symptom: a box sized or placed from a value
+computed before the thing it depends on was known. The attempt was worth making and it failed, and the
+record matters more than the result.
+
+### What was tried
+
+1. **The row-sum.** A flex row's intrinsic width is the sum of its items, not the widest of them.
+   Correct per css-flexbox-1, and it worked: the container went from 54.1px to **423.23 intrinsic,
+   389.55 actual**. The page looked **worse** - links pushed further off the right edge.
+2. **`translate_subtree` + re-placement.** A new helper so a flex container can move an item after its
+   own layout reveals its real width, and a pass that re-places the line from those widths. With it the
+   container moved from x=766 to **x=919.1, w=389.6** - a right edge of **1308 on a 1024px page**.
+   Worse again.
+3. **Both together.** Worse still: only a fragment of "D" was visible.
+
+All three were reverted. Pixel agreement never left 81.0-81.1% for any of them, which is its own signal:
+none of these changes touched the thing that is actually wrong.
+
+### What the measurement says
+
+The box is now sized correctly and positioned wrongly. Its position is decided **above** it - the parent
+places it using the width it had before layout - and the re-placement I wrote did not reach that level.
+So the defect is in the header chain, not in the menu, and the next step is to walk
+`p-vector-user-menu-overflow` upward with the probe and find which ancestor assigns the x.
+
+### Why this is the place to stop
+
+Four sessions of this pattern have produced a reliable rule: the defect is one layer below where the
+symptom appears. This time I guessed which layer and was wrong twice. The instrument that would settle
+it is the ancestor walk the probe already has, pointed at the right node - which is a deliberate piece of
+work, not a patch. Better to leave the tree green and the question sharp than to ship a fourth variant.
