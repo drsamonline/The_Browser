@@ -190,5 +190,21 @@ int main()
         }
     }
 
+    // Row 0.13's tail: a replaced element contributes its own width to the intrinsic sizing. An `<img>` has no
+    // children and no `width` style, so the max-content width of a link wrapping a 140px logo came back 0 and
+    // the link was sized as if it held nothing - the largest overflow on a real page started there. Upstream
+    // takes a replaced element's contribution from its natural size (replaced_sizing.rs:85-100).
+    {
+        auto rendered = RenderDocument::create(
+            "<div style='display: flex; width: 600px'>"
+            "<a id='logo' href='#x' style='display: block'><img width='140' height='22' alt='Logo'></a>"
+            "</div>", "", 700);
+        auto const& row = *rendered.layout_root().children[0];
+        require(!row.children.empty(), "the row has the link");
+        auto const& link = *row.children[0];
+        require(link.rect.width >= 140.0f,
+            "a link wrapping a 140px image is at least 140 wide, not zero");
+    }
+
     return 0;
 }

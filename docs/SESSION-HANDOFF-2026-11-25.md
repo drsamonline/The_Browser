@@ -409,3 +409,42 @@ So the instrument is wrong, not the layout - and six variants failed against it 
 distinguish a bug from a design. **Next step:** make `--overflow` ignore children whose box lies wholly
 outside the document's viewport, then re-baseline. The real number will be lower, and whatever remains
 will be worth chasing.
+
+## 13. Twelfth commit — fix the instrument, then a real defect falls out of it
+
+The previous commit ended with "the metric is wrong, fix it first". This one did, and the corrected
+metric immediately named a genuine bug.
+
+### The instrument
+
+`--overflow` now ignores children whose box lies **wholly outside the viewport**. Hidden menus and
+off-canvas UI are placed there on purpose - that is correct CSS, not overflow. Corrected baseline:
+**164 -> 150**.
+
+### Upstream had already answered the layout question
+
+`Rust/src/layout/flex_formatting_context.rs:4318` resolves every item's used main size before placement,
+and `:4299` clamps the hypothetical main size at the automatic minimum. The engine already did both, so
+there was nothing to port - which is why six variants moved nothing.
+
+### The first real offender
+
+`div.vector-header-start` is 188px wide with children **321px** past. The cause: **an `<img>` contributed
+no width at all** to the intrinsic sizing. It has no children and no `width` style, so a link wrapping a
+140px logo was measured as if it held nothing.
+
+Upstream takes a replaced element's contribution from its natural size
+(`replaced_sizing.rs:85-100`); the engine now uses the `width` attribute, or the loaded image's width,
+for both max-content and min-content.
+
+| | before | after |
+| --- | --- | --- |
+| overflow count | 150 | **147** |
+| pixel agreement | 81.1% | 81.1% |
+
+`AetherisAdvancedLayout` pins it: a link wrapping a 140px image is at least 140 wide.
+
+### What is left
+
+`div.vector-header-start` is still the worst offender at 321px, so the logo's container is the next thing
+to walk - and the walk now starts from a metric that means something.

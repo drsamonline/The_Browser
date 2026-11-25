@@ -105,11 +105,18 @@ int main(int argc, char** argv)
             float x;
         };
         std::vector<Overflow> overflows;
+        // A child that lies wholly outside the viewport is not overflowing anything - it is a hidden menu or
+        // off-canvas UI placed there on purpose, which is correct CSS. Counting those made the metric
+        // unusable: six attempts to reduce it changed nothing, because most of what it counted was design
+        // (row 0.13's tail).
+        float const viewport_width = document.document_rect().width;
         std::function<void(LayoutNode const&)> scan = [&](LayoutNode const& node) {
             float const right = node.box.content.x + node.box.content.width;
             float worst = 0;
             for (auto const& child : node.children) {
                 if (child->display == LayoutDisplay::None)
+                    continue;
+                if (child->rect.x >= viewport_width || child->rect.x + child->rect.width <= 0)
                     continue;
                 float const child_right = child->rect.x + child->rect.width;
                 worst = std::max(worst, child_right - right);

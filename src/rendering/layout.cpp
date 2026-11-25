@@ -555,6 +555,10 @@ float LayoutEngine::min_content_width(LayoutNode const& node)
             return specified;
     }
 
+    // A replaced element cannot be narrower than itself.
+    if (node.dom_node && node.dom_node->type == DomNodeType::Element && node.dom_node->name == "img")
+        return max_content_width(node);
+
     auto const widest_word = [](std::string_view text, float font_size, StyleProperties const& style) {
         float widest = 0;
         std::size_t begin = 0;
@@ -597,6 +601,20 @@ float LayoutEngine::max_content_width(LayoutNode const& node)
         float const specified = parse_length(width, -1, 0);
         if (specified >= 0)
             return specified;
+    }
+
+    // A replaced element contributes its own width. An `<img>` has no children and no `width` style, so this
+    // returned 0 - and a link wrapping a 140px logo was then sized as if it held nothing, which is where the
+    // largest overflow on a real page started (row 0.13's tail).
+    if (node.dom_node && node.dom_node->type == DomNodeType::Element && node.dom_node->name == "img") {
+        if (auto const attribute = node.dom_node->attribute("width")) {
+            float const specified = parse_length(attribute, -1, 0);
+            if (specified > 0)
+                return specified;
+        }
+        if (node.image)
+            return static_cast<float>(node.image->width);
+        return 0;
     }
 
     float widest = 0;
