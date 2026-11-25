@@ -327,3 +327,42 @@ container cannot fix that, which is why all four attempts failed the same way.
 So the work is a **restructure**: a container can only place its children once its own width is final,
 which means either a two-pass layout (measure top-down, place bottom-up) or a parent re-placing after
 its children settle. That is not a patch, and pretending otherwise has cost four attempts.
+
+## 11. Tenth commit — an instrument for the restructure, and a variant rejected by it
+
+The previous commit ended with "the work is a restructure, not a patch". A restructure needs a number,
+so this one built the number first.
+
+### `--overflow`
+
+`tools/article-position.cpp --overflow` walks the layout tree and counts containers whose children reach
+past their own content box, worst first.
+
+**Baseline on `en.wikipedia.org/wiki/Web_browser`: 165 containers.**
+
+| container | children past its content box |
+| --- | --- |
+| `header.mw-body-header` | **347.7px** |
+| `div.vector-header-start` | **321.2px** (in a 188px box) |
+| `div#p-lang-btn` | 232.0px |
+| `div#right-navigation` | 218.8px |
+
+So the header is where the page breaks, and the account menu is a symptom of it, not the cause. That is
+the first time this has been stated as a number rather than an inference from a screenshot.
+
+### The fifth variant, rejected by the number
+
+Re-placement - `translate_subtree` plus a pass that repositions a flex line from the widths its items
+actually got - was tried again, and judged by the count instead of by a crop:
+
+**165 → 164.**
+
+That is noise. The change is reverted, and the rejection took one measurement instead of a session of
+squinting at pixels. The two earlier variants were rejected by eye and by x-coordinate; this one by the
+metric the fix is supposed to move.
+
+### What this leaves
+
+The restructure is now a bounded, measurable job: a container can only place its children once its own
+width is final, so layout needs a measure pass and a place pass, and **165 is the number to bring down**.
+Whoever picks it up next has a baseline, a list of the worst offenders, and four documented dead ends.

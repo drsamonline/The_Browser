@@ -8,6 +8,7 @@
 #include "render_document.hpp"
 #include "user_agent_stylesheet.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <functional>
 #include <fstream>
@@ -69,6 +70,7 @@ int main(int argc, char** argv)
     std::string wanted_id;
     std::string wanted_tag;
     bool show_top = false;
+    bool show_overflow = false;
     for (int i = 3; i < argc; ++i) {
         std::string const argument = argv[i];
         if (argument.rfind("id=", 0) == 0)
@@ -77,6 +79,8 @@ int main(int argc, char** argv)
             wanted_tag = argument.substr(4);
         else if (argument == "--top")
             show_top = true;
+        else if (argument == "--overflow")
+            show_overflow = true;
     }
     auto const html = read_file(argv[1]);
     auto const css = read_file(argv[2]);
@@ -89,6 +93,47 @@ int main(int argc, char** argv)
     auto const rect = document.document_rect();
     std::printf("page: %s (%zu bytes html, %zu bytes css)\n", argv[1], html.size(), css.size());
     std::printf("document: %.0f x %.0f\n\n", rect.width, rect.height);
+
+    if (show_overflow) {
+        // Every container whose children reach past its own content box, worst first. This is the number a
+        // restructure of the flex placement has to move: an overflow is a child sized after the parent placed
+        // it, and one that accumulates down a chain (row 0.13's tail).
+        struct Overflow {
+            std::string name;
+            float past;
+            float width;
+            float x;
+        };
+        std::vector<Overflow> overflows;
+        std::function<void(LayoutNode const&)> scan = [&](LayoutNode const& node) {
+            float const right = node.box.content.x + node.box.content.width;
+            float worst = 0;
+            for (auto const& child : node.children) {
+                if (child->display == LayoutDisplay::None)
+                    continue;
+                float const child_right = child->rect.x + child->rect.width;
+                worst = std::max(worst, child_right - right);
+            }
+            if (worst > 1.0f && node.dom_node) {
+                std::string name = node.dom_node->name;
+                if (auto const id = node.dom_node->attribute("id"); id && !id->empty())
+                    name += "#" + *id;
+                else if (auto const cls = node.dom_node->attribute("class"); cls && !cls->empty())
+                    name += "." + cls->substr(0, cls->find(' '));
+                overflows.push_back({ name, worst, node.box.content.width, node.box.content.x });
+            }
+            for (auto const& child : node.children)
+                scan(*child);
+        };
+        scan(document.layout_root());
+        std::sort(overflows.begin(), overflows.end(),
+            [](Overflow const& a, Overflow const& b) { return a.past > b.past; });
+        std::printf("containers whose children reach past their content box: %zu\n", overflows.size());
+        for (std::size_t i = 0; i < std::min<std::size_t>(15, overflows.size()); ++i)
+            std::printf("  %-40s past=%7.1f  content w=%7.1f x=%7.1f\n",
+                overflows[i].name.c_str(), overflows[i].past, overflows[i].width, overflows[i].x);
+        return 0;
+    }
 
     if (show_top) {
         // What the engine actually places in the first band of the page, in document order. Comparing this
