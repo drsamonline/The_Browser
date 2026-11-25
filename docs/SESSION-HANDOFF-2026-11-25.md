@@ -366,3 +366,46 @@ metric the fix is supposed to move.
 The restructure is now a bounded, measurable job: a container can only place its children once its own
 width is final, so layout needs a measure pass and a place pass, and **165 is the number to bring down**.
 Whoever picks it up next has a baseline, a list of the worst offenders, and four documented dead ends.
+
+## 12. Eleventh commit — upstream says the engine is already right, so the metric must be wrong
+
+The instruction was to check upstream first, so the reference tree was re-cloned (it does not survive a
+pod recycle - `tools/setup.sh` should grow a step for it) and read.
+
+### What upstream actually does
+
+`Libraries/LibWeb/Rust/src/layout/flex_formatting_context.rs`:
+
+- **:4299** - the hypothetical main size is `clamp(flex_base_size, clamp_min, clamp_max)`, where
+  `clamp_min` defaults to `automatic_minimum_size_for_clamping(...)`, i.e. the automatic minimum size.
+- **:4318** - `resolve_flexible_lengths()` runs in `run()` **before** any placement, so every item's used
+  main size is fixed before the line is positioned.
+- **:4304** - `run()` is the sequence: prepare items, collect lines, resolve flexible lengths, cross
+  sizes, then place.
+
+The engine already has both halves: `min_content_width()` is the automatic minimum (row 0.13), and the
+flex pass computes each item's width before placing it. So the port found nothing to port, which was
+itself the answer.
+
+### And enforcing the second half changed nothing
+
+Adding the resolved-size discipline - the item keeps the size the algorithm resolved, and content
+overflows inside the box - moved the overflow count by **zero: 164 to 164**. Reverted.
+
+### The finding: the metric counts design as defect
+
+Looking at the top offenders rather than the total explains it:
+
+| container | x | note |
+| --- | --- | --- |
+| `div#p-lang-btn` | **1069.9** | beyond a 1024px viewport |
+| `span#mwBEg` | **1009.4** | beyond a 1024px viewport |
+
+Those are hidden menus and off-canvas UI, positioned outside the viewport on purpose. That is correct
+CSS, not overflow. The counter treated "child reaches past its parent" as a defect without asking
+whether the child was meant to be there.
+
+So the instrument is wrong, not the layout - and six variants failed against it because it could not
+distinguish a bug from a design. **Next step:** make `--overflow` ignore children whose box lies wholly
+outside the document's viewport, then re-baseline. The real number will be lower, and whatever remains
+will be worth chasing.
