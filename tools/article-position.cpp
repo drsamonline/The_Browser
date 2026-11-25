@@ -187,6 +187,23 @@ int main(int argc, char** argv)
                     widths(*child, level + 1);
             };
             widths(*target, 0);
+
+            // The whole chain, because a box's position is usually decided above it: which ancestor sets the
+            // x, and with what formatting context (row 0.13's tail cost three reverted attempts to learn
+            // that guessing the layer is not good enough).
+            std::printf("\nancestors, with what decides the x:\n");
+            int level = 0;
+            for (auto const* current = target; current && level < 8; current = current->parent, ++level) {
+                auto const value = [&](char const* property) {
+                    auto const* found = current->style.get(property);
+                    return found ? *found : std::string("-");
+                };
+                std::printf("  %*s%-10s x=%7.1f w=%7.1f  content.x=%7.1f content.w=%7.1f  display=%-12s justify=%-12s flex-basis=%s\n",
+                    level * 2, "",
+                    current->dom_node && !current->dom_node->name.empty() ? current->dom_node->name.c_str() : "(anon)",
+                    current->rect.x, current->rect.width, current->box.content.x, current->box.content.width,
+                    value("display").c_str(), value("justify-content").c_str(), value("flex-basis").c_str());
+            }
         }
         return 0;
     }

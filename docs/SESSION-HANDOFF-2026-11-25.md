@@ -293,3 +293,37 @@ Four sessions of this pattern have produced a reliable rule: the defect is one l
 symptom appears. This time I guessed which layer and was wrong twice. The instrument that would settle
 it is the ancestor walk the probe already has, pointed at the right node - which is a deliberate piece of
 work, not a patch. Better to leave the tree green and the question sharp than to ship a fourth variant.
+
+## 10. Ninth commit — the mechanism, measured at last
+
+The previous commit stopped with "walk the ancestor chain before touching code". This one did that, and
+the walk explains the whole thing in one table.
+
+### The chain, from the menu container upward
+
+| node | x | width | ends at | its parent's right edge |
+| --- | --- | --- | --- | --- |
+| `nav` (`justify-content: flex-end`) | 678.7 | 192.2 | 870.9 | — |
+| its child | **697.9** | 192.2 | 890.1 | 870.9 — **19px past** |
+| `p-vector-user-menu-overflow` | **861.2** | 117.7 | 978.9 | 890.1 — **89px past** |
+
+Every level overflows by the gap between **the size the parent handed its child** and **the size the
+child ended up with**, and the overflow accumulates down the chain.
+
+### The fourth variant, measured rather than eyeballed
+
+Re-placement alone - `translate_subtree` plus a pass that repositions the line from the real widths -
+moved the menu **861.2 → 884.2**, i.e. **23px further right**. Previous variants were judged by looking
+at a crop; this one was judged by a number, and the number said no.
+
+All four variants are reverted. Pixel agreement never left 81.0-81.1% for any of them.
+
+### What that rules out, and what it means
+
+The fix is **not** in how one flex container places its own items. Each container is placing correctly
+given the size its parent handed it; the parent hands it a stale size. A re-placement pass inside one
+container cannot fix that, which is why all four attempts failed the same way.
+
+So the work is a **restructure**: a container can only place its children once its own width is final,
+which means either a two-pass layout (measure top-down, place bottom-up) or a parent re-placing after
+its children settle. That is not a patch, and pretending otherwise has cost four attempts.
