@@ -484,3 +484,52 @@ both. The class name is not an identity.
 `--overflow` needs to print an element's position and its parent's, so the worst offender can be told
 apart from its namesake. Otherwise the next session will walk the wrong node exactly as I did - and this
 is the third time in this row that the instrument, not the layout, was the thing that was wrong.
+
+## 15. Fourteenth commit — the fix I had rejected twice, now judged properly
+
+### The instrument learned identity
+
+`--overflow` prints each offender's own x/y/width **and its parent's**. `div.vector-header-start` appears
+twice on the page - the normal header and the sticky one - and a class name had already sent one walk to
+the wrong element.
+
+### What identity revealed
+
+The container's children are flex items with a **20px gap**, laid out sequentially:
+
+| child | x | width |
+| --- | --- | --- |
+| anonymous inline | 88.0 | 38.4 |
+| `nav` | 146.5 | 116.2 |
+| anonymous inline | 282.7 | 48.0 |
+| `a` (logo) | 350.8 | 188.0 |
+| anonymous inline | 558.8 | 38.4 |
+
+That totals **509px inside a 188px box**. And it got 188 because `max_content_width()` measures a **flex
+row as its widest child** instead of the sum - so the header sized a 509px row into 188px.
+
+### The row-sum, tried twice and rejected twice
+
+I applied this change two turns ago, judged it by the menu's x-coordinate, saw the page look worse, and
+reverted it. Judged by the corrected metric it is right:
+
+| | before | after |
+| --- | --- | --- |
+| overflow count | 147 | **141** |
+| `div.vector-header-start` | worst offender, 321.2 past | **gone from the list** |
+| worst offender | `div.vector-header-start` | `header.vector-header`, one level up |
+| pixel agreement | 81.1% | 81.1% |
+
+The worst offender moving **up** the chain is what a working fix looks like: the problem recedes rather
+than disappears.
+
+### What this says about the last several turns
+
+The change was correct all along. What was missing was a measurement that could tell correct from
+incorrect - and I rejected a good fix twice because I judged it by one pixel coordinate and a crop. That
+is the most expensive lesson of this row, and it cost more than any of the individual bugs.
+
+### Still open
+
+The account menu is still clipped, because the header one level up is now the worst offender.
+`header.vector-header` is the next walk.

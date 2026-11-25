@@ -113,6 +113,10 @@ int main(int argc, char** argv)
             float past;
             float width;
             float x;
+            float y;
+            std::string parent;
+            float parent_x;
+            float parent_width;
         };
         std::vector<Overflow> overflows;
         // A child that lies wholly outside the viewport is not overflowing anything - it is a hidden menu or
@@ -137,7 +141,18 @@ int main(int argc, char** argv)
                     name += "#" + *id;
                 else if (auto const cls = node.dom_node->attribute("class"); cls && !cls->empty())
                     name += "." + cls->substr(0, cls->find(' '));
-                overflows.push_back({ name, worst, node.box.content.width, node.box.content.x });
+                std::string parent_name = "?";
+                if (node.parent && node.parent->dom_node) {
+                    parent_name = node.parent->dom_node->name;
+                    if (auto const id = node.parent->dom_node->attribute("id"); id && !id->empty())
+                        parent_name += "#" + *id;
+                    else if (auto const cls = node.parent->dom_node->attribute("class"); cls && !cls->empty())
+                        parent_name += "." + cls->substr(0, cls->find(' '));
+                }
+                overflows.push_back({ name, worst, node.box.content.width, node.box.content.x,
+                    node.box.content.y, parent_name,
+                    node.parent ? node.parent->box.content.x : 0.0f,
+                    node.parent ? node.parent->box.content.width : 0.0f });
             }
             for (auto const& child : node.children)
                 scan(*child);
@@ -146,9 +161,13 @@ int main(int argc, char** argv)
         std::sort(overflows.begin(), overflows.end(),
             [](Overflow const& a, Overflow const& b) { return a.past > b.past; });
         std::printf("containers whose children reach past their content box: %zu\n", overflows.size());
-        for (std::size_t i = 0; i < std::min<std::size_t>(15, overflows.size()); ++i)
-            std::printf("  %-40s past=%7.1f  content w=%7.1f x=%7.1f\n",
-                overflows[i].name.c_str(), overflows[i].past, overflows[i].width, overflows[i].x);
+        for (std::size_t i = 0; i < std::min<std::size_t>(15, overflows.size()); ++i) {
+            auto const& o = overflows[i];
+            // The identity, not just the name: a class can appear twice, and a namesake sent one session
+            // walking the wrong element.
+            std::printf("  %-38s past=%7.1f  at x=%7.1f y=%7.1f w=%7.1f\n    in %-30s x=%7.1f w=%7.1f\n",
+                o.name.c_str(), o.past, o.x, o.y, o.width, o.parent.c_str(), o.parent_x, o.parent_width);
+        }
         return 0;
     }
 

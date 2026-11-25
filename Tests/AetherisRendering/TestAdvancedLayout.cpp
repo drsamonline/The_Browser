@@ -206,5 +206,22 @@ int main()
             "a link wrapping a 140px image is at least 140 wide, not zero");
     }
 
+    // Row 0.13's tail: a flex row's intrinsic width is the sum of its items, not the widest of them. Asking for
+    // the widest sized a 509px header row into a 188px box, which is where a real page's worst overflow began.
+    {
+        auto rendered = RenderDocument::create(
+            "<div style='display: flex; gap: 20px; width: 600px'>"
+            "<span id='a' style='display: block; width: 100px; height: 10px'></span>"
+            "<span id='b' style='display: block; width: 120px; height: 10px'></span></div>",
+            "", 700);
+        auto const& row = *rendered.layout_root().children[0];
+        require(row.children.size() == 2, "two flex items");
+        // Each item keeps its own width, and the second follows the first plus the gap: the row is as wide as
+        // both together, not as wide as the wider one.
+        require(row.children[0]->rect.width == 100.0f, "the first item keeps its width");
+        require(row.children[1]->rect.x == row.children[0]->rect.x + 100.0f + 20.0f,
+            "and the second follows it across the gap");
+    }
+
     return 0;
 }

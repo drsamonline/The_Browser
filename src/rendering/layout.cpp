@@ -547,6 +547,19 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
 // block, the widest of its children; for a row of inline children, the sum. css-flexbox-1 floors an item's
 // shrink at its automatic minimum size (min-width: auto), and without that floor a flex line narrower than
 // its items collapses them to zero - a menu of three links measured 0px wide (row 0.13).
+// Whether a node lays its children out in a row. Its intrinsic widths are the *sum* of its children's, not
+// the widest of them: a header holding a logo and a menu button is as wide as both together. Asking for the
+// widest sized a 509px flex row into a 188px box, which is where a real page's worst overflow started
+// (row 0.13's tail).
+static bool lays_out_a_row(LayoutNode const& node)
+{
+    auto const* display = node.style.get("display");
+    if (!display || (*display != "flex" && *display != "inline-flex"))
+        return false;
+    auto const* direction = node.style.get("flex-direction");
+    return !direction || (*direction != "column" && *direction != "column-reverse");
+}
+
 float LayoutEngine::min_content_width(LayoutNode const& node)
 {
     if (auto const* width = node.style.get("width"); width && !width->empty() && *width != "auto") {
@@ -581,16 +594,14 @@ float LayoutEngine::min_content_width(LayoutNode const& node)
 
     float widest = 0;
     float inline_sum = 0;
-    bool has_inline = false;
+    bool has_inline = lays_out_a_row(node);
     for (auto const& child : node.children) {
         if (child->display == LayoutDisplay::None)
             continue;
         float const child_width = min_content_width(*child);
         widest = std::max(widest, child_width);
-        if (child->display == LayoutDisplay::Inline || child->display == LayoutDisplay::InlineBlock) {
+        if (has_inline || child->display == LayoutDisplay::Inline || child->display == LayoutDisplay::InlineBlock)
             inline_sum += child_width;
-            has_inline = true;
-        }
     }
     return has_inline ? std::max(widest, inline_sum) : widest;
 }
@@ -632,16 +643,14 @@ float LayoutEngine::max_content_width(LayoutNode const& node)
     // A block: the widest child, which is what "as wide as the widest thing inside it" means for a single
     // line. A row of inline children would be wider, so their widths are summed.
     float inline_sum = 0;
-    bool has_inline = false;
+    bool has_inline = lays_out_a_row(node);
     for (auto const& child : node.children) {
         if (child->display == LayoutDisplay::None)
             continue;
         float const child_width = max_content_width(*child);
         widest = std::max(widest, child_width);
-        if (child->display == LayoutDisplay::Inline || child->display == LayoutDisplay::InlineBlock) {
+        if (has_inline || child->display == LayoutDisplay::Inline || child->display == LayoutDisplay::InlineBlock)
             inline_sum += child_width;
-            has_inline = true;
-        }
     }
     return has_inline ? std::max(widest, inline_sum) : widest;
 }
