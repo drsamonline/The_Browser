@@ -28,81 +28,106 @@ clang via zig). Read this whole prompt before running anything.
    rejected, rebase, never force.
 6. **Report in tables and bullets, no paragraphs.**
 7. **Never modify `sorex`, `nodus` or `volumen`.**
-8. **Measure before believing a row.** Several rows were wrong about their own premise (3i "never overflows", 2e
-   "Rust layout not vendored", 3a3 "text does not paint", 5c "no mixed-content blocking"). A ten-minute probe beats
-   a day of implementing something that already exists.
 
-## Environment setup (a fresh pod loses pip packages; `/scratch/work` persists)
+## Environment setup — one command
 
 ```sh
-pip install -q ziglang cmake ninja
-ZIG=$(python3 -c 'import ziglang,os;print(os.path.join(os.path.dirname(ziglang.__file__),"zig"))')
-mkdir -p /scratch/work/toolchain
-printf '#!/bin/sh\nexec %s cc "$@"\n' "$ZIG"  > /scratch/work/toolchain/zigcc
-printf '#!/bin/sh\nexec %s c++ "$@"\n' "$ZIG" > /scratch/work/toolchain/zigcxx
-chmod +x /scratch/work/toolchain/zig*
-export PATH=/scratch/.local/bin:/scratch/work/toolchain:$PATH
-cd /scratch/work/The_Browser && python3 tools/check-build.py    # the guard: see below
+cd /scratch/work/The_Browser && sh tools/setup.sh          # toolchain, harfbuzz, both build dirs, build
+sh tools/setup.sh --check                                   # report what is missing, change nothing
 ```
 
-`build/` and `build-rel/` already exist with a configured CMake cache, `third_party/harfbuzz` is fetched. Only
-re-run `cmake -S . -B build ...` if the cache is missing; the flags used were: `-G Ninja -DCMAKE_BUILD_TYPE=Debug
--DCMAKE_C_COMPILER=/scratch/work/toolchain/zigcc -DCMAKE_CXX_COMPILER=/scratch/work/toolchain/zigcxx
--DCMAKE_C_COMPILER_WORKS=1 -DCMAKE_CXX_COMPILER_WORKS=1 -DAETHERIS_STANDALONE_BUILD=ON -DAETHERIS_ENABLE_TESTING=ON
--DBUILD_TESTING=ON -DOPENSSL_INCLUDE_DIR=/usr/include/node -DOPENSSL_SSL_LIBRARY=/usr/lib/x86_64-linux-gnu/libssl.so.3
--DOPENSSL_CRYPTO_LIBRARY=/usr/lib/x86_64-linux-gnu/libcrypto.so.3
--DAETHERIS_WEBP_LIBRARY=/usr/lib/x86_64-linux-gnu/libwebp.so.7 -DCMAKE_CXX_FLAGS=-Wno-error=#warnings`.
+A pod recycle loses **every pip package** but keeps `/scratch/work`, so `toolchain/zigcc` survives as a wrapper
+pointing at a zig that is gone. `setup.sh` reinstalls and rewrites them; the CMake caches do not survive either, so
+the first build is ~300 steps (~40 min on two cores — run it in chunks, `ninja -C build -j2` under a 270 s timeout).
+
+**Upstream does not survive a recycle either.** Re-clone it before reading:
+
+```sh
+git clone --depth 1 --filter=blob:none --sparse https://github.com/LadybirdBrowser/ladybird.git
+cd ladybird && git sparse-checkout set Libraries/LibWeb
+```
 
 ## The traps that have cost the most time
 
 | trap | what to do |
 | --- | --- |
-| **A killed build reads as success** | Run `python3 tools/check-build.py` before trusting any suite run. It reports pending ninja steps and whether anything was linked after the last source edit. This caught a 57-pending-step stale binary. |
-| **A pod can come back with a stale snapshot** | Twice, `git log` showed an older commit than the pushed tip while the working tree held newer edits. Before your first commit: `git fetch && git log --oneline -1 origin/main` versus `git log --oneline -1`. If they differ, save your work as a patch, `git reset --hard origin/main`, re-apply, rebuild. Never commit on a stale base. |
-| **Process/thread exhaustion** | `fork: Resource temporarily unavailable`, `zig: failed to spawn: SystemResources`, `git: cannot fork() for remote-https`. Symptoms are intermittent. Build with `-j1`/`-j2`, retry `git push` a few times, and if the compiler cannot spawn at all, park the work as a patch and say so rather than committing unverified code. |
+| **A killed build reads as success** | Run `python3 tools/check-build.py` before trusting any suite run. It reports pending ninja steps and whether anything was linked after the last source edit. |
+| **A pod can come back with a stale snapshot** | `git fetch && git log --oneline -1 origin/main` versus `git log --oneline -1` before your first commit. If they differ, save the work as a patch, `git reset --hard origin/main`, re-apply, rebuild. |
+| **A pod can come back with an OLD `build/`** | If `zigcxx` fails with `exec: .../zig: not found` but binaries exist, the build tree is stale, not current. `setup.sh` fixes it. |
+| **Probes link statically** | Relink after any library rebuild or they print stale numbers — this produced a measurement that contradicted a fix that had actually worked. Debug library carries UBSan: link `-fsanitize=undefined` plus `libwebp.so.7`, `libssl.so.3`, `libcrypto.so.3`. |
+| **A metric can be wrong in the direction of "no change"** | Three separate instruments misled a whole session: an overflow counter that counted **off-canvas UI** as defects, a pixel-agreement percentage that **fell while the layout improved**, and a `class=` lookup that matched the **document root**. Before trusting a number, check it can distinguish the case you care about. |
+| **A class name is not an identity** | `div.vector-header-start` appears twice on a real page (normal and sticky header). Print x/y/width and the parent when reporting an offender. |
+| **Judging a fix by one pixel or one crop** | Cost two reverts of a change that was correct. Judge by a metric that has an identity and a baseline, and report the number. |
 | **`active_font()` is a singleton** | Font-dependent probes must set `AETHERIS_FONT` before the first call, one font per process. |
-| **`cached_glyph()` keys on font identity** | It does now (row 3d1) — a second font cannot be served the first one's bitmaps. |
-| **Probes link statically** | Relink a probe against `build/lib/libAetherisRendering.a` after any library rebuild, or it prints stale numbers. Debug library carries UBSan: link with `-fsanitize=undefined` plus `libwebp.so.7`, `libssl.so.3`, `libcrypto.so.3`. |
 | **`RenderDocument::create` ignores `<style>`** | Pass author CSS explicitly; only `src/main.cpp` collects `<style>` elements. |
 | **Git needs `-c core.preloadIndex=false -c index.threads=1`** | Under load, plain git fails on threaded lstat. |
+| **Git identity is not persisted** | `git config --global user.email sohilmomin2000@gmail.com`, `user.name "Aetheris session"`; the audit repo uses `Dr Sohil Momin`. |
 
 ## State at the start of your session
 
 | | |
 | --- | --- |
-| `main` | `d77d56bc` — "feat(security): enforce CSP fetch directives at the resource loader" |
-| audit repo | `8cbfc14` |
-| suite | 66 tests, **66/66 twice** on every commit |
-| checklist | **60 done, 6 open, 1 blocked, 2 out of scope** (69 rows) |
-| tiers 1, 2, 3 | complete except 1g2, 1g4b, 3d3 |
-| tiers 4, 5 | 5a and 5c closed; 4.1, 4.2, 5b open; 5d out of scope |
+| `main` | `374daf2a` — "fix(layout): a flex row's intrinsic width is the sum of its items" |
+| audit repo | `6255c18` |
+| suite | 67 tests, **67/67 twice** on every commit |
+| checklist | **91 rows: 79 ticked, 0 open, 1 blocked (0.1), 2 out of scope, 5 historical "(superseded)" rows, and 4 rows (1b, 1c, 1d and one blank) whose status cell is malformed** — fixing those four is a five-minute job and worth doing before the next count |
+| reference render | `en.wikipedia.org/wiki/Web_browser` at **81.1%** pixel agreement with chromium |
+| overflow count | **141** containers whose children reach past their content box |
 
-Read `docs/SESSION-HANDOFF-2026-11-23.md` (24 sections, one per commit today) and `docs/HANDOVER.md` before
-starting — they carry the reasoning, the numbers and the mistakes.
+Read `docs/SESSION-HANDOFF-2026-11-25.md` (15 sections, one per commit) and `docs/HANDOVER.md` §7g before
+starting. They carry the reasoning, the numbers and the mistakes.
+
+## The two instruments, and what they are for
+
+Both live in `tools/` and both have a baseline, so every fix can be judged by a number that moves.
+
+| tool | what it answers | baseline |
+| --- | --- | --- |
+| `tools/reference-render.sh page.html page.css [out]` | how far is this render from chromium's, and where | **81.1%** agreement, text rows 28-29px against chromium's 27-28 |
+| `tools/article-position.cpp` (via `--overflow`, `--top`, `id=`/`tag=`/`class=`) | which boxes overflow, what a node resolved to, which rules move it | **141** overflows |
+
+`--overflow` ignores children wholly outside the viewport (hidden menus are placed there on purpose) and prints
+each offender's own x/y/width **and its parent's**. Read agreement **with** the row positions, never alone.
 
 ## What to do next, in this order
 
-| # | row | what it is | upstream to read first |
+| # | row | what it is | where to start |
 | --- | --- | --- | --- |
-| 1 | **1g4b** | `pushState`/`replaceState`/`history.state`, **plus** the `window.history` binding that row 1g4c's API now needs (`scrollRestoration` exists as C++ only) | `LibWeb/HTML/History.cpp` (`push_state`, `replace_state`, `delta_traverse`), `HTML/History.idl` |
-| 2 | **3d3** | animations: `@keyframes`, `animation-*`, on the clock that row 3d2 landed (`RenderDocument::set_time`) | `LibWeb/Animations/KeyframeEffect.cpp`, `CSS/CSSTransition.cpp`, `Rust/src/css/animation.rs` |
-| 3 | **5b** | same-origin enforcement in the JS bindings | `LibWeb/HTML/Origin.cpp`, the cross-origin access checks in `Bindings/` |
-| 4 | **4.1** | tab strip over `window_manager` | our own UI; no upstream |
-| 5 | **4.2** | history and bookmarks UI | our own UI; no upstream |
-| 6 | **1g2** | realm isolation on navigation — old globals and listeners must not survive | `LibWeb/HTML/Window.cpp` realm setup, `JS/Realm` |
-| — | **0.1** | blocked: the coverage corpus needs open internet, which this sandbox does not have | — |
+| 1 | **0.13 tail** | `header.vector-header` is now the worst overflow at **422.1px past** (it was `div.vector-header-start` at 321.2 before the row-sum fix — the problem recedes up the chain, which is what a working fix looks like). The account menu is still clipped. | `tools/article-position.cpp --overflow`, then `class=vector-header` with the parent's position to pick the right instance |
+| 2 | **0.1** | blocked: the coverage corpus needs open internet; 17 of 20 hosts are refused by the egress allowlist. The corpus renders from the URL now, so it would measure something real on a network that admits it | — |
+| 3 | **1g4b** | `pushState`/`replaceState`/`history.state`, plus the `window.history` binding | `LibWeb/HTML/History.cpp`, `HTML/History.idl` |
+| 4 | **3d3** | animations: `@keyframes`, `animation-*`, on the clock row 3d2 landed | `LibWeb/Animations/KeyframeEffect.cpp`, `Rust/src/css/animation.rs` |
+| 5 | **5b** | same-origin enforcement in the JS bindings | `LibWeb/HTML/Origin.cpp`, cross-origin checks in `Bindings/` |
+| 6 | **4.1**, **4.2**, **1g2** | tab strip, history/bookmark UI, realm isolation | our own UI for 4.x; `LibWeb/HTML/Window.cpp` for 1g2 |
 
-**Two rows have unfinished tails recorded in their own cells** — 3d2 (nothing starts a transition from a style
-*change* yet; only `opacity` interpolates) and 5a (nonces, hashes, `report-uri`, header delivery). Neither is a new
-row; both are in the row that owns them.
+**Twelve rows carry named tails in their own cells** (0.3, 0.5, 1g2, 1g4b, 3d1, 3d2, 3d3, 4.1, 4.2, 5a, 5b, 5c).
+None is a new row; each belongs to the row that owns it.
+
+## The dead ends, so you do not repeat them
+
+Six attempts on row 0.13's tail were reverted. Each looked right and none moved the metric:
+
+| attempt | why it failed |
+| --- | --- |
+| a flex row's intrinsic width as the sum of its items | **correct** — but judged by one menu coordinate and a crop, and reverted twice before the metric showed it works (147 -> 141 overflows) |
+| `translate_subtree` + re-placing a flex line from the real widths | 147 -> 146, noise |
+| enforcing the resolved size on flex items (upstream's discipline) | the engine already did it; 0 change |
+| an absolutely-positioned child taking flow space | verified **correct**, not the bug |
+| a padded child overflowing its parent | verified **correct**, not the bug |
+| `reserve(24)` on `StyleProperties` (older row) | measured **33% slower**, reverted |
+
+Upstream had already answered the layout question: `Rust/src/layout/flex_formatting_context.rs:4318` resolves every
+item's used main size before placement, `:4299` clamps the hypothetical main size at the automatic minimum. The
+engine does both. **Read upstream before designing a fix — it saved a rewrite of working code.**
 
 ## How to start
 
-1. Read `docs/CHECKLIST.md` and `docs/SESSION-HANDOFF-2026-11-23.md`.
-2. Set up the toolchain, run `python3 tools/check-build.py`, then `ninja -C build -j2` until it reports nothing to do.
-3. Pick row **1g4b**, read the upstream files named above, and write a probe that shows what `history.pushState`
-   does today (probably: nothing — `window.history` has `back`/`forward`/`go`/`length` only).
-4. Implement, add assertions, run the suite twice, update the four docs plus one audit entry, commit, push, verify
-   the tip, and report in tables.
+1. Read `docs/CHECKLIST.md` and `docs/SESSION-HANDOFF-2026-11-25.md`.
+2. `sh tools/setup.sh`, then `python3 tools/check-build.py`, then `ninja -C build -j2` until it reports nothing to do.
+3. Re-clone upstream if `/scratch/work/ladybird` is missing.
+4. Take row **0.13 tail**: run `tools/article-position.cpp --overflow`, pick the worst offender, and **print its
+   parent's position before walking it** — the class appears twice on the page.
+5. Implement, add assertions, run the suite twice, update the four docs plus one audit entry, commit, push, verify
+   the tip, and report in tables — with the overflow count and the agreement percentage before and after.
 
 Work one row per "go". Report and stop at the boundary.

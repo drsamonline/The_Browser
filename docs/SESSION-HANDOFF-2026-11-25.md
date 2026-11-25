@@ -533,3 +533,43 @@ is the most expensive lesson of this row, and it cost more than any of the indiv
 
 The account menu is still clipped, because the header one level up is now the worst offender.
 `header.vector-header` is the next walk.
+
+## 16. Session close — what is true, what is next, what not to repeat
+
+State is saved and pushed: `main` at `374daf2a`, audit at `6255c18`, suite 67/67 twice, tree clean,
+`check-build` clean.
+
+### The two numbers that now exist
+
+| instrument | baseline | what it is for |
+| --- | --- | --- |
+| `tools/reference-render.sh` | **81.1%** agreement, text rows 28-29px vs chromium's 27-28 | how far a render is from a real browser, and where |
+| `tools/article-position.cpp --overflow` | **141** overflows | which boxes reach past their parents, with identity |
+
+Both were built this session, and both were wrong at first - which is the session's main lesson.
+
+### The session in one table
+
+| commit | what it did | judged by |
+| --- | --- | --- |
+| `9436047f` | closed an inline line only when one is open | `<li>` 33.6 -> 16.8px; contents list 79 -> 28px |
+| `bf1b0779` | a failed image paints its `alt` text | the logo area renders |
+| `eb1284a4` | floored a flex item's shrink at min-content | agreement 76.6% -> 81.1% |
+| `b808e0cd` | an `<img>` contributes its intrinsic width | overflows 150 -> 147 |
+| `374daf2a` | a flex row's intrinsic width is the sum of its items | overflows 147 -> 141 |
+| six reverts | see the dead-ends table in `NEXT-SESSION-PROMPT.md` | — |
+
+### What was learned, stated plainly
+
+1. **A metric that cannot tell a bug from a design is worse than no metric.** The overflow counter counted
+   off-canvas menus as defects; six attempts failed against it before anyone looked at what it was counting.
+2. **A correct fix can look wrong through the wrong instrument.** The row-sum was correct, was reverted twice on
+   one pixel coordinate and a crop, and was only vindicated when the count with identity showed 147 -> 141.
+3. **Read upstream before designing.** It said the engine already did what I was about to rewrite.
+4. **When a fix keeps failing, build the instrument first.** The corrected counter named a real defect - an image
+   contributing zero width - within one minute of being fixed.
+
+### Next
+
+`header.vector-header`, now the worst overflow at 422.1px past, with the account menu still clipped. The walk
+starts by printing the parent's position, because the class appears twice on the page.
