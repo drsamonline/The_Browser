@@ -234,3 +234,28 @@ noting: the double-line fix lowered it while improving the layout, and this one 
 The items no longer collapse, but they now **overflow** to the right - "Create account" runs past the
 viewport - because the outer container still allocates only 54.1px. So the next question is what sizes
 *that* box. It is the same shape of question as this one, and the probe now has the tool for it.
+
+## 8. Seventh commit — an experiment that was reverted, and what it proved
+
+Row 0.13 left the menu items overflowing, because the container allocated them only 54.1px. The
+container is `.vector-user-links`, which is `display: flex` - and the engine's intrinsic widths measured
+a flex row as its **widest child** instead of the **sum** of its items. Summing them is what css-flexbox-1
+says, and it worked as intended:
+
+| | before | with the row-sum |
+| --- | --- | --- |
+| container intrinsic width | 54.1 | **423.23** |
+| container actual width | 54.1 | **389.55** |
+
+The box was finally the right size. And the page looked **worse**: the links were pushed further off the
+right edge - only "Don" visible, where "Donate" had been - and pixel agreement did not move, 81.1%.
+
+So it was reverted. The parent still places the child at x=766, using the size the child had *before* it
+was laid out; giving the child its correct width without fixing that placement just moves the overflow.
+A spec-correct change that makes the page worse is not a fix, and this engine has now had two of them
+(the `reserve(24)` that measured slower, and this).
+
+### The next question, named
+
+In `layout_flex_children`, place each item from the width it **ends up with** rather than from its base
+size. That is the same stale-size question one level up, and it is what the row now says.
