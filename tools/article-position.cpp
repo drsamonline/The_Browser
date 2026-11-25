@@ -26,6 +26,9 @@ static std::string read_file(std::string const& path)
     return buffer.str();
 }
 
+// The class the probe is looking for, set from the command line before the search.
+static std::string wanted_class;
+
 // Depth-first search for a DOM node matching a predicate, and the layout node that was built for it.
 static LayoutNode const* find_layout(LayoutNode const& node, std::string const& id, std::string const& tag, int& depth)
 {
@@ -35,7 +38,12 @@ static LayoutNode const* find_layout(LayoutNode const& node, std::string const& 
             if (auto value = node.dom_node->attribute("id"); value && *value == id)
                 return &node;
         }
-        if (id.empty() && node.dom_node->name == tag)
+        if (!wanted_class.empty()) {
+            if (auto value = node.dom_node->attribute("class"); value
+                && (" " + *value + " ").find(" " + wanted_class + " ") != std::string::npos)
+                return &node;
+        }
+        if (id.empty() && !tag.empty() && node.dom_node->name == tag)
             return &node;
     }
     for (auto const& child : node.children)
@@ -77,6 +85,8 @@ int main(int argc, char** argv)
             wanted_id = argument.substr(3);
         else if (argument.rfind("tag=", 0) == 0)
             wanted_tag = argument.substr(4);
+        else if (argument.rfind("class=", 0) == 0)
+            wanted_class = argument.substr(6);
         else if (argument == "--top")
             show_top = true;
         else if (argument == "--overflow")
@@ -170,7 +180,7 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    if (!wanted_id.empty() || !wanted_tag.empty()) {
+    if (!wanted_id.empty() || !wanted_tag.empty() || !wanted_class.empty()) {
         int found_depth = 0;
         auto const* target = find_layout(document.layout_root(), wanted_id, wanted_tag, found_depth);
         report(document, wanted_id.empty() ? wanted_tag.c_str() : wanted_id.c_str(), wanted_id, wanted_tag);
@@ -181,19 +191,19 @@ int main(int argc, char** argv)
                     auto const* found = child->style.get(property);
                     return found ? *found : std::string("-");
                 };
-                std::printf("  %-10s y=%7.1f h=%6.1f  display=%-12s line-height=%-18s font-size=%s\n",
+                std::printf("  %-10s x=%7.1f w=%7.1f y=%7.1f h=%6.1f  display=%-12s line-height=%s\n",
                     child->dom_node ? child->dom_node->name.c_str() : "?",
-                    child->rect.y, child->rect.height, value("display").c_str(),
-                    value("line-height").c_str(), value("font-size").c_str());
+                    child->rect.x, child->rect.width, child->rect.y, child->rect.height,
+                    value("display").c_str(), value("line-height").c_str());
                 for (auto const& grandchild : child->children) {
                     auto const inner = [&](char const* property) {
                         auto const* found = grandchild->style.get(property);
                         return found ? *found : std::string("-");
                     };
-                    std::printf("    %-8s y=%7.1f h=%6.1f  display=%-12s line-height=%-18s font-size=%s\n",
+                    std::printf("    %-8s x=%7.1f w=%7.1f y=%7.1f h=%6.1f  display=%-12s\n",
                         grandchild->dom_node ? grandchild->dom_node->name.c_str() : "?",
-                        grandchild->rect.y, grandchild->rect.height, inner("display").c_str(),
-                        inner("line-height").c_str(), inner("font-size").c_str());
+                        grandchild->rect.x, grandchild->rect.width, grandchild->rect.y, grandchild->rect.height,
+                        inner("display").c_str());
                 }
             }
         }

@@ -448,3 +448,39 @@ for both max-content and min-content.
 
 `div.vector-header-start` is still the worst offender at 321px, so the logo's container is the next thing
 to walk - and the walk now starts from a metric that means something.
+
+## 14. Thirteenth commit — two elements with the same class, and a probe bug of my own
+
+Chasing `div.vector-header-start`, the worst offender at 321px. Three things came out of it, and none of
+them was the fix I expected.
+
+### A probe bug: an empty tag matched the document root
+
+`find_layout` returned the first node whose `dom_node->name == tag`, and with `tag` empty that matched
+the synthetic root, whose name is also empty. So `class=...` searches silently reported the root. One
+line: `!tag.empty()`.
+
+### The probe can now find an element by class, and prints widths
+
+Without widths in the child print, "which child is 321px past" was unanswerable. It prints x and width
+now, at both levels.
+
+### The namesake
+
+With those two fixed, the walk says the instance it found overflows by **54.7px**, not 321.2:
+
+| child | x | width | right edge |
+| --- | --- | --- | --- |
+| anonymous inline | 88.0 | 38.4 | 126.4 |
+| `nav` | 146.5 | 116.2 | 262.7 |
+| anonymous inline | **282.7** | 48.0 | **330.7** |
+
+The container's content box ends at 276. So this instance overflows by 54.7px. Wikipedia ships **two**
+elements with that class - the normal header and the sticky one - and the scan reports the worst across
+both. The class name is not an identity.
+
+### What that means for the next step
+
+`--overflow` needs to print an element's position and its parent's, so the worst offender can be told
+apart from its namesake. Otherwise the next session will walk the wrong node exactly as I did - and this
+is the third time in this row that the instrument, not the layout, was the thing that was wrong.
