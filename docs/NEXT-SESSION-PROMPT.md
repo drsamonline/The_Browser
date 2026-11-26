@@ -40,12 +40,32 @@ A pod recycle loses **every pip package** but keeps `/scratch/work`, so `toolcha
 pointing at a zig that is gone. `setup.sh` reinstalls and rewrites them; the CMake caches do not survive either, so
 the first build is ~300 steps (~40 min on two cores — run it in chunks, `ninja -C build -j2` under a 270 s timeout).
 
+**`setup.sh` does not fit in one 300 s call.** The two `cmake` configures take ~100 s and ~250 s on their own; run
+each `cmake -S . -B <dir> ...` by hand first (the exact flags are in `tools/setup.sh`, lines 55-70), then build in
+`ninja` chunks. A killed `setup.sh` looks like success — it writes its configure output to `/dev/null` and the
+pipeline's exit code is `tail`'s.
+
 **Upstream does not survive a recycle either.** Re-clone it before reading:
 
 ```sh
 git clone --depth 1 --filter=blob:none --sparse https://github.com/LadybirdBrowser/ladybird.git
 cd ladybird && git sparse-checkout set Libraries/LibWeb
 ```
+
+**The probes and the reference page do not survive either.** `tools/article-position.cpp` is compiled by hand —
+it is not a CMake target:
+
+```sh
+zigcxx -std=c++23 -O1 -g -fsanitize=undefined -DAETHERIS_RENDERING_FOUNDATION=1 -DAETHERIS_HAVE_HARFBUZZ=1 \
+  -Isrc -Isrc/rendering -Ithird_party/harfbuzz/src tools/article-position.cpp -o /scratch/work/ap \
+  build/lib/libAetherisRendering.a build/lib/libAetherisGumbo.a -Lbuild/lib -lharfbuzz \
+  /usr/lib/x86_64-linux-gnu/libwebp.so.7 /usr/lib/x86_64-linux-gnu/libssl.so.3 \
+  /usr/lib/x86_64-linux-gnu/libcrypto.so.3 -lm -lpthread
+```
+
+The reference page is two files: the HTML through `curl` (the proxy admits `en.wikipedia.org`), and its **two**
+`<link rel=stylesheet>` URLs fetched and concatenated. 416,840 bytes of HTML and 215,770 bytes of CSS reproduce
+the baselines below; any other size means you fetched a different page and the numbers are not comparable.
 
 ## The traps that have cost the most time
 
@@ -54,28 +74,30 @@ cd ladybird && git sparse-checkout set Libraries/LibWeb
 | **A killed build reads as success** | Run `python3 tools/check-build.py` before trusting any suite run. It reports pending ninja steps and whether anything was linked after the last source edit. |
 | **A pod can come back with a stale snapshot** | `git fetch && git log --oneline -1 origin/main` versus `git log --oneline -1` before your first commit. If they differ, save the work as a patch, `git reset --hard origin/main`, re-apply, rebuild. |
 | **A pod can come back with an OLD `build/`** | If `zigcxx` fails with `exec: .../zig: not found` but binaries exist, the build tree is stale, not current. `setup.sh` fixes it. |
-| **Probes link statically** | Relink after any library rebuild or they print stale numbers — this produced a measurement that contradicted a fix that had actually worked. Debug library carries UBSan: link `-fsanitize=undefined` plus `libwebp.so.7`, `libssl.so.3`, `libcrypto.so.3`. |
-| **A metric can be wrong in the direction of "no change"** | Three separate instruments misled a whole session: an overflow counter that counted **off-canvas UI** as defects, a pixel-agreement percentage that **fell while the layout improved**, and a `class=` lookup that matched the **document root**. Before trusting a number, check it can distinguish the case you care about. |
+| **Probes link statically** | Relink after any library rebuild or they print stale numbers — this produced a measurement that contradicted a fix that had actually worked. Debug library carries UBSan: link `-fsanitize=undefined` plus `libwebp.so.7`, `libssl.so.3`, `libcrypto.so.3` by full path (`-lcrypto` finds nothing: there is no dev symlink). |
+| **A metric can be wrong in the direction of "no change"** | Four instruments have now misled a session: an overflow counter that counted **off-canvas UI** as defects, a pixel-agreement percentage that **fell while the layout improved**, a `class=` lookup that matched the **document root**, and a page-sized agreement score that read **99.7%** on a fixture where two boxes were 40px from where chromium puts them. Before trusting a number, check it can distinguish the case you care about. |
+| **A test that cannot fail** | Two assertions were written on 2026-11-26 and one of them **passed on the unfixed engine**, because the thing it measured was not measured either way. Revert the fix, rebuild, and watch the test go red. If it stays green, the test is not proof. |
 | **A class name is not an identity** | `div.vector-header-start` appears twice on a real page (normal and sticky header). Print x/y/width and the parent when reporting an offender. |
 | **Judging a fix by one pixel or one crop** | Cost two reverts of a change that was correct. Judge by a metric that has an identity and a baseline, and report the number. |
 | **`active_font()` is a singleton** | Font-dependent probes must set `AETHERIS_FONT` before the first call, one font per process. |
 | **`RenderDocument::create` ignores `<style>`** | Pass author CSS explicitly; only `src/main.cpp` collects `<style>` elements. |
 | **Git needs `-c core.preloadIndex=false -c index.threads=1`** | Under load, plain git fails on threaded lstat. |
 | **Git identity is not persisted** | `git config --global user.email sohilmomin2000@gmail.com`, `user.name "Aetheris session"`; the audit repo uses `Dr Sohil Momin`. |
+| **The probe is slow on a real page** | `article-position` on the wikipedia page takes **~110 s** in the Debug library. One call per mode, never two in one shell command, and write the output to a file. |
 
 ## State at the start of your session
 
 | | |
 | --- | --- |
-| `main` | `374daf2a` — "fix(layout): a flex row's intrinsic width is the sum of its items" |
-| audit repo | `6255c18` |
+| `main` | `074c72d8` — "fix(layout): a run of white space is not a flex item (row 0.13's tail)" |
+| audit repo | `09ac389` |
 | suite | 67 tests, **67/67 twice** on every commit |
-| checklist | **91 rows: 79 ticked, 0 open, 1 blocked (0.1), 2 out of scope, 5 historical "(superseded)" rows, and 4 rows (1b, 1c, 1d and one blank) whose status cell is malformed** — fixing those four is a five-minute job and worth doing before the next count |
-| reference render | `en.wikipedia.org/wiki/Web_browser` at **81.1%** pixel agreement with chromium |
-| overflow count | **141** containers whose children reach past their content box |
+| checklist | **93 rows: 79 ticked, 3 open (3l, 3m, 3n), 1 blocked (0.1), 2 out of scope (3i, 5d), 5 historical "(superseded)" rows, and 3 duplicate rows in the `Closed — 2026-11-18` table** |
+| reference render | `en.wikipedia.org/wiki/Web_browser` at **81.2%** pixel agreement with chromium |
+| overflow count | **137** containers whose children reach past their content box |
 
-Read `docs/SESSION-HANDOFF-2026-11-25.md` (15 sections, one per commit) and `docs/HANDOVER.md` §7g before
-starting. They carry the reasoning, the numbers and the mistakes.
+Read `docs/SESSION-HANDOFF-2026-11-26.md` (10 sections) and `docs/HANDOVER.md` §7g and §7h before starting.
+They carry the reasoning, the numbers and the mistakes.
 
 ## The two instruments, and what they are for
 
@@ -83,29 +105,32 @@ Both live in `tools/` and both have a baseline, so every fix can be judged by a 
 
 | tool | what it answers | baseline |
 | --- | --- | --- |
-| `tools/reference-render.sh page.html page.css [out]` | how far is this render from chromium's, and where | **81.1%** agreement, text rows 28-29px against chromium's 27-28 |
-| `tools/article-position.cpp` (via `--overflow`, `--top`, `id=`/`tag=`/`class=`) | which boxes overflow, what a node resolved to, which rules move it | **141** overflows |
+| `tools/reference-render.sh page.html page.css [out]` | how far is this render from chromium's, and where | **81.2%** agreement, text rows 28-29px against chromium's 27-28 |
+| `tools/article-position.cpp` (via `--overflow`, `--top`, `id=`/`tag=`/`class=`) | which boxes overflow, what a node resolved to, which rules move it, and **both** intrinsic widths | **137** overflows |
 
 `--overflow` ignores children wholly outside the viewport (hidden menus are placed there on purpose) and prints
 each offender's own x/y/width **and its parent's**. Read agreement **with** the row positions, never alone.
+
+`class=`/`id=` prints, for the node: its children, the rules that change it, `max=` and `min=` for every node to
+depth 4, and the ancestor chain. **Both** intrinsic widths, because an item that overflows is either bigger than
+its base (a layout bug) or floored above the space it was given (a sizing bug) — and the fix is different.
 
 ## What to do next, in this order
 
 | # | row | what it is | where to start |
 | --- | --- | --- | --- |
-| 1 | **0.13 tail** | `header.vector-header` is now the worst overflow at **422.1px past** (it was `div.vector-header-start` at 321.2 before the row-sum fix — the problem recedes up the chain, which is what a working fix looks like). The account menu is still clipped. | `tools/article-position.cpp --overflow`, then `class=vector-header` with the parent's position to pick the right instance |
-| 2 | **0.1** | blocked: the coverage corpus needs open internet; 17 of 20 hosts are refused by the egress allowlist. The corpus renders from the URL now, so it would measure something real on a network that admits it | — |
-| 3 | **1g4b** | `pushState`/`replaceState`/`history.state`, plus the `window.history` binding | `LibWeb/HTML/History.cpp`, `HTML/History.idl` |
-| 4 | **3d3** | animations: `@keyframes`, `animation-*`, on the clock row 3d2 landed | `LibWeb/Animations/KeyframeEffect.cpp`, `Rust/src/css/animation.rs` |
-| 5 | **5b** | same-origin enforcement in the JS bindings | `LibWeb/HTML/Origin.cpp`, cross-origin checks in `Bindings/` |
-| 6 | **4.1**, **4.2**, **1g2** | tab strip, history/bookmark UI, realm isolation | our own UI for 4.x; `LibWeb/HTML/Window.cpp` for 1g2 |
+| 1 | **3l** | `div.vector-header-end` takes 602.7px from x=349.3 as its `flex-grow: 1` says, but its `nav` sits at x=386.3 where chromium puts the account links at x=800-990, so "Donate / Create account / Log in" paint mid-header and wrap onto two lines. The row fits now; the alignment inside it is wrong. | `class=vector-header-end` with the probe; then upstream's main-axis alignment, `Rust/src/layout/flex_formatting_context.rs` (`justify-content`, `margin-left: auto`, and whether the search box should be the one that grows) |
+| 2 | **3m** | `max_content_width` still measures white space untransformed — a `"\n"` is 9.61px, `"\n\t\t\t"` is 28.83px — so every container's base size carries its markup's indentation. The **minimum** was fixed on 2026-11-26; this is the other half. | `widest_word`'s counterpart in `max_content_width`; css-text-3 white-space processing. Fixture: a 200px row with one 20px box and a newline should measure the same as the box alone. |
+| 3 | **3n** | A lone flex item is never shrunk to its automatic minimum: `item.base = std::min(available_width, max_content_width(child))` caps it at the line width, so `free_space` is exactly 0 and the floor never runs. | `layout_flex_children`, the base-size loop |
+| 4 | **0.1** | blocked: the coverage corpus needs open internet; 17 of 20 hosts are refused by the egress allowlist. The corpus renders from the URL now, so it would measure something real on a network that admits it | — |
+| 5 | **1g4b**, **3d3**, **5b** | ticked on 2026-11-23 with named tails in their own cells: structured clone, `animation-direction`/`fill-mode`/`play-state`, and the origin check that has nowhere to run until a `fetch` or an iframe exists | the cells say what is left |
 
 **Twelve rows carry named tails in their own cells** (0.3, 0.5, 1g2, 1g4b, 3d1, 3d2, 3d3, 4.1, 4.2, 5a, 5b, 5c).
 None is a new row; each belongs to the row that owns it.
 
 ## The dead ends, so you do not repeat them
 
-Six attempts on row 0.13's tail were reverted. Each looked right and none moved the metric:
+Seven attempts on row 0.13 were reverted or rejected. Each looked right and none moved the metric:
 
 | attempt | why it failed |
 | --- | --- |
@@ -115,19 +140,24 @@ Six attempts on row 0.13's tail were reverted. Each looked right and none moved 
 | an absolutely-positioned child taking flow space | verified **correct**, not the bug |
 | a padded child overflowing its parent | verified **correct**, not the bug |
 | `reserve(24)` on `StyleProperties` (older row) | measured **33% slower**, reverted |
+| `"ab\tcd"` vs `"ab"` as a test of the minimum width | **passed on the unfixed engine** — a tab is not measured either way. Replaced, not kept |
 
 Upstream had already answered the layout question: `Rust/src/layout/flex_formatting_context.rs:4318` resolves every
-item's used main size before placement, `:4299` clamps the hypothetical main size at the automatic minimum. The
-engine does both. **Read upstream before designing a fix — it saved a rewrite of working code.**
+item's used main size before placement, `:4299` clamps the hypothetical main size at the automatic minimum, and
+`:1217` generates no item at all for a run of white space. The engine now does all three.
+**Read upstream before designing a fix — it saved a rewrite of working code, twice.**
 
 ## How to start
 
-1. Read `docs/CHECKLIST.md` and `docs/SESSION-HANDOFF-2026-11-25.md`.
-2. `sh tools/setup.sh`, then `python3 tools/check-build.py`, then `ninja -C build -j2` until it reports nothing to do.
-3. Re-clone upstream if `/scratch/work/ladybird` is missing.
-4. Take row **0.13 tail**: run `tools/article-position.cpp --overflow`, pick the worst offender, and **print its
-   parent's position before walking it** — the class appears twice on the page.
-5. Implement, add assertions, run the suite twice, update the four docs plus one audit entry, commit, push, verify
-   the tip, and report in tables — with the overflow count and the agreement percentage before and after.
+1. Read `docs/CHECKLIST.md` and `docs/SESSION-HANDOFF-2026-11-26.md`.
+2. Configure and build (`tools/setup.sh` will not fit in one call — see above), then
+   `python3 tools/check-build.py`, then `ninja -C build -j2` until it reports nothing to do.
+3. Re-clone upstream if `/scratch/work/ladybird` is missing; rebuild the probe and the reference page if
+   `/scratch/work/ap` and `/scratch/work/reference` are missing.
+4. Take row **3l**: run `class=vector-header-end`, and print the parent's position before walking it — the class
+   appears twice on the page.
+5. Implement, add assertions **and prove each one fails without the fix**, run the suite twice, update the four
+   docs plus one audit entry, commit, push, verify the tip, and report in tables — with the overflow count and the
+   agreement percentage before and after.
 
 Work one row per "go". Report and stop at the boundary.
