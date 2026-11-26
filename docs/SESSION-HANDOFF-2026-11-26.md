@@ -286,6 +286,36 @@ the Contents heading** (the header block is 156px tall against ~68px, with the f
 open row, because the explanation is what the next person builds on. The render was already in the tree; comparing
 it cost nothing.
 
+## 15. Fifth batch — row 0.15: a percentage height was a percentage of the width
+
+The row said the header block above the table of contents was 156px tall against chromium's ~68, with the
+failed-logo block at h=172.9. The probe on `class=mw-logo` showed the link itself at **h=140** while its content
+was 38px — and 140 is exactly its width.
+
+`parse_length(style.get("height"), -1, content_width)` — the percentage base for a **height** was the element's
+**width**. Four elements of fixture reproduced it: a 38px span inside `<a style='display:flex;height:100%'>` in an
+auto-height flex row made the row **100px** tall.
+
+| | before | after |
+| --- | --- | --- |
+| fixture row height | 100 | **38** |
+| `main#content` y | 546.4 | **473.6** (chromium 356) |
+| engine text rows vs chromium | 88px below | **15px below** |
+| pixel agreement | 88.8% | **84.3%** |
+
+**The percentage went the wrong way and the layout got better.** Moving everything up 73px pulled the next defect
+into the viewport: the engine's article **ends** around y=640 where chromium still has paragraphs (bands 640-704
+and 704-768 score 65.9% and 39.0%), so the footer is on screen. That is row **0.17**, opened with those numbers.
+
+A percentage height now returns the fallback, i.e. `auto`, because this engine has no definite containing-block
+height to resolve against. That is the honest behaviour rather than a wrong number; the tail — resolving against a
+definite parent height — is in the row.
+
+**And the row's original premise is gone.** It was opened saying the table of contents belonged in a column; at
+1024px chromium stacks it above the title too. The number was right and the story was wrong, twice in a row now.
+The pattern is worth naming: this row was opened from a band table and a guess about *why*, and both times the
+*why* had to be measured before anything could be fixed.
+
 ## 12. Next
 
 1. **Finish row 3m** (§11): build, run `AetherisAdvancedLayout` both ways, suite twice, tick, commit.

@@ -209,6 +209,30 @@ bool LayoutEngine::reuse_subtree(LayoutNode& node, float x, float y, float avail
     return true;
 }
 
+// A percentage height resolves against the containing block's **height**, and against an indefinite one it
+// computes to `auto` (css2 §10.5; css-flexbox-1 §9.8 for a flex item). This engine has no definite
+// containing-block height to resolve against - and it was passing the element's own **width** as the base,
+// which is a different quantity entirely: `height:100%` on a `.mw-logo` 140px wide became 140px tall,
+// stretched the site header from ~68px to 156px and pushed a real page's article down 88px (row 0.15).
+// Until a containing-block height is plumbed through, a percentage height is treated as `auto` rather than
+// as a percentage of something unrelated.
+static bool is_percentage_value(std::string const* value)
+{
+    if (!value || value->empty())
+        return false;
+    std::size_t index = value->size();
+    while (index > 0 && std::isspace(static_cast<unsigned char>((*value)[index - 1])))
+        --index;
+    return index > 0 && (*value)[index - 1] == '%';
+}
+
+float LayoutEngine::parse_height(std::string const* value, float fallback, float percentage_base)
+{
+    if (is_percentage_value(value))
+        return fallback;
+    return parse_length(value, fallback, percentage_base);
+}
+
 void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float available_width) const
 {
     if (node.display == LayoutDisplay::None) {
@@ -305,7 +329,7 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
         if (auto value = node.dom_node->attribute("height")) intrinsic_height = parse_length(value, 0, available_width);
         if (specified_width < 0 && intrinsic_width > 0) { content_width = intrinsic_width; node.box.content.width = content_width; }
         float ratio = intrinsic_width > 0 && intrinsic_height > 0 ? intrinsic_height / intrinsic_width : 0.75f;
-        float specified_height = parse_length(node.style.get("height"), -1, content_width);
+        float specified_height = LayoutEngine::parse_height(node.style.get("height"), -1, content_width);
         node.box.content.height = specified_height >= 0 ? specified_height : (intrinsic_height > 0 ? intrinsic_height : content_width * ratio);
     } else if (!node.generated_text.empty() || (node.dom_node && node.dom_node->type == DomNodeType::Text)) {
         std::string const& source = node.generated_text.empty() ? node.dom_node->data : node.generated_text;
@@ -346,9 +370,9 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
         }
 
         float content_height = cursor_y - node.box.content.y;
-        float specified_height = parse_length(node.style.get("height"), -1, content_width);
-        float min_height = parse_length(node.style.get("min-height"), 0, content_width);
-        float max_height = parse_length(node.style.get("max-height"), -1, content_width);
+        float specified_height = LayoutEngine::parse_height(node.style.get("height"), -1, content_width);
+        float min_height = LayoutEngine::parse_height(node.style.get("min-height"), 0, content_width);
+        float max_height = LayoutEngine::parse_height(node.style.get("max-height"), -1, content_width);
 
         node.box.content.height = specified_height >= 0 ? specified_height : content_height;
         if (auto ratio = node.style.get("aspect-ratio")) {

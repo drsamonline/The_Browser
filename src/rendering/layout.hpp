@@ -158,6 +158,9 @@ private:
     void layout_flex_children(LayoutNode& node, float available_width, float& cursor_y) const;
     void layout_grid_children(LayoutNode& node, float available_width, float& cursor_y) const;
     static float parse_length(std::string const* value, float fallback, float percentage_base = 0);
+    // A percentage **height** against an indefinite containing block is `auto`, not a percentage of the
+    // element's own width - which is what it used to be (row 0.15).
+    static float parse_height(std::string const* value, float fallback, float percentage_base);
     // The widest a node's content can be: a text run's measured width, or the widest (or, for a row of inline
     // children, the sum) of its children's. Used as the flex base size when an item names neither a basis nor
     // a width, which this engine had no answer for (row 0.10).

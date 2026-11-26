@@ -61,6 +61,7 @@ are at the bottom.
 | Flex | done for a single line, 2026-11-26 — basis, grow, shrink, the automatic-minimum floor, gaps, `justify-content`, `align-items`, and white-space runs excluded from the items and from both intrinsic widths. Not done: `flex-wrap` (one line only), `align-content`, `order`, `align-self` | `layout_flex_children()` |
 | Grid | partial — `grid-template-columns` read | `layout_grid_children()` |
 | Absolute positioning | done | `layout_absolute_children()` |
+| Percentage `height` | done as `auto` when the containing block is indefinite, 2026-11-26 — it used to resolve against the element's own **width**. Not done: resolving against a *definite* parent height | `parse_height()` in `layout.cpp`, `AetherisAdvancedLayout` |
 | `position: sticky` | **absent** | no `sticky` in `src/rendering` |
 | `float` | **absent** | not read by layout |
 | Incremental layout | done — document skip, per-node reuse on origin | `render_document.cpp` |

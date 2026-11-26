@@ -611,6 +611,24 @@ Compare the two renders before believing a layout story about them.
 
 ---
 
+## 7k. A percentage height is not a percentage of the width
+
+- **css2 §10.5** (and css-flexbox-1 §9.8 for a flex item): a percentage `height` resolves against the containing
+  block's **height**; against an indefinite one it computes to `auto`.
+- The engine passed the element's own **width** as the percentage base — a different quantity — so
+  `.mw-logo { height:100% }` on a 140px-wide logo became **140px tall**, stretched the site header from ~68px to
+  156px and pushed the article down. `parse_height()` now returns the fallback for any percentage.
+- **Fixture**: a 38px span inside `<a style='display:flex;height:100%'>` in an auto-height flex row made the row
+  **100px** tall; it is 38px now. On the page `main#content` moved **546.4 -> 473.6** and the engine's text rows
+  went from 88px below chromium's to 15px below.
+
+**And a reminder about the agreement percentage.** That fix made the aggregate fall, 88.8% -> 84.3%, because moving
+everything up 73px pulled the *next* defect into the viewport: the article ends ~70px early, so the footer lands on
+screen where chromium still has paragraphs. The row offset improved and the percentage got worse. Read the row
+positions first, every time.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.

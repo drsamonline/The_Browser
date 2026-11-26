@@ -313,5 +313,22 @@ int main()
             "a minmax() track is read as the flexible track it names");
     }
 
+    // Row 0.15: a percentage height resolves against the containing block's height, and against an
+    // indefinite one it is `auto` (css2 §10.5; css-flexbox-1 §9.8). It was resolved against the element's own
+    // **width**, which is a different quantity: `height:100%` on a 140px-wide logo became 140px tall,
+    // stretched a page's header from ~68px to 156px and pushed its article down 88px.
+    {
+        auto rendered = RenderDocument::create(
+            "<div id='row' style='display: flex; align-items: center'>"
+            "<a id='logo' style='display: flex; height: 100%'>"
+            "<span style='display: block; width: 100px; height: 38px'></span></a></div>",
+            "", 400);
+        auto const& row = *rendered.layout_root().children[0];
+        require(row.rect.height == 38.0f,
+            "a percentage height against an auto-height parent does not stretch it");
+        require(row.children[0]->rect.height == 38.0f,
+            "and the item itself is as tall as its content, not as wide as it is");
+    }
+
     return 0;
 }
