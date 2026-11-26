@@ -211,6 +211,48 @@ So every number in §10 was reproduced first-hand on a different pod before it w
 **A note for the next recycle: `/scratch/work` did not survive this one.** Re-cloning, reinstalling the
 toolchain and rebuilding cost about 45 minutes. Anything uncommitted must be delivered as a patch.
 
+## 13. Third batch — row 0.14, and the pod ran out of processes again
+
+The black band was not a layout defect. `tools/article-position.cpp` put `main#content` at y=546 and the title at
+546.4, and a new probe — `cmds`, which prints every paint command in a y band — named the culprit in one line:
+
+```
+DrawShadow   x=24.0 y=546.4 w=976.0 h=40.6  color=black
+DrawShadow   x=24.0 y=587.0 w=976.0 h=34.0  color=black
+```
+
+Two `DrawShadow` commands with the colour **black**, on boxes whose CSS says `box-shadow: none` and
+`box-shadow: 0 1px #c8ccd1`. `render_tree.cpp` read the value positionally as `x y blur colour` and defaulted an
+absent colour to black, so `none` became a black rectangle the size of the box.
+
+| | before | after |
+| --- | --- | --- |
+| pixel agreement | 80.4% | **88.8%** |
+| title bar | 976x78 black | white, title in black |
+| toolbar | black, then a grey band | white with a 1px line |
+
+Two fixes: the value is parsed by kind (css-backgrounds-3 §7.2: a list, `none` is empty, colour anywhere,
+`currentColor` default, two lengths minimum), and an outer shadow is clipped to outside its border box (§7.2.1),
+which is what removed the grey band the first fix exposed.
+
+### The assertions, and the one that could not fail
+
+`AetherisAdvancedPainting` pins both halves, and each was proved to fail without its own fix. The clipping one
+took three attempts: as a document render it passed on the unfixed engine, because a box with its own background
+paints over its shadow - the case that distinguishes is a box with **no** background, which is the toolbar's. It
+now calls `draw_shadow` on a bare surface, where the answer cannot be confused with "nothing was painted".
+
+### What is not done
+
+**The full suite has not run on this source.** The pod's process table filled again — 11,292 zombies, the same
+failure as §11 — while the source was being re-linked after the proof-by-reverting cycle, so 58 of 68 binaries are
+stale and `bin/aetheris` is one of them. `TestAetherisAdvancedPainting` passed on the fully-built tree (both fixes,
+88.8% render) before that; the state on disk is source-identical to it. Row 0.14 is `[~]`, not `[x]`.
+
+**And the other half of the row is a different defect**: the article starts 410px too low because the **table of
+contents** is laid out in the content flow (a 988x350 box above `main`), not in the start column. That is row
+**0.15**, opened with the numbers.
+
 ## 12. Next
 
 1. **Finish row 3m** (§11): build, run `AetherisAdvancedLayout` both ways, suite twice, tick, commit.

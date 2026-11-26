@@ -572,6 +572,24 @@ puts it, which is the worst band of the reference render by a factor of two.
 
 ---
 
+## 7i. A box-shadow is a list, and an outer shadow stays outside its box
+
+- **css-backgrounds-3 §7.2.** `box-shadow` is a comma-separated list; `none` — the initial value — is the empty
+  list; each shadow is two to four lengths, an optional `inset` and an optional colour that defaults to
+  `currentColor` and may appear **anywhere** in the list. Upstream keeps exactly that shape: a list of
+  `ComputedShadow` values, each with its own colour and placement, empty for `none`
+  (`Rust/src/css/computed_value_types.rs:1052`, `:1069`).
+- **Reading it positionally as `x y blur colour`** with a black default turned `box-shadow: none` into an opaque
+  black rectangle the size of the box — a 976x78 black band across a real page's title bar — and turned a light
+  `0 1px #c8ccd1` into the same thing, because the colour landed in the blur slot.
+- **§7.2.1: an outer shadow is not painted inside its border box.** Filling the whole offset rectangle put a grey
+  band across a toolbar whose box has no background of its own. `SoftwareSurface::draw_shadow` now fills four
+  strips around the border box.
+
+Fixing both moved the reference render **80.4% -> 88.8%**, the largest single step since the reference existed.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.

@@ -179,7 +179,51 @@ void RenderTree::emit(LayoutNode const& node, std::vector<PaintCommand>& command
         // A generated box paints its background, shadow and outline like any other box. It has no DOM
         // node, so gating this on one left a `::before` with a background colour invisible.
         bool const is_element_node = node.dom_node && node.dom_node->type == DomNodeType::Element;
-        if (auto shadow = node.style.get("box-shadow")) { PaintCommand command; command.type=PaintCommand::Type::DrawShadow; command.rect=node.rect; command.opacity=opacity; std::istringstream stream(*shadow); std::string x,y,blur,color; stream>>x>>y>>blur>>color; command.shadow_offset_x=number(&x,0); command.shadow_offset_y=number(&y,0); command.shadow_blur=number(&blur,0); command.color=color.empty()?"black":color; commands.push_back(std::move(command)); }
+        // css-backgrounds-3 §7.2: `box-shadow` is a comma-separated list of shadows; `none` - the initial
+        // value - is the empty list; and each shadow is two to four lengths, an optional `inset` and an
+        // optional colour that defaults to `currentColor` and may appear anywhere in the list. Upstream
+        // keeps exactly that shape: a list of ComputedShadow values, each carrying its own colour and
+        // placement, empty for `none` (`Rust/src/css/computed_value_types.rs:1052`, `:1069`).
+        // Reading the value positionally as "x y blur colour" painted `box-shadow: none` as an **opaque
+        // black rectangle the size of the box**, and did the same to a light `0 1px #c8ccd1`, because the
+        // colour landed in the blur slot and an absent colour defaulted to black. On a real page that was
+        // a 976x78 black band across the title bar and another across the toolbar (row 0.14).
+        if (auto shadow = node.style.get("box-shadow")) {
+            std::istringstream stream(*shadow);
+            std::string token;
+            std::vector<float> lengths;
+            std::string color;
+            bool is_none = false;
+            while (stream >> token) {
+                if (token == "none") { is_none = true; break; }
+                if (token == "inset") continue;
+                char const first = token.empty() ? '\0' : token.front();
+                bool const looks_numeric = (first >= '0' && first <= '9') || first == '-' || first == '.' || first == '+';
+                if (looks_numeric) {
+                    if (lengths.size() < 4)
+                        lengths.push_back(css_length_px(&token, 0.0f, 0.0f));
+                    continue;
+                }
+                if (color.empty())
+                    color = token;
+            }
+            // Two lengths are the minimum: one length is not a shadow, and `none` is not one either.
+            if (!is_none && lengths.size() >= 2) {
+                PaintCommand command;
+                command.type = PaintCommand::Type::DrawShadow;
+                command.rect = node.rect;
+                command.opacity = opacity;
+                command.shadow_offset_x = lengths[0];
+                command.shadow_offset_y = lengths[1];
+                command.shadow_blur = lengths.size() > 2 ? lengths[2] : 0.0f;
+                // The spread (a fourth length) has no field on the command yet; it is read and dropped
+                // rather than mistaken for a colour.
+                command.color = color.empty()
+                    ? (node.style.get("color") ? *node.style.get("color") : std::string("black"))
+                    : color;
+                commands.push_back(std::move(command));
+            }
+        }
         if (node.background_image) { PaintCommand command; command.type=PaintCommand::Type::DrawImage; command.rect=node.box.content; command.image=node.background_image; command.image_fit="fill"; command.background_repeat=node.style.get("background-repeat") ? *node.style.get("background-repeat") : "repeat"; command.background_position=node.style.get("background-position") ? *node.style.get("background-position") : "0 0"; command.background_size=node.style.get("background-size") ? *node.style.get("background-size") : "auto"; command.opacity=opacity; commands.push_back(std::move(command)); }
         if (is_element_node && node.dom_node->name == "img" && node.image) { PaintCommand command; command.type = PaintCommand::Type::DrawImage; command.rect = node.box.content; command.image = node.image; command.image_fit = node.style.get("object-fit") ? *node.style.get("object-fit") : "fill"; command.opacity = opacity; commands.push_back(std::move(command)); }
         // An image that did not load paints its `alt` text, which is what a browser does and what makes a

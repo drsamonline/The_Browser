@@ -312,7 +312,21 @@ void SoftwareSurface::draw_image(LayoutRect const& rect, Image const& image, std
 }
 void SoftwareSurface::draw_shadow(LayoutRect const& rect,float ox,float oy,float blur,Color color,std::optional<RoundedRect> clip)
 {
-    int spread=std::max(0,int(std::ceil(blur))); LayoutRect shadow{rect.x+ox-spread,rect.y+oy-spread,rect.width+2*spread,rect.height+2*spread}; color.alpha=uint8_t(color.alpha/std::max(1,spread+1)); fill_rect(shadow,color,clip);
+    int spread=std::max(0,int(std::ceil(blur))); LayoutRect shadow{rect.x+ox-spread,rect.y+oy-spread,rect.width+2*spread,rect.height+2*spread}; color.alpha=uint8_t(color.alpha/std::max(1,spread+1));
+    // css-backgrounds-3 §7.2.1: an **outer** shadow is painted only outside the border box - whatever the
+    // box itself would cover is clipped away. Filling the whole offset rectangle put a grey band across a
+    // toolbar whose shadow was `0 1px #c8ccd1`, because the shadow showed through a box with no background
+    // of its own (row 0.14). Four strips: above, below, and the two sides within the box's own band.
+    float const box_left = rect.x, box_top = rect.y, box_right = rect.x + rect.width, box_bottom = rect.y + rect.height;
+    float const shadow_left = shadow.x, shadow_top = shadow.y, shadow_right = shadow.x + shadow.width, shadow_bottom = shadow.y + shadow.height;
+    auto strip = [&](float x0, float y0, float x1, float y1) {
+        if (x1 <= x0 || y1 <= y0) return;
+        fill_rect(LayoutRect{x0, y0, x1 - x0, y1 - y0}, color, clip);
+    };
+    strip(shadow_left, shadow_top, shadow_right, std::min(shadow_bottom, box_top));
+    strip(shadow_left, std::max(shadow_top, box_bottom), shadow_right, shadow_bottom);
+    strip(shadow_left, std::max(shadow_top, box_top), std::min(shadow_right, box_left), std::min(shadow_bottom, box_bottom));
+    strip(std::max(shadow_left, box_right), std::max(shadow_top, box_top), shadow_right, std::min(shadow_bottom, box_bottom));
 }
 void SoftwareSurface::draw_background_image(LayoutRect const& rect, Image const& image, std::string_view repeat, std::string_view position, std::string_view size, std::optional<RoundedRect> clip)
 {
