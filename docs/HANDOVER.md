@@ -590,6 +590,27 @@ Fixing both moved the reference render **80.4% -> 88.8%**, the largest single st
 
 ---
 
+## 7j. A grid written with the `grid-template` shorthand has no tracks at all
+
+- **css-grid-1 §7.3**: `grid-template` is a shorthand for `grid-template-rows`, `grid-template-columns` and
+  `grid-template-areas` — the row list (with any quoted area strings interleaved) before a `/`, the columns
+  after it. Upstream states exactly those three longhands (`CSS/Properties.json:3282-3297`).
+- **This engine has no shorthand-expansion layer.** A shorthand is read where it is used, the way
+  `resolve_edges` splits `margin`. So `layout_grid_children` falls back to the shorthand for whichever longhand
+  is absent, splitting on the **top-level** `/` (never one inside `minmax(...)`), and `parse_tracks` reads
+  `minmax(a, b)` as the track its second argument names.
+- **The tell**: a container reporting `display=grid` whose children are all stacked in one column. Fixtures:
+  longhand `grid-template-columns:100px 1fr` puts two `grid-area` children at x=0 w=100 and x=100 w=924; the
+  shorthand `grid-template: 1fr / 100px 1fr` used to put them at x=0 w=1024 and x=1024 w=0.
+
+**And a lesson about premises.** Row 0.15 was opened saying a real page's table of contents was wrongly in the
+content flow. It is not: at 1024px chromium stacks the Contents list above the title too, because the grid that
+would put it in a column is behind `@media screen and (min-width:1120px)`. The row's *number* was right — the
+article starts 190px below chromium's — and its *explanation* was wrong, which is worse than no explanation.
+Compare the two renders before believing a layout story about them.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.

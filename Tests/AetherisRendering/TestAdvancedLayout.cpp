@@ -6,6 +6,7 @@
 #include <user_agent_stylesheet.hpp>
 
 #include <cstdlib>
+#include <utility>
 #include <iostream>
 #include <string>
 #include <unordered_map>
@@ -284,6 +285,32 @@ int main()
         // 615.42px wide when 423.23px of it was content.
         require(max_of("\n<span style='width: 20px; height: 10px'></span>\n") == 20.0f,
             "and the newlines around it add nothing, because they generate no item");
+    }
+
+    // Row 0.16: `grid-template` is a shorthand for grid-template-rows, grid-template-columns and
+    // grid-template-areas (css-grid-1 §7.3; upstream lists exactly those three longhands,
+    // CSS/Properties.json:3282-3297), and a track may be `minmax(a, b)`. Neither was read, so a page whose
+    // whole column layout is written with the shorthand had no tracks and no named areas.
+    {
+        auto const grid_of = [](char const* declaration) {
+            auto rendered = RenderDocument::create(
+                std::string("<div style='display:grid; width: 1024px; ") + declaration + "'>"
+                "<div style='grid-area:a; height:10px'></div>"
+                "<div style='grid-area:b; height:10px'></div></div>",
+                "", 1024);
+            auto const& grid = *rendered.layout_root().children[0];
+            return std::pair<float, float> { grid.children[0]->rect.width, grid.children[1]->rect.x };
+        };
+        auto const longhand = grid_of("grid-template-columns:100px 1fr; grid-template-areas:'a b'");
+        auto const shorthand = grid_of("grid-template: 1fr / 100px 1fr; grid-template-areas:'a b'");
+        require(longhand.first == 100.0f && longhand.second == 100.0f,
+            "the longhand gives a 100px first column and the second item after it");
+        require(shorthand.first == longhand.first && shorthand.second == longhand.second,
+            "and the grid-template shorthand gives the same columns as the longhands it stands for");
+        // `minmax(0,1fr)` is how a real page writes its content column.
+        auto const with_minmax = grid_of("grid-template: 1fr / 100px minmax(0,1fr); grid-template-areas:'a b'");
+        require(with_minmax.first == 100.0f && with_minmax.second == 100.0f,
+            "a minmax() track is read as the flexible track it names");
     }
 
     return 0;

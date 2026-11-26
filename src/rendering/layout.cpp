@@ -823,6 +823,72 @@ void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width,
     cursor_y = node.box.content.y + max_height;
 }
 
+// css-grid-1 §7.3: `grid-template` is a shorthand for `grid-template-rows`, `grid-template-columns` and
+// `grid-template-areas` - the row list (with any quoted area strings interleaved) before a `/`, the column
+// list after it. Upstream states exactly those three longhands (CSS/Properties.json:3282-3297). This engine
+// has no shorthand-expansion layer: a shorthand is read where it is used, the way `resolve_edges` splits
+// `margin`, so the fallback lives here. It matters more than it looks - a real page's whole column layout is
+// written with this one declaration (`.mw-page-container-inner { display:grid; grid-template:min-content 1fr
+// min-content / 12.25rem minmax(0,1fr); grid-template-areas:'siteNotice siteNotice' 'columnStart pageContent'
+// 'footer footer' }`), so without it there are no tracks and no named areas and the table of contents falls
+// into the content flow above the article (row 0.15).
+struct GridTemplateParts {
+    std::string rows;
+    std::string columns;
+    std::string areas;
+};
+
+static GridTemplateParts split_grid_template(std::string const& value)
+{
+    GridTemplateParts parts;
+    int depth = 0;
+    char quote = '\0';
+    std::size_t slash = std::string::npos;
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        char const c = value[i];
+        if (quote != '\0') {
+            if (c == quote) quote = '\0';
+            continue;
+        }
+        if (c == '"' || c == '\'') { quote = c; continue; }
+        if (c == '(') ++depth;
+        else if (c == ')') depth = std::max(0, depth - 1);
+        else if (c == '/' && depth == 0) { slash = i; break; }
+    }
+    auto const before = slash == std::string::npos ? value : value.substr(0, slash);
+    auto const after = slash == std::string::npos ? std::string() : value.substr(slash + 1);
+
+    // The row part interleaves quoted area strings with row sizes; the strings are the areas, the rest is
+    // the row list. `parse_areas` already reads a value with quotes anywhere in it.
+    std::string rows;
+    for (std::size_t i = 0; i < before.size();) {
+        char const c = before[i];
+        if (c == '"' || c == '\'') {
+            auto const close = before.find(c, i + 1);
+            if (close == std::string::npos)
+                break;
+            if (!parts.areas.empty()) parts.areas += ' ';
+            parts.areas += before.substr(i, close - i + 1);
+            i = close + 1;
+            continue;
+        }
+        if (!std::isspace(static_cast<unsigned char>(c))) rows += c;
+        else if (!rows.empty() && rows.back() != ' ') rows += ' ';
+        ++i;
+    }
+    while (!rows.empty() && rows.back() == ' ') rows.pop_back();
+    std::size_t begin = 0;
+    while (begin < rows.size() && rows[begin] == ' ') ++begin;
+    parts.rows = rows.substr(begin);
+
+    std::size_t cbegin = 0;
+    while (cbegin < after.size() && std::isspace(static_cast<unsigned char>(after[cbegin]))) ++cbegin;
+    std::size_t cend = after.size();
+    while (cend > cbegin && std::isspace(static_cast<unsigned char>(after[cend - 1]))) --cend;
+    parts.columns = after.substr(cbegin, cend - cbegin);
+    return parts;
+}
+
 void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width, float& cursor_y) const
 {
     std::vector<LayoutNode*> items;
@@ -839,8 +905,17 @@ void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width,
             char c = i < value->size() ? (*value)[i] : ' ';
             if (c == ' ' || c == '\t' || i == value->size()) {
                 if (!token.empty()) {
-                    if (token.size() >= 2 && token.substr(token.size()-2) == "fr") { tracks.push_back(-std::max(0.0f, std::strtof(token.c_str(), nullptr))); }
-                    else { float v = parse_length(&token, 0, available_width); tracks.push_back(v); fixed += v; }
+                    // `minmax(a, b)`: the second argument decides the kind of track and the first is its
+                    // floor. css-grid-1 §7.2.1; a real page's column list is `12.25rem minmax(0,1fr)`.
+                    std::string size = token;
+                    if (size.rfind("minmax(", 0) == 0 && size.back() == ')') {
+                        auto const comma = size.find(',');
+                        if (comma != std::string::npos)
+                            size = size.substr(comma + 1, size.size() - comma - 2);
+                        while (!size.empty() && size.front() == ' ') size.erase(0, 1);
+                    }
+                    if (size.size() >= 2 && size.substr(size.size()-2) == "fr") { tracks.push_back(-std::max(0.0f, std::strtof(size.c_str(), nullptr))); }
+                    else { float v = parse_length(&size, 0, available_width); tracks.push_back(v); fixed += v; }
                     token.clear();
                 }
             } else token += c;
@@ -852,7 +927,25 @@ void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width,
         return tracks;
     };
 
-    auto columns = parse_tracks(node.style.get("grid-template-columns"));
+    // The `grid-template` shorthand fills in whichever longhand is absent (row 0.15).
+    GridTemplateParts shorthand;
+    bool const have_shorthand = [&] {
+        auto const* value = node.style.get("grid-template");
+        if (!value || value->empty() || *value == "none")
+            return false;
+        shorthand = split_grid_template(*value);
+        return true;
+    }();
+    auto const* columns_value = node.style.get("grid-template-columns");
+    auto const* areas_value = node.style.get("grid-template-areas");
+    auto const* rows_value = node.style.get("grid-template-rows");
+    if (have_shorthand) {
+        if (!columns_value && !shorthand.columns.empty()) columns_value = &shorthand.columns;
+        if (!areas_value && !shorthand.areas.empty()) areas_value = &shorthand.areas;
+        if (!rows_value && !shorthand.rows.empty()) rows_value = &shorthand.rows;
+    }
+
+    auto columns = parse_tracks(columns_value);
 
     // `grid-template-areas`: each quoted string is a row of names, `.` is an empty cell.
     auto split_tokens = [](std::string const& value) {
@@ -890,7 +983,7 @@ void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width,
         }
         return grid;
     };
-    auto const areas = parse_areas(node.style.get("grid-template-areas"));
+    auto const areas = parse_areas(areas_value);
 
     // A track count that can hold both the declared columns and the declared areas.
     std::size_t area_columns = 0;
@@ -908,7 +1001,7 @@ void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width,
     // Rows: `grid-template-rows` when it names pixel tracks, otherwise as tall as the tallest item in them.
     std::vector<float> row_heights;
     {
-        auto const* declared = node.style.get("grid-template-rows");
+        auto const* declared = rows_value;
         std::size_t index = 0;
         while (declared && index < declared->size()) {
             if ((*declared)[index] == ' ') { ++index; continue; }

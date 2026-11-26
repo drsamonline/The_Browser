@@ -262,6 +262,30 @@ re-applied unchanged), and reproduced 80.4% -> 88.8% there after the fix.
 contents** is laid out in the content flow (a 988x350 box above `main`), not in the start column. That is row
 **0.15**, opened with the numbers.
 
+## 14. Fourth batch — row 0.16, and a premise that did not survive the render
+
+Row 0.15 said the table of contents was wrongly in the content flow. The fix for it was obvious and wrong. Two
+things were done in order.
+
+**First, the shorthand.** `.mw-page-container-inner` sets its grid only through `grid-template`, and the engine did
+not read it — a container reporting `display=grid` with every child in one column. `layout_grid_children` now falls
+back to the shorthand for whichever longhand is absent (splitting on the top-level `/`, not one inside `minmax`),
+and `parse_tracks` reads `minmax(a,b)`. Fixture: longhand puts two grid children at x=0 w=100 and x=100 w=924; the
+shorthand did the same after the fix, and x=0 w=1024 / x=1024 w=0 before. Suite **67/67 twice**. Agreement on the
+reference page: **88.8% before and after** — the rule that needs the shorthand is behind `min-width:1120px` and the
+reference render is 1024px wide, so this closes a compatibility gap without moving this page.
+
+**Then the render, which corrected the row.** At 1024px chromium also stacks the Contents list above the title —
+its heading at y=98, the engine's at y=186, same order. The grid that would put the TOC in a column is behind
+`min-width:1120px` and correctly does not match. So row 0.15's explanation was wrong even though its number was
+right: `main#content` starts at **y=546.4** against chromium's **356**, and the 190px is **+88px in the block above
+the Contents heading** (the header block is 156px tall against ~68px, with the failed-logo block at h=172.9) plus
+**+103px in the Contents box** (engine 180.1 h=350.4, chromium 98-345). Row 0.15 now says that instead.
+
+**The lesson, and it is the same one as row 0.14's:** a number with the wrong explanation attached is worse than an
+open row, because the explanation is what the next person builds on. The render was already in the tree; comparing
+it cost nothing.
+
 ## 12. Next
 
 1. **Finish row 3m** (§11): build, run `AetherisAdvancedLayout` both ways, suite twice, tick, commit.
