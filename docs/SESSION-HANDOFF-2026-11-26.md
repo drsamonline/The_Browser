@@ -242,12 +242,21 @@ took three attempts: as a document render it passed on the unfixed engine, becau
 paints over its shadow - the case that distinguishes is a box with **no** background, which is the toolbar's. It
 now calls `draw_shadow` on a bare surface, where the answer cannot be confused with "nothing was painted".
 
-### What is not done
+### Finished, on a third pod
 
-**The full suite has not run on this source.** The pod's process table filled again — 11,292 zombies, the same
-failure as §11 — while the source was being re-linked after the proof-by-reverting cycle, so 58 of 68 binaries are
-stale and `bin/aetheris` is one of them. `TestAetherisAdvancedPainting` passed on the fully-built tree (both fixes,
-88.8% render) before that; the state on disk is source-identical to it. Row 0.14 is `[~]`, not `[x]`.
+The pod this was written on filled its process table (11,292 zombies) while the source was being re-linked after
+the proof-by-reverting cycle, so it could not build, test or even push. The work went to a branch as a patch. A
+recycle came back with an **empty `/scratch/work`** again, the patch was re-applied with `git am`, and the tree was
+rebuilt from scratch:
+
+| check | result |
+| --- | --- |
+| `check-build.py` | all 68 binaries current |
+| `AetherisAdvancedPainting` on this source | **pass** |
+| `ctest --test-dir build -j 2` | **67/67 twice** (196.89 s, 186.03 s) |
+
+Row 0.14 is `[x]`. The 88.8% agreement was measured on the previous pod from byte-identical source (the patch was
+re-applied unchanged), and reproduced 80.4% -> 88.8% there after the fix.
 
 **And the other half of the row is a different defect**: the article starts 410px too low because the **table of
 contents** is laid out in the content flow (a 988x350 box above `main`), not in the start column. That is row
