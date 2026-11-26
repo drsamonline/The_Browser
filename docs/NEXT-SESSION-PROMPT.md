@@ -89,12 +89,12 @@ the baselines below; any other size means you fetched a different page and the n
 
 | | |
 | --- | --- |
-| `main` | `074c72d8` — "fix(layout): a run of white space is not a flex item (row 0.13's tail)" |
-| audit repo | `09ac389` |
+| `main` | `ba8404e1` — "fix(layout): a page's indentation is not its content (rows 3m and 3l)" |
+| audit repo | `97d8517` |
 | suite | 67 tests, **67/67 twice** on every commit |
-| checklist | **93 rows: 79 ticked, 3 open (3l, 3m, 3n), 1 blocked (0.1), 2 out of scope (3i, 5d), 5 historical "(superseded)" rows, and 3 duplicate rows in the `Closed — 2026-11-18` table** |
-| reference render | `en.wikipedia.org/wiki/Web_browser` at **81.2%** pixel agreement with chromium |
-| overflow count | **137** containers whose children reach past their content box |
+| checklist | **96 rows: 81 ticked, 2 open (0.14, 3n), 1 blocked (0.1), 2 out of scope (3i, 5d), 5 historical "(superseded)" rows, and 3 duplicate rows in the `Closed — 2026-11-18` table** |
+| reference render | `en.wikipedia.org/wiki/Web_browser` at **80.4%** pixel agreement with chromium |
+| overflow count | **139** containers whose children reach past their content box |
 
 Read `docs/SESSION-HANDOFF-2026-11-26.md` (10 sections) and `docs/HANDOVER.md` §7g and §7h before starting.
 They carry the reasoning, the numbers and the mistakes.
@@ -105,8 +105,8 @@ Both live in `tools/` and both have a baseline, so every fix can be judged by a 
 
 | tool | what it answers | baseline |
 | --- | --- | --- |
-| `tools/reference-render.sh page.html page.css [out]` | how far is this render from chromium's, and where | **81.2%** agreement, text rows 28-29px against chromium's 27-28 |
-| `tools/article-position.cpp` (via `--overflow`, `--top`, `id=`/`tag=`/`class=`) | which boxes overflow, what a node resolved to, which rules move it, and **both** intrinsic widths | **137** overflows |
+| `tools/reference-render.sh page.html page.css [out]` | how far is this render from chromium's, and where | **80.4%** agreement, text rows 28-29px against chromium's 27-28 |
+| `tools/article-position.cpp` (via `--overflow`, `--top`, `id=`/`tag=`/`class=`) | which boxes overflow, what a node resolved to, which rules move it, and **both** intrinsic widths | **139** overflows |
 
 `--overflow` ignores children wholly outside the viewport (hidden menus are placed there on purpose) and prints
 each offender's own x/y/width **and its parent's**. Read agreement **with** the row positions, never alone.
@@ -119,11 +119,10 @@ its base (a layout bug) or floored above the space it was given (a sizing bug) �
 
 | # | row | what it is | where to start |
 | --- | --- | --- | --- |
-| 1 | **3l** | `div.vector-header-end` takes 602.7px from x=349.3 as its `flex-grow: 1` says, but its `nav` sits at x=386.3 where chromium puts the account links at x=800-990, so "Donate / Create account / Log in" paint mid-header and wrap onto two lines. The row fits now; the alignment inside it is wrong. | `class=vector-header-end` with the probe; then upstream's main-axis alignment, `Rust/src/layout/flex_formatting_context.rs` (`justify-content`, `margin-left: auto`, and whether the search box should be the one that grows) |
-| 2 | **3m** | `max_content_width` still measures white space untransformed — a `"\n"` is 9.61px, `"\n\t\t\t"` is 28.83px — so every container's base size carries its markup's indentation. The **minimum** was fixed on 2026-11-26; this is the other half. | `widest_word`'s counterpart in `max_content_width`; css-text-3 white-space processing. Fixture: a 200px row with one 20px box and a newline should measure the same as the box alone. |
-| 3 | **3n** | A lone flex item is never shrunk to its automatic minimum: `item.base = std::min(available_width, max_content_width(child))` caps it at the line width, so `free_space` is exactly 0 and the floor never runs. | `layout_flex_children`, the base-size loop |
-| 4 | **0.1** | blocked: the coverage corpus needs open internet; 17 of 20 hosts are refused by the egress allowlist. The corpus renders from the URL now, so it would measure something real on a network that admits it | — |
-| 5 | **1g4b**, **3d3**, **5b** | ticked on 2026-11-23 with named tails in their own cells: structured clone, `animation-direction`/`fill-mode`/`play-state`, and the origin check that has nowhere to run until a `fetch` or an iframe exists | the cells say what is left |
+| 1 | **0.14** | The page title bar is painted **black** and placed ~410px below where chromium puts it. It is the worst band of the reference render by a factor of two (y 512-576 at 46.4%, y 576-640 at 22.9%) and it is what makes the whole-page percentage unreadable. | Crop both renders at y 500-700. Two separate questions: why black (row 0.8 fixed unparseable colours painting opaque black, so something here resolves to black rather than transparent) and why 410px low (a block-order question, not a paint one) |
+| 2 | **3n** | A lone flex item is never shrunk to its automatic minimum: `item.base = std::min(available_width, max_content_width(child))` caps it at the line width, so free space is exactly zero and the floor never runs | `layout_flex_children`, the base-size loop |
+| 3 | **0.1** | blocked: the coverage corpus needs open internet; 17 of 20 hosts are refused by the egress allowlist. The corpus renders from the URL now, so it would measure something real on a network that admits it | — |
+| 4 | **1g4b**, **3d3**, **5b** | ticked with named tails in their own cells: structured clone, `animation-direction`/`fill-mode`/`play-state`, and the origin check that has nowhere to run until a `fetch` or an iframe exists | the cells say what is left |
 
 **Twelve rows carry named tails in their own cells** (0.3, 0.5, 1g2, 1g4b, 3d1, 3d2, 3d3, 4.1, 4.2, 5a, 5b, 5c).
 None is a new row; each belongs to the row that owns it.
@@ -154,10 +153,15 @@ item's used main size before placement, `:4299` clamps the hypothetical main siz
    `python3 tools/check-build.py`, then `ninja -C build -j2` until it reports nothing to do.
 3. Re-clone upstream if `/scratch/work/ladybird` is missing; rebuild the probe and the reference page if
    `/scratch/work/ap` and `/scratch/work/reference` are missing.
-4. Take row **3l**: run `class=vector-header-end`, and print the parent's position before walking it — the class
-   appears twice on the page.
+4. Take row **0.14**: crop both renders at y 500-700 first. The black bar hides everything else, so nothing
+   else can be judged until it is explained.
 5. Implement, add assertions **and prove each one fails without the fix**, run the suite twice, update the four
    docs plus one audit entry, commit, push, verify the tip, and report in tables — with the overflow count and the
    agreement percentage before and after.
 
 Work one row per "go". Report and stop at the boundary.
+
+**Two things this session learned the hard way.** A pod recycle can come back with an **empty `/scratch/work`**
+— the repo, the build trees and the upstream clone are gone, and only a delivered patch survives; commit or
+patch before you stop. And a whole-page agreement percentage is dominated by whichever single defect is biggest,
+so it cannot judge a row that does not touch that defect — read the per-band table instead.
