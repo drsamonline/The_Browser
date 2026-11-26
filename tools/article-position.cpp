@@ -79,6 +79,9 @@ int main(int argc, char** argv)
     std::string wanted_tag;
     bool show_top = false;
     bool show_overflow = false;
+    // The top fifteen answers "what is worst"; comparing two builds needs the whole set, because a count that
+    // moves by two cannot be explained by a list of fifteen.
+    bool show_all_offenders = false;
     for (int i = 3; i < argc; ++i) {
         std::string const argument = argv[i];
         if (argument.rfind("id=", 0) == 0)
@@ -91,6 +94,8 @@ int main(int argc, char** argv)
             show_top = true;
         else if (argument == "--overflow")
             show_overflow = true;
+        else if (argument == "--all")
+            show_all_offenders = true;
     }
     auto const html = read_file(argv[1]);
     auto const css = read_file(argv[2]);
@@ -161,7 +166,8 @@ int main(int argc, char** argv)
         std::sort(overflows.begin(), overflows.end(),
             [](Overflow const& a, Overflow const& b) { return a.past > b.past; });
         std::printf("containers whose children reach past their content box: %zu\n", overflows.size());
-        for (std::size_t i = 0; i < std::min<std::size_t>(15, overflows.size()); ++i) {
+        std::size_t const shown = show_all_offenders ? overflows.size() : std::min<std::size_t>(15, overflows.size());
+        for (std::size_t i = 0; i < shown; ++i) {
             auto const& o = overflows[i];
             // The identity, not just the name: a class can appear twice, and a namesake sent one session
             // walking the wrong element.

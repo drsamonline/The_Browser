@@ -567,18 +567,23 @@ static bool lays_out_a_row(LayoutNode const& node)
 // (`grid_formatting_context.rs:2180`). Without it every newline in a page's markup was an item with a width and
 // its own gap: two 50px boxes 10px apart were placed at x=19.6 and x=99.2 where a browser puts them at 0 and 60,
 // and a real page's header carried 115.2px of item width plus 80px of gap that belong to nothing (row 0.13's tail).
+static bool is_collapsible_whitespace(std::string_view text)
+{
+    if (text.empty())
+        return false;
+    for (char const character : text)
+        if (!std::isspace(static_cast<unsigned char>(character)))
+            return false;
+    return true;
+}
+
 static bool is_collapsible_whitespace_run(LayoutNode const& node)
 {
     if (!node.generated_text.empty())
         return false;
     if (!node.dom_node || node.dom_node->type != DomNodeType::Text)
         return false;
-    if (node.dom_node->data.empty())
-        return false;
-    for (char const character : node.dom_node->data)
-        if (!std::isspace(static_cast<unsigned char>(character)))
-            return false;
-    return true;
+    return is_collapsible_whitespace(node.dom_node->data);
 }
 
 float LayoutEngine::min_content_width(LayoutNode const& node)
@@ -655,13 +660,23 @@ float LayoutEngine::max_content_width(LayoutNode const& node)
         return 0;
     }
 
+    // A run of collapsible white space is one space wide, not as wide as the characters that write it:
+    // css-text-3 collapses a sequence of them to a single space, and upstream's inline layout works from
+    // exactly that model, where a collapsed run is one item that is dropped when the line is empty or already
+    // ends in white space (`is_collapsible_whitespace`, `inline_formatting_context.rs:2931`, `:4546`).
+    // Measuring the raw text made a page's own indentation part of its content: a `"\n"` is 9.61px and
+    // `"\n\t\t\t"` is 28.83px, so a header's nav measured 615.42px where 423.23px of it was content - the
+    // row was then over-full, `flex-grow` on the search box never applied, and the account links were pushed
+    // to the left of a header that had room for them (row 3m).
     float widest = 0;
     bool has_text = false;
     if (!node.generated_text.empty()) {
-        widest = std::max(widest, TextLayout::measure_text(node.generated_text, TextLayout::font_size(node.style), node.style));
+        auto const text = is_collapsible_whitespace(node.generated_text) ? std::string_view(" ") : std::string_view(node.generated_text);
+        widest = std::max(widest, TextLayout::measure_text(text, TextLayout::font_size(node.style), node.style));
         has_text = true;
     } else if (node.dom_node && node.dom_node->type == DomNodeType::Text && !node.dom_node->data.empty()) {
-        widest = std::max(widest, TextLayout::measure_text(node.dom_node->data, TextLayout::font_size(node.style), node.style));
+        auto const text = is_collapsible_whitespace(node.dom_node->data) ? std::string_view(" ") : std::string_view(node.dom_node->data);
+        widest = std::max(widest, TextLayout::measure_text(text, TextLayout::font_size(node.style), node.style));
         has_text = true;
     }
     if (has_text)
@@ -673,6 +688,11 @@ float LayoutEngine::max_content_width(LayoutNode const& node)
     bool has_inline = lays_out_a_row(node);
     for (auto const& child : node.children) {
         if (child->display == LayoutDisplay::None)
+            continue;
+        // A run of white space generates no item in a container that lays out a row of items, so it adds
+        // nothing to that container's maximum either - the same rule as the minimum, and as the item
+        // collectors (css-flexbox-1 §4).
+        if (has_inline && is_collapsible_whitespace_run(*child))
             continue;
         float const child_width = max_content_width(*child);
         widest = std::max(widest, child_width);

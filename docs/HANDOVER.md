@@ -554,13 +554,21 @@ because real markup is indented.
   collapsible space, not only at U+0020. `min_content_width` split on `' '` alone, so `"\n\t\t\t"` was one
   unbreakable word and a box that renders nothing had a 28.83px floor that every ancestor inherited.
 
-The instrument that found both: `tools/article-position.cpp` now prints `max=` and `min=` for every node.
-One number cannot say whether an item is bigger than its base or floored above the space it was given, and
-the first is a layout bug while the second is a sizing bug with a different fix.
+- **The maximum width of a text run** is the same rule from the other side. A run of collapsible white space
+  is one space, not as wide as the characters that write it, and inside a container that lays out a row of
+  items it adds nothing at all - the same rule as the minimum, and as the item collectors. Before this,
+  `"\n"` measured 9.61px and `"\n\t\t\t"` 28.83px, so every base size carried its markup's indentation:
+  a header's `nav` measured **615.42px where 423.23px was content**, the row was over-full, `flex-grow` on
+  the search box never applied, and the account links were pushed to the left of a header with room for them.
 
-**Still wrong, as rows 3l, 3m and 3n:** the maximum is not collapsed (a `"\n"` still measures 9.61px, so
-every base size carries its markup's indentation); a lone flex item is never shrunk to its minimum because
-its base is capped at the line width; and `.vector-header-end` does not push its content to the right edge.
+The instrument that found all three: `tools/article-position.cpp` prints `max=` and `min=` for every node,
+and `--all` prints every offender rather than the worst fifteen. One number cannot say whether an item is
+bigger than its base or floored above the space it was given, and the first is a layout bug while the second
+is a sizing bug with a different fix; a count that moves by two cannot be explained by a list of fifteen.
+
+**Still wrong, as rows 3n and 0.14:** a lone flex item is never shrunk to its minimum because its base is
+capped at the line width; and the page title bar is painted black and placed ~410px below where a browser
+puts it, which is the worst band of the reference render by a factor of two.
 
 ---
 

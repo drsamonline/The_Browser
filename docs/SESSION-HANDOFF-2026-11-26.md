@@ -131,10 +131,90 @@ distinguish the bug from its absence is worse than none, because it looks like p
   `cmake` configure and reported nothing; the CMake cache was simply absent. Run the configure step on its
   own (~100 s each) rather than inside `setup.sh` with a full build behind it.
 
-## 10. Next
+## 10. Second batch — row 3l turned out to be row 3m
 
-Row 0.13's tail is closed, so the tier-0 order is empty of open work except **3l**, which is the same
-header: `.vector-header-end` has `flex-grow: 1` and fills 602.7px, but its `nav` child sits at x=386
-instead of at the right edge. The probe question is `class=vector-header-end`, and the thing to read
-upstream first is how `justify-content`/`margin-left: auto` reach a nested row's end
-(`flex_formatting_context.rs`, main-axis alignment).
+Row 3l said `.vector-header-end` does not push its content to the right edge. It does: the element fills 602.7px
+from x=349.3 and its `nav` child reaches x=952, the right edge. What was wrong was one level deeper - the nav's
+`justify-content: flex-end` had **no free space to distribute**, because its own base size was 615.42px of which
+**423.23px was content**: six runs of white space at 28.83, 38.44, 28.83, 28.83, 38.44 and 19.22. So row 3l was
+row 3m, and fixing the maximum is what moved it.
+
+| | before | after | chromium |
+| --- | --- | --- | --- |
+| `nav.vector-user-links` x | 386.3 | **752.2** | links at 800-990 |
+| its max-content | 615.42 | **199.84** | — |
+| header row | 1,432.9px in 901.3px | **932px in 928px** | — |
+| document height | — | **33px shorter** | — |
+
+The rule is the same one the minimum already used, applied to the other number: a white-space run adds nothing
+inside a container that lays out a row of items, and one space anywhere else (css-text-3; upstream
+`inline_formatting_context.rs:2931`, `:4546`). `tools/article-position.cpp` also learned `--all`, because a count
+that moves by two cannot be explained by a list of fifteen.
+
+### The two page-level numbers moved the wrong way, and the table says why
+
+Agreement 81.2% -> 80.4%, overflows 137 -> 139. Per band:
+
+| band | before | after | delta |
+| --- | --- | --- | --- |
+| 0-64 (header) | 88.0 | 88.7 | +0.7 |
+| 128-192 | 94.9 | 97.0 | +2.1 |
+| 192-256 | 98.2 | 92.7 | -5.5 |
+| 512-576 | 85.1 | 46.4 | **-38.7** |
+| 576-640 | 10.6 | 22.9 | +12.3 |
+| 640-704 | 46.2 | 67.2 | +21.0 |
+
+Moving everything up 33px moved a **pre-existing black rectangle** - the page title bar, painted black and placed
+about 410px below where chromium puts it - across a band boundary. That rectangle is the largest visual defect left
+on the page and is now row **0.14**. The two extra overflows are its children.
+
+**The lesson, stated plainly: a whole-page percentage is dominated by whichever single defect is biggest.** Row 3m
+cannot be judged by it. The numbers that judge it are the nav's x, its base size, and the fixture.
+
+## 11. The environment stopped being able to build — read this before continuing
+
+At the end of this batch the pod could no longer compile or link anything:
+
+| symptom | value |
+| --- | --- |
+| `zig` on any file | `error: failed to evaluate zig clang ... failed to spawn: SystemResources` |
+| zombies | **10,087** processes in state `Z`, all children of PID 1 (`python3`) |
+| `ulimit -u` | 4096 soft, **4096 hard** — cannot be raised |
+| `ninja` | 21 of 68 binaries could not be relinked; every link dies in `zig`'s LLD self-spawn |
+| `git status` | fails on threaded lstat (the usual trap; `-c index.threads=1` still works) |
+
+PID 1 does not reap, so the zombies only accumulate and a `kill -CHLD 1` changed nothing. **A pod recycle is the
+only fix.** What that means for the work:
+
+- `main` is **clean and green** at `c3c58c8a`. Nothing unverified was committed.
+- The working tree holds row 3m: `src/rendering/layout.cpp`, `tools/article-position.cpp`,
+  `Tests/AetherisRendering/TestAdvancedLayout.cpp` and this file's checklist rows, uncommitted.
+- **Verified:** nine layout/CSS tests pass against the rebuilt library; the fixture measures 20.0px; the new
+  assertions compile.
+- **Not verified:** the suite has not run once, and the new assertions have never executed. Row 3m is `[~]`.
+
+**Finished, 2026-11-26, after a pod recycle.** The new pod came back with an empty `/scratch/work` — the
+project's assumption that it survives a recycle is wrong, and the only reason the work survived is that it had
+been written to a patch and delivered. Recovered from it: repo re-cloned at `c3c58c8a`, patch applied cleanly,
+toolchain reinstalled, 299 steps rebuilt in six chunks, `check-build` clean.
+
+| check | result |
+| --- | --- |
+| `AetherisAdvancedLayout` with the change | **pass** |
+| the same test with the `max_content_width` hunk reverted | **fails**: "and the newlines around it add nothing, because they generate no item" |
+| `ctest --test-dir build -j 2` | **67/67 twice** (162.89 s, 151.90 s) |
+| overflows, re-measured on the new pod | **139**, the same as recorded |
+| agreement, re-measured | **80.4%**, and the same ten text rows |
+
+So every number in §10 was reproduced first-hand on a different pod before it was committed. Row 3m is `[x]`.
+
+**A note for the next recycle: `/scratch/work` did not survive this one.** Re-cloning, reinstalling the
+toolchain and rebuilding cost about 45 minutes. Anything uncommitted must be delivered as a patch.
+
+## 12. Next
+
+1. **Finish row 3m** (§11): build, run `AetherisAdvancedLayout` both ways, suite twice, tick, commit.
+2. **Row 0.14** — the black title bar, 410px too low. It is the worst band on the page by a factor of two and it
+   currently hides whatever else moved. Crop both renders at y 500-700 first; the paint question ("why black") and
+   the placement question ("why here") are separate and only one of them is row 0.8's.
+3. **Row 3n** — a lone flex item is never shrunk to its minimum, because its base is capped at the line width.

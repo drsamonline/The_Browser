@@ -262,5 +262,29 @@ int main()
             "white space contributes nothing to the floor: the nested row is 20px, not 20 plus a newline");
     }
 
+    // Row 3m: a run of white space is one space wide, not as wide as the characters that write it, and in a
+    // container that lays out a row of items it generates no item at all - so it adds nothing to that
+    // container's maximum either. Measuring the raw text made a page's own indentation part of its content: a
+    // nav measured 615.42px where 423.23px of it was content, so the row was over-full, `flex-grow` on the
+    // search box never applied and the account links were pushed left (css-text-3 white-space processing;
+    // upstream keeps a collapsed run as a single item and drops it at the start of a line,
+    // `inline_formatting_context.rs:2931`).
+    {
+        // A flex item with no width takes its own maximum, so this measures the maximum directly.
+        auto const max_of = [](std::string const& inner) {
+            auto rendered = RenderDocument::create(
+                "<div style='display: flex; width: 400px'><div style='display: flex'>" + inner + "</div></div>",
+                "", 500);
+            return rendered.layout_root().children[0]->children[0]->rect.width;
+        };
+        require(max_of("<span style='width: 20px; height: 10px'></span>") == 20.0f,
+            "a row of one 20px box and no white space is 20px");
+        // Before this row the two newlines measured 9.61px each - their untransformed text - and the item
+        // took 39.22px. The probe prints that number per node, which is how the page's nav was found to be
+        // 615.42px wide when 423.23px of it was content.
+        require(max_of("\n<span style='width: 20px; height: 10px'></span>\n") == 20.0f,
+            "and the newlines around it add nothing, because they generate no item");
+    }
+
     return 0;
 }
