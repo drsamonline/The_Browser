@@ -144,6 +144,10 @@ public:
     // layout probe can compare it with what the box actually gets, which is how a zero-width flex item is
     // traced back to the node it started at (row 0.13).
     static float intrinsic_width(LayoutNode const& node) { return max_content_width(node); }
+    // "How narrow may this box be?" - the automatic minimum size a flex item's shrink is floored at. Exposed
+    // for the same reason as `intrinsic_width`: an item that overflows is either larger than its base size or
+    // floored above the space it was given, and only the pair of numbers can say which.
+    static float intrinsic_min_width(LayoutNode const& node) { return min_content_width(node); }
 
 private:
     bool reuse_subtree(LayoutNode& node, float x, float y, float available_width) const;

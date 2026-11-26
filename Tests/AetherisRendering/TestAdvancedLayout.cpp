@@ -223,5 +223,44 @@ int main()
             "and the second follows it across the gap");
     }
 
+    // Row 0.13's tail: a run of white space between two items generates no flex item. css-flexbox-1 §4: a
+    // contiguous sequence of child text runs becomes an anonymous item *unless the whole run is white space,
+    // in which case it is not rendered at all*. Upstream's `can_skip_is_anonymous_text_run`
+    // (`Rust/src/layout/layout_pass.rs:455`) is what `flex_formatting_context.rs:1217` uses when it generates
+    // items. Without it every newline in a page's markup became an item with a width of its own and a gap on
+    // each side: these two 50px boxes 10px apart were placed at x=19.6 and x=99.2 where a browser puts them at
+    // 0 and 60, and a real page's header carried 195.2px of width and gap that belong to nothing.
+    {
+        auto rendered = RenderDocument::create(
+            "<div id='row' style='display: flex; width: 200px; gap: 10px'>\n"
+            "<div id='a' style='width: 50px; height: 20px'></div>\n"
+            "<div id='b' style='width: 50px; height: 20px'></div>\n"
+            "</div>",
+            "", 400);
+        auto const& row = *rendered.layout_root().children[0];
+        require(row.children.size() == 5, "the text runs are still in the tree");
+        require(row.children[1]->rect.x == 0.0f, "the first item starts at the row's left edge");
+        require(row.children[3]->rect.x == 60.0f,
+            "and the second follows it across the gap, with no item made of the white space between them");
+    }
+
+    // Row 0.13's tail: a break opportunity exists at every collapsible space, not only at U+0020. Splitting on
+    // ' ' alone made a run of newlines and tabs one unbreakable word, so it contributed 9.61px to the automatic
+    // minimum size of everything above it - a floor a shrink cannot go below, on a box that renders nothing.
+    // A first version of this test measured "ab\tcd" against "ab" and passed on the unfixed engine, because the
+    // tab is not measured either way: it could not tell the bug from its absence, so it was replaced by this.
+    {
+        // Two items, so the line is narrower than its contents and the shrink - and its floor - actually run.
+        auto rendered = RenderDocument::create(
+            "<div style='display: flex; width: 30px'>"
+            "<div style='display: flex'>\n<span style='width: 20px; height: 10px'></span>\n</div>"
+            "<span style='width: 20px; height: 10px'></span>"
+            "</div>",
+            "", 400);
+        auto const& inner = *rendered.layout_root().children[0]->children[0];
+        require(inner.rect.width == 20.0f,
+            "white space contributes nothing to the floor: the nested row is 20px, not 20 plus a newline");
+    }
+
     return 0;
 }

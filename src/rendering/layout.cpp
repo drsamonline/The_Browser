@@ -560,6 +560,27 @@ static bool lays_out_a_row(LayoutNode const& node)
     return !direction || (*direction != "column" && *direction != "column-reverse");
 }
 
+// css-flexbox-1 §4: every in-flow child of a flex container becomes a flex item, and each contiguous sequence
+// of child text runs becomes an anonymous item - **unless the whole run is white space, in which case it is not
+// rendered at all**. Upstream's predicate is `can_skip_is_anonymous_text_run` (`Rust/src/layout/layout_pass.rs:455`),
+// applied where flex items are generated (`flex_formatting_context.rs:1217`) and again for grid
+// (`grid_formatting_context.rs:2180`). Without it every newline in a page's markup was an item with a width and
+// its own gap: two 50px boxes 10px apart were placed at x=19.6 and x=99.2 where a browser puts them at 0 and 60,
+// and a real page's header carried 115.2px of item width plus 80px of gap that belong to nothing (row 0.13's tail).
+static bool is_collapsible_whitespace_run(LayoutNode const& node)
+{
+    if (!node.generated_text.empty())
+        return false;
+    if (!node.dom_node || node.dom_node->type != DomNodeType::Text)
+        return false;
+    if (node.dom_node->data.empty())
+        return false;
+    for (char const character : node.dom_node->data)
+        if (!std::isspace(static_cast<unsigned char>(character)))
+            return false;
+    return true;
+}
+
 float LayoutEngine::min_content_width(LayoutNode const& node)
 {
     if (auto const* width = node.style.get("width"); width && !width->empty() && *width != "auto") {
@@ -572,15 +593,21 @@ float LayoutEngine::min_content_width(LayoutNode const& node)
     if (node.dom_node && node.dom_node->type == DomNodeType::Element && node.dom_node->name == "img")
         return max_content_width(node);
 
+    // A break opportunity exists at every collapsible space, not only at U+0020. Splitting on ' ' alone made
+    // a run of newlines and tabs a single unbreakable "word": a four-character whitespace run between two
+    // flex items measured 9.61px of minimum width, and a real page's header was floored at a width it could
+    // never shrink below (row 0.13's tail). Whitespace-only text now has a min-content width of zero, which
+    // is what "no word in it" means.
     auto const widest_word = [](std::string_view text, float font_size, StyleProperties const& style) {
         float widest = 0;
         std::size_t begin = 0;
         while (begin < text.size()) {
-            auto const end = text.find(' ', begin);
-            auto const word = text.substr(begin, end == std::string_view::npos ? std::string_view::npos : end - begin);
-            if (!word.empty())
-                widest = std::max(widest, TextLayout::measure_text(word, font_size, style));
-            if (end == std::string_view::npos)
+            std::size_t end = begin;
+            while (end < text.size() && !std::isspace(static_cast<unsigned char>(text[end])))
+                ++end;
+            if (end > begin)
+                widest = std::max(widest, TextLayout::measure_text(text.substr(begin, end - begin), font_size, style));
+            if (end == text.size())
                 break;
             begin = end + 1;
         }
@@ -659,7 +686,7 @@ void LayoutEngine::layout_flex_children(LayoutNode& node, float available_width,
 {
     std::vector<LayoutNode*> items;
     for (auto& child : node.children) {
-        if (child->display != LayoutDisplay::None && !is_positioned(*child))
+        if (child->display != LayoutDisplay::None && !is_positioned(*child) && !is_collapsible_whitespace_run(*child))
             items.push_back(child.get());
     }
     if (items.empty())
@@ -780,7 +807,8 @@ void LayoutEngine::layout_grid_children(LayoutNode& node, float available_width,
 {
     std::vector<LayoutNode*> items;
     for (auto& child : node.children)
-        if (child->display != LayoutDisplay::None && !is_positioned(*child)) items.push_back(child.get());
+        if (child->display != LayoutDisplay::None && !is_positioned(*child) && !is_collapsible_whitespace_run(*child))
+            items.push_back(child.get());
     if (items.empty()) return;
 
     auto parse_tracks = [&](std::string const* value) {

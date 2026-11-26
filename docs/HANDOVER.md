@@ -186,6 +186,10 @@ All credited in `CREDITS.md`.
 - Networking: keep-alive, cookies, TLS with **bundled CA file**, CSP for inline
   scripts, `SecureResourceLoader` on every fetch
 - UI: 34 px chrome strip, tab session, input router, SDL2 window
+- Layout: flex and grid, with a flex item's base size from its content (`max_content_width`), a shrink
+  floored at its automatic minimum size (`min_content_width`), a row's intrinsic width as the sum of its
+  items, and **a run of collapsible white space generating no flex or grid item** (css-flexbox-1 §4,
+  2026-11-26)
 - Scrolling: wheel, PageUp/PageDown/Space/Home/End, proportional scrollbar,
   clamped viewport, `--render-window --scroll-y` for headless checks
 - Releases: Linux tarball + Windows zip with all runtime DLLs
@@ -532,6 +536,31 @@ twice per declaration and comparing `fingerprint()`.
 
 `tools/setup.sh` rebuilds the toolchain and both build directories after a pod recycle; `--check` reports
 what is missing without changing anything.
+
+---
+
+## 7h. White space is not an item and has no width
+
+Two rules, both from the spec, both of which were missing and both of which show up on every real page
+because real markup is indented.
+
+- **css-flexbox-1 §4**: a contiguous sequence of child text runs becomes an anonymous flex item *unless the
+  whole run is white space, in which case it is not rendered at all*. Upstream's predicate is
+  `can_skip_is_anonymous_text_run` (`Rust/src/layout/layout_pass.rs:455`), applied at
+  `flex_formatting_context.rs:1217` and `grid_formatting_context.rs:2180`. Here it is
+  `is_collapsible_whitespace_run()` in `layout.cpp`, used by both item collectors. Before it, a newline
+  between two boxes was an item with a width **and** a gap on each side.
+- **The minimum width of a text run** is its widest word, and a break opportunity exists at **every**
+  collapsible space, not only at U+0020. `min_content_width` split on `' '` alone, so `"\n\t\t\t"` was one
+  unbreakable word and a box that renders nothing had a 28.83px floor that every ancestor inherited.
+
+The instrument that found both: `tools/article-position.cpp` now prints `max=` and `min=` for every node.
+One number cannot say whether an item is bigger than its base or floored above the space it was given, and
+the first is a layout bug while the second is a sizing bug with a different fix.
+
+**Still wrong, as rows 3l, 3m and 3n:** the maximum is not collapsed (a `"\n"` still measures 9.61px, so
+every base size carries its markup's indentation); a lone flex item is never shrunk to its minimum because
+its base is capped at the line width; and `.vector-header-end` does not push its content to the right edge.
 
 ---
 

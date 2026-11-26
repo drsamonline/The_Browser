@@ -45,7 +45,7 @@ are at the bottom.
 | History and bookmarks UI | done, 2026-11-23 — per-entry titles, a bookmark list with toggle, and panels built as ordinary link documents (Ctrl+H / Ctrl+B / Ctrl+D). No persistence, no editing, no search | `library_page.cpp`, `browser_session.cpp`, `input_router.cpp`, `AetherisBrowserSession` |
 | Realm isolation | done, 2026-11-23 — a navigation replaces the JS context and rebuilds the host objects; the previous document's globals, listeners and timers are unreachable, storage survives | `js.cpp`, `main.cpp`, `AetherisJs` |
 | Real-page coverage | **first measured**, 2026-11-23 — `example.com` renders; wikipedia's 417 KB does not finish in 280 s. Layout costs ~0.8 ms per element on synthetic pages and far more on real markup. See `docs/COVERAGE-CORPUS.md` and rows 3j, 0.3 | `tools/run-corpus.sh` |
-| Flexbox: `flex` shorthand, basis, grow, shrink, `justify-content`, `align-items` | done, 2026-11-23 — `auto` basis has no intrinsic-width pass, so an item with neither basis nor width starts at 0 and grows | `layout.cpp`, `style.cpp`, `AetherisLayout` |
+| Flexbox: `flex` shorthand, basis, grow, shrink, `justify-content`, `align-items` | done, 2026-11-26 — an `auto` basis takes the item's own content width, a shrink is floored at the item's automatic minimum size, a row's intrinsic width is the sum of its items, and a run of collapsible white space generates **no item**. Not done: the max-content width of white space is not collapsed (row 3m), a lone item is never shrunk to its minimum (3n), and `flex-wrap`/`align-content`/`order` are unread | `layout.cpp`, `style.cpp`, `AetherisAdvancedLayout` |
 | Grid: tracks, areas, explicit placement | done, 2026-11-23 — `grid-template-columns`/`rows` tracks, `grid-template-areas` + `grid-area`, `grid-column`/`grid-row` with `start / end`, and auto-placement into the first free cell. Not read: named lines, `span n`, `auto-fit`/`minmax`, `grid-auto-flow: column` | `layout.cpp`, `AetherisLayout` |
 | `transform` (translate/scale) | done | paint pass |
 | `position: sticky` | done, 2026-11-23 — shifted at paint time, clamped to the containing block; `top` and `bottom` both read, `top` wins when they conflict | `render_tree.cpp`, `paint_executor.cpp` |
@@ -57,7 +57,7 @@ are at the bottom.
 | --- | --- | --- |
 | Block flow | done | `layout.cpp` |
 | Inline flow, line breaking, `white-space` | done — breaks at whitespace and at the cluster offsets the shaper allows; overflows when there is no opportunity, as a browser does (measured 2026-11-23) | `text_layout.cpp`, `AetherisTextLayout` |
-| Flex | partial — no `flex-grow` at load, no `flex-shrink`/`basis` | `layout_flex_children()` |
+| Flex | done for a single line, 2026-11-26 — basis, grow, shrink, the automatic-minimum floor, gaps, `justify-content`, `align-items`, and white-space runs excluded from the items. Not done: `flex-wrap` (one line only), `align-content`, `order`, `align-self` | `layout_flex_children()` |
 | Grid | partial — `grid-template-columns` read | `layout_grid_children()` |
 | Absolute positioning | done | `layout_absolute_children()` |
 | `position: sticky` | **absent** | no `sticky` in `src/rendering` |

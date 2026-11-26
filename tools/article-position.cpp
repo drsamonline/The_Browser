@@ -256,13 +256,17 @@ int main(int argc, char** argv)
                 std::printf("  (no rule sets spacing on it)\n");
 
             // What the flex sizing sees, level by level: the number that decides whether an item gets a width.
-            std::printf("\nintrinsic widths (what the flex base size would be):\n");
+            // Both intrinsic widths, because they answer two different questions and only one of them was
+            // visible: the max is the flex base size, the min is the floor a shrink cannot go below. An item
+            // that overflows is either bigger than its base or floored above the space it was given, and a
+            // probe that prints one number cannot say which (row 0.13's tail).
+            std::printf("\nintrinsic widths (max = flex base size, min = the shrink floor):\n");
             std::function<void(LayoutNode const&, int)> widths = [&](LayoutNode const& node, int level) {
                 if (level > 4)
                     return;
-                std::printf("  %*s%-8s intrinsic=%7.2f  rect.w=%7.2f  %s\n", level * 2, "",
+                std::printf("  %*s%-8s max=%7.2f  min=%7.2f  rect.w=%7.2f  %s\n", level * 2, "",
                     node.dom_node && !node.dom_node->name.empty() ? node.dom_node->name.c_str() : "(anonymous)",
-                    LayoutEngine::intrinsic_width(node), node.rect.width,
+                    LayoutEngine::intrinsic_width(node), LayoutEngine::intrinsic_min_width(node), node.rect.width,
                     node.dom_node && node.dom_node->type == DomNodeType::Text ? "text" : "");
                 for (auto const& child : node.children)
                     widths(*child, level + 1);
