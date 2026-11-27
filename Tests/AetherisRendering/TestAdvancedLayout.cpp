@@ -389,5 +389,46 @@ int main()
             "a space at the end of a line does not push the next block right");
     }
 
+    // Row 0.20: css2 §9.5 - a float leaves the normal flow, is placed against the left or right edge of its
+    // containing block, is sized to its own content, and the content after it flows beside it. Not reading
+    // `float` at all made a right-floated figure 953.6px wide on a 976px column.
+    {
+        auto rendered = RenderDocument::create(
+            "<div id='d' style='width: 200px; font-size: 14px'>"
+            "<div id='f' style='float: right; width: 60px; height: 40px'></div>"
+            "<div id='b' style='height: 10px'></div></div>", "", 400);
+        auto const& block = *rendered.layout_root().children[0];
+        auto const& floated = *block.children[0];
+        auto const& after = *block.children[1];
+        float const right_edge = floated.rect.x + floated.rect.width;
+        require(right_edge > 195.0f && right_edge < 205.0f,
+            "a right float sits against the container's right edge");
+        require(floated.rect.width < 100.0f,
+            "a float is sized to its own content, not to the column");
+        require(after.rect.y < floated.rect.y + floated.rect.height - 1.0f,
+            "the block after a float starts beside it, not below it");
+        // A right float shortens the line from its own side rather than moving it, so the block keeps the
+        // left edge and loses the width - the mirror of the left-float case below.
+        require(after.rect.width < 150.0f,
+            "and it is shortened by the width the float occupies");
+        require(after.rect.x + after.rect.width <= floated.rect.x + 0.5f,
+            "so it stops before the float rather than running under it");
+    }
+
+    // The mirror: a left float takes the left edge, and the content beside it starts to its right.
+    {
+        auto rendered = RenderDocument::create(
+            "<div id='d' style='width: 200px; font-size: 14px'>"
+            "<div id='f' style='float: left; width: 60px; height: 40px'></div>"
+            "<div id='b' style='height: 10px'></div></div>", "", 400);
+        auto const& block = *rendered.layout_root().children[0];
+        auto const& floated = *block.children[0];
+        auto const& after = *block.children[1];
+        require(floated.rect.x < block.box.content.x + 1.0f,
+            "a left float sits against the container's left edge");
+        require(after.rect.x > floated.rect.x + floated.rect.width - 1.0f,
+            "the content beside a left float starts to its right");
+    }
+
     return 0;
 }
