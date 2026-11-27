@@ -442,13 +442,6 @@ void LayoutEngine::layout_node(LayoutNode& node, float x, float y, float availab
 // following content flows beside it until the float ends. Upstream keeps a list of floats per formatting
 // context (`Rust/src/layout/float_context.rs`) and asks it for the intrusion at a given block position.
 // Not reading `float` at all made a right-floated figure 953.6px wide on a 976px column (row 0.20).
-struct FloatBox {
-    float top { 0 };
-    float bottom { 0 };
-    float left { 0 };
-    float right { 0 };
-};
-
 // How far the floats overlapping `[y, y + height)` push a line in from each side.
 static void float_intrusion(std::vector<FloatBox> const& floats, float content_left, float content_right,
     float y, float height, float& left_inset, float& right_inset)
@@ -481,8 +474,9 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
     bool line_is_open = false;
     // The floats this block has placed, as margin boxes in page coordinates, so every following line can ask
     // how far it has to be pushed in from the side.
-    std::vector<FloatBox> floats;
+    std::vector<FloatBox> floats = m_float_bands;
     float const content_right = x + available_width;
+    std::size_t const inherited_bands = m_float_bands.size();
 
     for (std::size_t child_index = 0; child_index < node.children.size(); ++child_index) {
         auto& child = node.children[child_index];
@@ -503,12 +497,14 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
                     if (target < x - 0.01f || target > x + 0.01f)
                         layout_node(*child, target, cursor_y, natural);
                 }
-                floats.push_back(FloatBox {
+                FloatBox const band {
                     .top = child->rect.y - child->box.margin.top,
                     .bottom = child->rect.y + child->rect.height + child->box.margin.bottom,
                     .left = child->rect.x - child->box.margin.left,
                     .right = child->rect.x + child->rect.width + child->box.margin.right,
-                });
+                };
+                floats.push_back(band);
+                m_float_bands.push_back(band);
                 continue;
             }
         }
@@ -568,13 +564,16 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
             float_intrusion(floats, x, content_right, cursor_y, line_height, run_left, run_right);
             if (cursor_x < x + run_left)
                 cursor_x = x + run_left;
-            float const run_limit = content_right - run_right;
+            float const run_limit = content_right;
             child->box.content.x = cursor_x;
             child->box.content.y = cursor_y;
             child->box.content.width = std::max(0.0f, run_limit - cursor_x);
+            // Lines after the first start at this block's left edge, and every line is measured against the room
+            // the floats leave at its own y (row 0.21).
             child->text_fragments = TextLayout::layout(
                 child_is_generated_text ? child->generated_text : child->dom_node->data,
-                cursor_x, cursor_y, std::max(0.0f, run_limit - cursor_x), child->style);
+                cursor_x, cursor_y, std::max(0.0f, run_limit - cursor_x), child->style, x,
+                floats.empty() ? nullptr : floats.data(), floats.size());
             if (!child->text_fragments.empty()) {
                 line_is_open = true;
                 for (auto const& fragment : child->text_fragments) {
@@ -620,10 +619,9 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
         if (!child_is_inline_level) {
             if (cursor_x > x)
                 cursor_y = std::max(cursor_y, max_bottom);
-            float block_left = 0;
-            float block_right = 0;
-            float_intrusion(floats, x, content_right, cursor_y, line_height, block_left, block_right);
-            layout_node(*child, x + block_left, cursor_y, available_width - block_left - block_right);
+            // css2 §9.5: a block's border box overlaps a float; only its line boxes are shortened. The block keeps
+            // the full width and its own inline layout asks the inherited bands for each line (row 0.21).
+            layout_node(*child, x, cursor_y, available_width);
             cursor_x = x;
             max_bottom = child->rect.y + child->rect.height;
             cursor_y = max_bottom;
@@ -682,6 +680,7 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
     // Add the open line's height, or - when the last thing placed was a block - stop at its bottom. Adding
     // a line unconditionally is what doubled the height of any block inside an inline formatting context.
     cursor_y = line_is_open ? std::max(max_bottom, cursor_y + line_height) : std::max(max_bottom, cursor_y);
+    m_float_bands.resize(inherited_bands);
 }
 
 // The widest a node's content can be, used as the flex base size when an item names neither a basis nor a

@@ -84,7 +84,8 @@ float TextLayout::measure_text(std::string_view text,float,StyleProperties const
     // pen advances by and the width layout measures are one number rather than two that have to be kept
     // in step. Iterating bytes here made every non-ASCII character two to four glyphs wide.
     return std::max(0.0f,width); }
-std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, float y, float available_width, StyleProperties const& style)
+std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, float y, float available_width,
+    StyleProperties const& style, float continuation_x, FloatBox const* bands, std::size_t band_count)
 {
     std::vector<TextFragment> out;
     auto const ws = style.get("white-space");
@@ -96,6 +97,29 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
         return out;
     auto const size = font_size(style);
     auto const h = line_height(style);
+    // The line box: its left edge is where continuation lines begin, its right edge is the run's own right edge.
+    // A line that overlaps a float starts to the right of a left float and stops short of a right one.
+    float const content_left = continuation_x < 0.0f ? x : continuation_x;
+    float const content_right = x + available_width;
+    auto line_geometry = [&](std::size_t index, float& line_x, float& room) {
+        float const base_x = index == 0 ? x : content_left;
+        float left_inset = 0;
+        float right_inset = 0;
+        if (bands) {
+            float const line_y = y + static_cast<float>(index) * h;
+            for (std::size_t b = 0; b < band_count; ++b) {
+                FloatBox const& box = bands[b];
+                if (box.bottom <= line_y + 0.01f || box.top >= line_y + h - 0.01f)
+                    continue;
+                if (box.left <= content_left + 0.5f)
+                    left_inset = std::max(left_inset, box.right - content_left);
+                else if (box.right >= content_right - 0.5f)
+                    right_inset = std::max(right_inset, content_right - box.left);
+            }
+        }
+        line_x = std::max(base_x, content_left + left_inset);
+        room = std::max(0.0f, content_right - right_inset - line_x);
+    };
 
     // Explicit breaks first, then tokens: a run of non-space characters is one token, and a space is
     // its own token only in `pre`, where it is part of the text rather than a separator.
@@ -135,7 +159,10 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
         for (auto const& word : raw) {
             float ww = measure_text(word, size, style);
             float sp = line.empty() ? 0 : measure_text(" ", size, style);
-            if (!nowrap && !prewrap && !line.empty() && w + sp + ww > available_width) {
+            float line_x_unused = 0;
+            float room = 0;
+            line_geometry(wrapped.size(), line_x_unused, room);
+            if (!nowrap && !prewrap && !line.empty() && w + sp + ww > room) {
                 wrapped.push_back(line);
                 line.clear();
                 w = 0;
@@ -143,8 +170,8 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
             }
             // A word that does not fit a line of its own. Browsers leave it overflowing; the properties
             // above ask for it to be broken instead, at offsets the shaper says are safe.
-            if (!nowrap && !prewrap && line.empty() && ww > available_width && allows_breaking_inside_words(style)) {
-                auto const pieces = break_word(word, available_width, size, style);
+            if (!nowrap && !prewrap && line.empty() && ww > room && allows_breaking_inside_words(style)) {
+                auto const pieces = break_word(word, room, size, style);
                 if (pieces.size() > 1) {
                     for (std::size_t index = 0; index + 1 < pieces.size(); ++index)
                         wrapped.push_back({ pieces[index] });
@@ -184,7 +211,11 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
     else if (centred)
         align_to_right = false;
     float cy = y;
+    std::size_t line_index = 0;
     for (auto const& line : wrapped) {
+        float line_x = x;
+        float line_room = available_width;
+        line_geometry(line_index++, line_x, line_room);
         std::vector<float> widths;
         widths.reserve(line.size());
         float width = 0;
@@ -193,11 +224,11 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
             widths.push_back(w);
             width += w;
         }
-        float cx = x;
+        float cx = line_x;
         if (centred)
-            cx = x + std::max(0.f, (available_width - width) / 2);
+            cx = line_x + std::max(0.f, (line_room - width) / 2);
         else if (align_to_right)
-            cx = x + std::max(0.f, available_width - width);
+            cx = line_x + std::max(0.f, line_room - width);
 
         std::vector<std::string_view> items;
         items.reserve(line.size());

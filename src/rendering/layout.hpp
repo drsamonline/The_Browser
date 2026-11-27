@@ -126,6 +126,16 @@ struct LayoutReuse {
     std::size_t* laid_out { nullptr };
 };
 
+// css2 §9.5: a float is taken out of the normal flow and placed against the left or right edge of its
+// containing block. A block's *border box* still overlaps it; only its **line boxes** are shortened, which is
+// why the bands are inherited by descendants and asked for per line rather than used to narrow a block.
+struct FloatBox {
+    float top { 0 };
+    float bottom { 0 };
+    float left { 0 };
+    float right { 0 };
+};
+
 class LayoutEngine {
 public:
     explicit LayoutEngine(LayoutReuse const* reuse = nullptr)
@@ -173,6 +183,10 @@ private:
     static bool is_positioned(LayoutNode const& node);
 
     LayoutReuse const* m_reuse { nullptr };
+    // The floats in scope for whatever is being laid out right now, in page coordinates. A container pushes its
+    // own floats here for the duration of its children and truncates back on the way out, so a nested block's
+    // line boxes can be shortened without the block's border box being narrowed (css2 §9.5, row 0.21).
+    mutable std::vector<FloatBox> m_float_bands;
 };
 
 } // namespace aetheris::rendering
