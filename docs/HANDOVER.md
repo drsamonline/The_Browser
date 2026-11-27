@@ -164,7 +164,8 @@ All credited in `CREDITS.md`.
 ### Works
 
 - HTML5 parsing (gumbo) → DOM, with scripts, styles and implied tags
-- CSS: cascade, specificity, media queries, structural pseudo-classes,
+- CSS: cascade, specificity, media queries **including `calc()` over px lengths in a feature (2026-11-27)**,
+  structural pseudo-classes,
   `transform` (translate/scale), user-agent stylesheet, length units
   (px/em/rem/%/pt), **shorthand properties** (`margin`, `padding`), `margin: auto`
 - Selectors: compound, descendant, child, **sibling `+` and `~`**; attributes including
@@ -189,8 +190,9 @@ All credited in `CREDITS.md`.
 - Layout: flex and grid, with a flex item's base size from its content (`max_content_width`), a shrink
   floored at its automatic minimum size (`min_content_width`), a row's intrinsic width as the sum of its
   items, **a run of collapsible white space generating no flex or grid item** (css-flexbox-1 §4,
-  2026-11-26), and **an inline non-replaced box's vertical padding not raising the line** (css2 §8.1,
-  §10.6.1, 2026-11-27)
+  2026-11-26), **an inline non-replaced box's vertical padding not raising the line** (css2 §8.1,
+  §10.6.1, 2026-11-27), and **the space at a text run's edge kept between two inline items and dropped at the
+  end of a line** (css-text-3 §4.1.1, 2026-11-27)
 - Scrolling: wheel, PageUp/PageDown/Space/Home/End, proportional scrollbar,
   clamped viewport, `--render-window --scroll-y` for headless checks
 - Releases: Linux tarball + Windows zip with all runtime DLLs
@@ -649,6 +651,56 @@ positions first, every time.
 **A note on what a percentage can and cannot say.** Four rows now have moved agreement the wrong way while the
 layout got better (0.11, 0.15, 3m, and this one). The percentage is dominated by whichever single defect is
 biggest. Print the per-band table and the row positions *alongside* it, and never read the number alone.
+
+---
+
+## 7m. A media query can be silently false, and `calc()` is how
+
+- **css-values-4 §10**: a `calc()` in a media feature is a math function over lengths, and it is **absolutized before
+  the comparison**. Upstream does exactly that — `with_tree_counting_resolved` → `css::calc::absolutize_calculation_value`
+  against the query's own length context (`Rust/src/css/parser/query_parser.rs:2111-2131`).
+- The engine read the digits before the first `"px"`: `value.substr(0, value.find("px"))`. `max-width: calc(1120px - 1px)`
+  became `"calc(1120"`, `strtof` failed, and the query returned false. **A whole rule never applied and nothing said so.**
+  The close paren was also `rfind(')')`, the *last* one, which on a `calc()` value is the wrong one.
+- `LengthExpression` is a recursive-descent evaluator: `expr := term (('+'|'-') term)*`,
+  `term := factor (('*'|'/') factor)*`, `factor := number unit? | '(' expr ')' | '-' factor`. Units: `px`, bare number,
+  `em`/`rem` at the initial 16px (a media query has no element to inherit from, css-values-4 §5.1.1), `pt`, `pc`, `in`,
+  `cm`, `mm`, `q`. `min()`/`max()`/`clamp()` are **rejected**, not guessed — an unreadable feature must not be mistaken
+  for zero, because `max-width: 0` would match everything.
+- **The parser strips all whitespace before `media_matches` sees the text**, so `calc(1120px - 1px)` arrives as
+  `calc(1120px-1px)`. That is why `factor()` accepts a sign only at the start of a term and never between a unit and the
+  next operator.
+- **Scope, measured**: 76 `@media` blocks in the page's CSS, 17 distinct preludes, **13 blocks change state, 29 rules**,
+  and all 13 are `calc()` preludes. 63 of 76 evaluate identically — that is what makes the fix narrow. One of them,
+  `min-width: calc(640px - 1px)` = 639, matches at 1024, so this was never only a table-of-contents cap: a block of
+  "desktop-and-up" rules had never applied either.
+
+**A media query is the one failure mode that leaves no trace.** A node that reports `display: block` where the CSS says
+`grid` is a selector or media-query failure, not a layout failure. Check that the rule applied before writing a row
+about what the layout did with it.
+
+---
+
+## 7n. The space at the edge of a text run
+
+- **css-text-3 §4.1.1**: a collapsible space is kept when it sits **between two inline items on a line**, and removed
+  when it is at the **end of a line**.
+- `TextLayout::layout` only ever emits a space **between two words of its own run** — `text_layout.cpp:116` discards it,
+  `:137` puts it back. So a run that starts or ends in a space loses it, and `layout_inline_children` placed the next
+  inline box at `cursor_x = rect.x + rect.width`, flush against the last word: `"often abbreviated as"` + `<a>browser</a>`
+  read **"asbrowser"**.
+- It is **symmetric**. The article body has **424** boundaries of whitespace before an inline start tag and **316**
+  after an inline close tag — 740 in total. A trailing-only fix leaves 316 of them wrong.
+- The text branch now advances `cursor_x` for a leading space when `cursor_x > x`, and for a trailing space when the
+  next in-flow non-positioned sibling is inline-level and `cursor_x > x`. `cursor_x > x` is the same "something is
+  already on this line" test the wrap decision already used; the sibling test is what keeps the end-of-line case right.
+- **Each half was proved to fail on its own** — with the whole fix reverted the trailing assertion goes red, and with
+  only the leading advance disabled the leading assertion goes red. A test that cannot fail is not proof, and a test
+  behind another failing assertion has not been shown to fail at all.
+
+**The one thing to watch:** the trailing advance grows the text node's `rect.width` by one space, which feeds an inline
+ancestor's shrink-to-fit. If a render moves in a way the fix does not explain, drop the `child->rect.width +=` line
+first and see whether the `cursor_x` advance alone is enough.
 
 ---
 

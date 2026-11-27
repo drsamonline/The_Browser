@@ -205,6 +205,166 @@ void CssParser::parse_keyframes(std::string const& name, std::vector<CssToken> c
         sheet.keyframes.push_back(std::move(rule));
 }
 
+namespace {
+
+// A media feature's value as a length in px: `1120px`, `40em`, `700pt`, or a `calc()` over those.
+//
+// css-values-4 §10: a `calc()` in a media feature is a math function over lengths and numbers, and it is
+// **absolutized before the comparison**. Upstream does exactly that - a calculated value in a media query
+// goes through `with_tree_counting_resolved` into `css::calc::absolutize_calculation_value` against the
+// query's own length context (`Rust/src/css/parser/query_parser.rs:2111-2131`).
+//
+// This engine instead read the digits before the first "px", so `calc(1120px - 1px)` became `"calc(1120"`,
+// `strtof` failed on it, and the whole query was **silently false** - a rule that never applied, with
+// nothing anywhere to say why (row 0.17).
+struct LengthExpression {
+    std::string const& text;
+    std::size_t at = 0;
+    bool failed = false;
+
+    // `em`/`rem` in a media query resolve against the initial font size: there is no element to inherit
+    // from, so css-values-4 §5.1.1 uses the initial value.
+    static constexpr float kFontSize = 16.0f;
+
+    void skip_spaces()
+    {
+        while (at < text.size() && std::isspace(static_cast<unsigned char>(text[at])))
+            ++at;
+    }
+
+    bool take(char c)
+    {
+        skip_spaces();
+        if (at < text.size() && text[at] == c) {
+            ++at;
+            return true;
+        }
+        return false;
+    }
+
+    float factor()
+    {
+        skip_spaces();
+        if (failed || at >= text.size()) {
+            failed = true;
+            return 0;
+        }
+        if (text[at] == '(') {
+            ++at;
+            float const value = expression();
+            if (!take(')'))
+                failed = true;
+            return value;
+        }
+        if (text[at] == '-') {
+            ++at;
+            return -factor();
+        }
+        if (text[at] == '+') {
+            ++at;
+            return factor();
+        }
+        std::size_t const start = at;
+        while (at < text.size() && (std::isdigit(static_cast<unsigned char>(text[at])) || text[at] == '.'))
+            ++at;
+        if (at == start) {
+            failed = true;
+            return 0;
+        }
+        float const number = std::strtof(std::string(text.substr(start, at - start)).c_str(), nullptr);
+        std::string unit;
+        while (at < text.size() && std::isalpha(static_cast<unsigned char>(text[at])))
+            unit += static_cast<char>(std::tolower(static_cast<unsigned char>(text[at++])));
+        if (unit.empty() || unit == "px")
+            return number;
+        if (unit == "em" || unit == "rem")
+            return number * kFontSize;
+        if (unit == "pt")
+            return number * (96.0f / 72.0f);
+        if (unit == "pc")
+            return number * 16.0f;
+        if (unit == "in")
+            return number * 96.0f;
+        if (unit == "cm")
+            return number * (96.0f / 2.54f);
+        if (unit == "mm")
+            return number * (96.0f / 25.4f);
+        if (unit == "q")
+            return number * (96.0f / 101.6f);
+        failed = true;
+        return 0;
+    }
+
+    float term()
+    {
+        float value = factor();
+        for (;;) {
+            skip_spaces();
+            if (failed || at >= text.size())
+                return value;
+            if (text[at] == '*') {
+                ++at;
+                value *= factor();
+                continue;
+            }
+            if (text[at] == '/') {
+                ++at;
+                float const divisor = factor();
+                if (divisor == 0) {
+                    failed = true;
+                    return 0;
+                }
+                value /= divisor;
+                continue;
+            }
+            return value;
+        }
+    }
+
+    float expression()
+    {
+        float value = term();
+        for (;;) {
+            skip_spaces();
+            if (failed || at >= text.size())
+                return value;
+            if (text[at] == '+') {
+                ++at;
+                value += term();
+                continue;
+            }
+            if (text[at] == '-') {
+                ++at;
+                value -= term();
+                continue;
+            }
+            return value;
+        }
+    }
+};
+
+// `1120px`, `40em`, `calc(1120px - 1px)` or a bare number. False when the text is not a length this engine
+// understands: an unknown value must not be mistaken for zero, because a media query that does not match is
+// a whole rule silently not applying.
+bool parse_media_length(std::string const& text, float& out)
+{
+    std::string body = text;
+    if (body.rfind("calc(", 0) == 0 && !body.empty() && body.back() == ')')
+        body = body.substr(5, body.size() - 6);
+    else if (body.rfind("min(", 0) == 0 || body.rfind("max(", 0) == 0 || body.rfind("clamp(", 0) == 0)
+        return false;
+
+    LengthExpression parser { body };
+    float const value = parser.expression();
+    parser.skip_spaces();
+    if (parser.failed || parser.at != body.size())
+        return false;
+    out = value;
+    return true;
+}
+
+} // namespace
+
 // The renderer always presents a screen viewport of 1024x768, so a media query
 // is resolved against that: unknown features do not match.
 bool CssParser::media_matches(std::string const& query)
@@ -225,9 +385,22 @@ bool CssParser::media_matches(std::string const& query)
             return false;
 
         // (min-width: 600px) / (max-width: 500px) / (min-height: ...)
-        auto open = text.find('(');
-        auto close = text.rfind(')');
-        if (open == std::string::npos || close == std::string::npos || close < open)
+        // The matching close paren, not the last one in the string: `(max-width:calc(1120px - 1px))` has two,
+        // and taking the outer one from the end left the feature text short of a ')' as well as truncated.
+        auto const open = text.find('(');
+        if (open == std::string::npos)
+            return false;
+        std::size_t close = std::string::npos;
+        int depth = 0;
+        for (std::size_t i = open; i < text.size(); ++i) {
+            if (text[i] == '(')
+                ++depth;
+            else if (text[i] == ')' && --depth == 0) {
+                close = i;
+                break;
+            }
+        }
+        if (close == std::string::npos)
             return false;
         std::string feature = text.substr(open + 1, close - open - 1);
         auto colon = feature.find(':');
@@ -235,12 +408,8 @@ bool CssParser::media_matches(std::string const& query)
             return false;
         std::string name = feature.substr(0, colon);
         std::string value = feature.substr(colon + 1);
-        auto px = value.find("px");
-        if (px != std::string::npos)
-            value = value.substr(0, px);
-        char* end = nullptr;
-        float number = std::strtof(value.c_str(), &end);
-        if (end == value.c_str())
+        float number = 0;
+        if (!parse_media_length(value, number))
             return false;
         if (name == "min-width")
             return kViewportWidth >= number;

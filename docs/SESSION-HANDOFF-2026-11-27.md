@@ -149,3 +149,112 @@ explanation, because this row has already had three wrong ones.
 | engine text rows | 11, 44, 150, 179, 207, 236, 265, 293, 306, 323 |
 | rows open in tier 0 | 0.17, 0.1 (blocked), 0.14 (`[~]`) |
 | rows open in tier 3 | 3n |
+
+---
+
+# Second batch, same day — rows 0.17 and 0.19
+
+Two commits of work in one batch, because either alone makes the render worse: the `calc()` media query exposes a
+dropped space, and the space fix has nothing to fix until the query matches.
+
+## 8. The pod, twice
+
+The first pod died of the documented process-table trap mid-build: **11,252 zombies** against a hard `ulimit -u` of
+4096, so `git push`, `ninja`, `timeout` and `subprocess` all failed for three consecutive turns. Both fixes were
+written and verified as far as they could be without a compiler (arithmetic ported to Python, the patch checked with
+a hand-written diff applier), and shipped as a patch file. **A recycled pod then took the build in one go** — the
+stale `/scratch/work` came back with 155 object files and a `CMakeCache.txt` whose compilers still resolved, but
+ninja rebuilt all 300 steps anyway, exactly as `HANDOVER.md` §7f says it will.
+
+## 9. Row 0.17 — `calc()` in a media query
+
+| | |
+| --- | --- |
+| cause | `media_matches` read `value.substr(0, value.find("px"))`, so `calc(1120px - 1px)` became `"calc(1120"` |
+| second bug | the feature's close paren was `rfind(')')`, the last one in the string |
+| fix | `LengthExpression`, a recursive-descent evaluator; `parse_media_length()` rejects `min()`/`max()`/`clamp()` |
+| upstream | `Rust/src/css/parser/query_parser.rs:2111-2131` |
+
+**Scope, measured** by porting both evaluators to Python and running them over the real `page.css`:
+
+| | |
+| --- | --- |
+| `@media` blocks | 76 |
+| distinct preludes | 17 |
+| blocks that change state | **13** |
+| rules inside them | **29** |
+| of which `calc()` preludes | **13 of 13** |
+
+| old | new | blocks | rules | prelude |
+| --- | --- | --- | --- | --- |
+| false | **true** | 10 | 20 | `screen and (max-width:calc(1120px - 1px))` |
+| false | **true** | 2 | 2 | `screen and (min-width:calc(640px - 1px))` |
+| false | **true** | 1 | 7 | `screen and (min-width:calc(640px - 1px)) and (max-width:calc(1680px - 1px))` |
+
+**The paren fix is defensive, not load-bearing** — every query here has one feature per parenthesis pair, so with the
+paren fixed and the `calc()` still truncated every query stays false. I had written the opposite into a patch README
+before checking, and corrected it.
+
+## 10. Row 0.19 — the space at a text run's edge
+
+`TextLayout::layout` emits a space only between two words of its own run (`text_layout.cpp:116` discards it, `:137`
+puts it back). A run that starts or ends in a space loses it, and the next inline box is placed flush against the last
+word — `"often abbreviated as"` + `<a>browser</a>` read **"asbrowser"**.
+
+It is symmetric. Counted in the article body: **424** boundaries of whitespace before an inline start tag, **316**
+after an inline close tag.
+
+| fixture | before | after |
+| --- | --- | --- |
+| `<p>a <a href="#">b</a> c</p>`, link x | 7.0 | **11.4** |
+| the same, `"often abbreviated as"` run width | 176.2 | **181.3** |
+
+Both halves were proved to fail **independently**: the whole fix reverted turns the trailing assertion red, and
+disabling only the leading advance turns the leading assertion red. The third assertion in the block (a trailing space
+before a block child) passes on the unfixed engine and is a guard, not proof — it says so in the test.
+
+## 11. The page, and the number that went the wrong way again
+
+| | before | after |
+| --- | --- | --- |
+| pixel agreement | 84.1% | **77.6%** |
+| overflow count | 139 | **148** |
+| `"often abbreviated as"` y | **900.0** (off screen) | **749.6** (on screen) |
+| site subtitle y | 669.9 | **519.4** |
+
+**The article moves up 150.4px and real article text enters the first screen.** That is row 0.17's stated goal,
+measured rather than inferred.
+
+The percentage fell because the shift pulls a `figure.mw-default-size mw-halign-right` into the viewport at
+**x=46.4 w=953.6 h=175.4**, where chromium floats it at ~255 wide with the text flowing beside it. `float` is absent,
+so the figure takes the whole content column:
+
+| band | before | after |
+| --- | --- | --- |
+| 576-640 | 87.1% | **27.7%** |
+| 640-704 | 66.1% | 43.7% |
+| 704-768 | 35.9% | 49.3% |
+
+That is row **0.20**, opened with those numbers. It is the fifth time a fix has moved the whole-page percentage the
+wrong way while the layout got closer — 0.11, 0.15, 3m, 0.18 and now this. Read the row positions first, every time.
+
+## 12. A documentation defect found and fixed
+
+**Row 0.18's checklist row was never a row.** The insertion in the first batch matched an anchor whose preceding line
+did not end in a newline, so the row was concatenated onto row 0.17's line: `... line box || 0.18 | ...`. The table
+still rendered, the commit message claimed the tick, and `grep 0.18` found it. It is split onto its own line in this
+commit, and the tier-0 table now validates at 22 rows with four columns each.
+
+**The lesson is the same one this project keeps relearning: check the artefact, not the intention.** The check that
+would have caught it is one line — every table row must start with `|` and contain exactly five pipes.
+
+## 13. State at the end of this batch
+
+| | |
+| --- | --- |
+| `main` | rows 0.17, 0.18, 0.19 closed; 0.20 opened |
+| suite | **67/67 twice** (147.89 s, 130.46 s) |
+| pixel agreement | **77.6%** (page 421,819 B HTML / 215,770 B CSS, unchanged from the first batch) |
+| overflow count | **148** |
+| rows open in tier 0 | 0.20, 0.14 (`[~]`), 0.1 (blocked) |
+| next | **0.20** — `float`. It is the largest single difference on the page and it hides everything below it |

@@ -442,7 +442,8 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
     // where chromium gives 16.8 (row 0.11).
     bool line_is_open = false;
 
-    for (auto& child : node.children) {
+    for (std::size_t child_index = 0; child_index < node.children.size(); ++child_index) {
+        auto& child = node.children[child_index];
         if (child->display == LayoutDisplay::None || is_positioned(*child))
             continue;
 
@@ -465,6 +466,37 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
             // recorded geometry.
             if (m_reuse && m_reuse->laid_out)
                 ++*m_reuse->laid_out;
+            // css-text-3 §4.1.1: a collapsible space at the edge of a text run is kept when it sits between
+            // two inline items on the same line, and removed when it is at the end of the line. TextLayout
+            // only ever emits a space *between two words of its own run* - text_layout.cpp:116 discards it
+            // and :137 puts it back - so a run that starts or ends in a space loses it and the neighbouring
+            // inline box is placed flush against the word: "often abbreviated as" + <a>browser</a> came out
+            // "asbrowser" (row 0.19). The page has 424 such boundaries before an inline start tag and 316
+            // after an inline close tag, so both edges need this, not just the trailing one.
+            std::string const& run_text = child_is_generated_text ? child->generated_text : child->dom_node->data;
+            auto const* white_space = child->style.get("white-space");
+            bool const collapses_space = !white_space || (*white_space != "pre" && *white_space != "pre-wrap");
+            bool const run_starts_in_space = collapses_space && !run_text.empty()
+                && std::isspace(static_cast<unsigned char>(run_text.front()));
+            bool const run_ends_in_space = collapses_space && !run_text.empty()
+                && std::isspace(static_cast<unsigned char>(run_text.back()));
+            float const space_advance = TextLayout::measure_text(
+                " ", TextLayout::font_size(child->style), child->style);
+            // An inline-level sibling means the trailing space is between two items. A block-level one starts
+            // a new line, where the space is at the end of the line and collapses away.
+            bool next_inline_follows = false;
+            for (std::size_t ahead = child_index + 1; ahead < node.children.size(); ++ahead) {
+                auto const& next = *node.children[ahead];
+                if (next.display == LayoutDisplay::None || is_positioned(next))
+                    continue;
+                next_inline_follows = next.display == LayoutDisplay::Inline
+                    || next.display == LayoutDisplay::InlineBlock;
+                break;
+            }
+            // `cursor_x > x` is the same "something is already on this line" test the wrap decision below
+            // uses: at the start of a line a leading space collapses away entirely.
+            if (run_starts_in_space && cursor_x > x)
+                cursor_x += space_advance;
             child->box.content.x = cursor_x;
             child->box.content.y = cursor_y;
             child->box.content.width = std::max(0.0f, x + available_width - cursor_x);
@@ -489,6 +521,12 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
                     text_extent = std::max(text_extent, fragment.rect.x + fragment.rect.width);
                 child->box.content.width = std::max(0.0f, text_extent - child->box.content.x);
                 child->rect = { child->box.content.x, child->box.content.y, child->box.content.width, child->box.content.height };
+            }
+            if (run_ends_in_space && next_inline_follows && cursor_x > x) {
+                cursor_x += space_advance;
+                child->box.content.width += space_advance;
+                if (!child->text_fragments.empty())
+                    child->rect.width += space_advance;
             }
             std::string const& text_source = child_is_generated_text ? child->generated_text : child->dom_node->data;
             line_ends_in_whitespace = !text_source.empty()

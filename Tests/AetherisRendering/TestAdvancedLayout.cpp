@@ -347,5 +347,47 @@ int main()
             "so two 16.8px lines are 33.6px, not 57.6");
     }
 
+    // Row 0.19: a space at the edge of a text run is part of the line when two inline items sit on it, and
+    // is removed at the end of one (css-text-3 §4.1.1). TextLayout only ever emits a space *between two words
+    // of its own run* (text_layout.cpp:116 discards it, :137 puts it back), so a run ending in a space stopped
+    // at its last word and the next inline box was placed flush against it: "a " + <a>b</a> read "ab", which
+    // on the page was "often abbreviated as" + <a>browser</a> -> "asbrowser".
+    {
+        auto spaced = RenderDocument::create(
+            "<div id='d' style='font-size: 14px; margin: 0'>a <a href='#'>b</a></div>", "", 400);
+        auto flush = RenderDocument::create(
+            "<div id='d' style='font-size: 14px; margin: 0'>a<a href='#'>b</a></div>", "", 400);
+        auto const& spaced_block = *spaced.layout_root().children[0];
+        auto const& flush_block = *flush.layout_root().children[0];
+        auto const& spaced_link = *spaced_block.children[1];
+        auto const& flush_link = *flush_block.children[1];
+        float const gap = spaced_link.rect.x - flush_link.rect.x;
+        require(gap > 2.0f && gap < 8.0f,
+            "the space before a link occupies width, so 'a b' is not 'ab'");
+    }
+
+    // The mirror case: a run that *starts* with a space loses it the same way, so it must be placed one space
+    // past the inline box before it. The page has 424 boundaries of the first kind and 316 of this one.
+    {
+        auto leading = RenderDocument::create(
+            "<div id='d' style='font-size: 14px; margin: 0'><a href='#'>a</a> b</div>", "", 400);
+        auto const& block = *leading.layout_root().children[0];
+        auto const& link = *block.children[0];
+        auto const& run = *block.children[1];
+        require(!run.text_fragments.empty(), "the run after the link has a fragment");
+        require(run.text_fragments.front().rect.x > link.rect.x + link.rect.width + 2.0f,
+            "the space after a link occupies width too, so 'a b' is not 'ab'");
+    }
+
+    // A trailing space before a block-level sibling sits at the end of the line, where css-text-3 removes it.
+    // This one guards against over-application: it passes on the unfixed engine too, so it is not the proof.
+    {
+        auto blocky = RenderDocument::create(
+            "<div id='d' style='font-size: 14px; margin: 0'>a <div style='height: 5px'></div></div>", "", 400);
+        auto const& block = *blocky.layout_root().children[0];
+        require(block.children[1]->rect.x < 0.5f,
+            "a space at the end of a line does not push the next block right");
+    }
+
     return 0;
 }

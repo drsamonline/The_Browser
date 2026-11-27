@@ -87,6 +87,54 @@ int main()
     }
 
 
+    // Row 0.17: a `calc()` in a media feature is a length, and it is resolved before the comparison
+    // (css-values-4 §10; upstream absolutizes it against the query's own length context in
+    // Rust/src/css/parser/query_parser.rs:2111-2131). The evaluator used to read the digits before the first
+    // "px", so `calc(1120px - 1px)` became "calc(1120", strtof failed, and the query was silently false.
+    {
+        CssParser parser;
+        auto calc_sheet = parser.parse(
+            "@media screen and (max-width: calc(1120px - 1px)) { #wide { color: blue; } }"
+            "@media screen and (max-width: calc(1000px - 1px)) { #narrow { color: orange; } }"
+            "@media screen and (min-width: calc(640px - 1px)) { #up { color: green; } }"
+            "@media screen and (max-width: calc(1120px + 1px)) { #wider { color: red; } }"
+            "@media screen and (min-width: 40em) { #em { color: teal; } }");
+        // At 1024: 1024 <= 1119 keeps #wide, 1024 <= 999 drops #narrow, 1024 >= 639 keeps #up,
+        // 1024 <= 1121 keeps #wider, and 40em is 640px so #em is kept.
+        require(calc_sheet.rules.size() == 4, "calc() in a media feature resolves to a length");
+        bool has_wide = false;
+        bool has_up = false;
+        bool has_wider = false;
+        bool has_em = false;
+        for (auto const& rule : calc_sheet.rules)
+            for (auto const& selector : rule.selectors) {
+                if (selector == "#wide")
+                    has_wide = true;
+                if (selector == "#up")
+                    has_up = true;
+                if (selector == "#wider")
+                    has_wider = true;
+                if (selector == "#em")
+                    has_em = true;
+                require(selector != "#narrow", "a calc() that does not match is still dropped");
+            }
+        require(has_wide, "max-width: calc(1120px - 1px) matches a 1024px viewport");
+        require(has_up, "min-width: calc(640px - 1px) matches a 1024px viewport");
+        require(has_wider, "max-width: calc(1120px + 1px) matches a 1024px viewport");
+        require(has_em, "40em in a media query is 640px, against the initial font size");
+    }
+
+    // A media feature this engine cannot read must not be mistaken for zero: an unknown value is a
+    // non-matching query, and `max-width: 0` would match everything.
+    {
+        CssParser parser;
+        auto unknown_sheet = parser.parse(
+            "@media screen and (max-width: 10vw) { #vw { color: red; } }"
+            "@media screen and (max-width: clamp(1px, 2px, 3px)) { #clamp { color: red; } }"
+            "@media screen and (max-width: nonsense) { #junk { color: red; } }");
+        require(unknown_sheet.rules.empty(), "an unreadable media feature does not match");
+    }
+
     // Media queries are resolved against the screen viewport (1024x768).
     {
         CssParser parser;
