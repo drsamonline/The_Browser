@@ -704,6 +704,50 @@ first and see whether the `cursor_x` advance alone is enough.
 
 ---
 
+## 7o. Floats
+
+- **css2 §9.5**: a floated box is **taken out of the normal flow**, shifted to the **left or right edge of the line box**
+  it is in, and the content that follows **flows beside it** rather than below it. Before row 0.20 the engine never read
+  the property at all, so `figure.mw-halign-right` laid out as an ordinary block at **x=46.4 w=953.6** on a 976px
+  column and covered the article.
+- **The shape.** `struct FloatBox { float top, bottom, left, right; }` and
+  `static void float_intrusion(std::vector<FloatBox> const&, float content_left, float content_right, float y, float height, float& left_inset, float& right_inset)`
+  sit in `src/rendering/layout.cpp`, just above `LayoutEngine::layout_inline_children`. A `FloatBox` is a placed
+  float's **margin box**; `float_intrusion` walks the list and, for every box that overlaps `[y, y + height)`, reports
+  the inset it causes on whichever side it touches (`box.left <= content_left` means it hangs off the left edge;
+  `box.right >= content_right` means the right). A float that touches neither edge is ignored, which is why floats do
+  not stack.
+- **Where the float branch lives.** Inside `layout_inline_children`, after the `display: none` / positioned skip:
+  `if (auto const* side = child->style.get("float"))`, and for `left`/`inline-start` or `right`/`inline-end` the child is
+  laid out at `min(max_content_width(child), available_width)`, re-laid at `content_right - outer` when floated right,
+  its margin box pushed into the local `std::vector<FloatBox> floats`, and the loop `continue`s **without advancing the
+  flow**. `float const content_right = x + available_width` is computed once, before the child loop.
+- **Who consumes the bands.** Both the block-level child path and the text-run path call `float_intrusion(...)` and start
+  beside the float: the block path at `x + block_left` with width `available_width - block_left - block_right`; the text
+  path raises `cursor_x` to `x + run_left` and narrows the run limit to `content_right - run_right`.
+- **The routing edit, which is the part that was never measured until 2026-11-27.** `layout_node` scans its children
+  for a float into `has_float`, and dispatches `else if (has_inline || has_float) layout_inline_children(...)`. Without
+  `has_float`, a block container holding only blocks plus one float takes the plain block-stack path, where the float is
+  placed as an ordinary block and the bands are never built - so the whole mechanism is dead on exactly the containers
+  that need it.
+
+**The three gaps, plainly.** These are known and not hidden:
+
+1. **`clear` is not implemented.** Nothing reads `clear: left | right | both`; a box that should be pushed below a float
+   is placed beside it instead.
+2. **Floats do not stack.** `float_intrusion` takes the inset from a box only when it touches the container's left or
+   right edge, and every float is placed at the current `cursor_y` against that edge. Two floats on the same line both
+   claim the full band rather than sitting one beside the other, and a second float does not drop below the first.
+3. **Intrusion is per-block, not per-line.** The inset is computed once when the block or text run begins and applies to
+   the whole of it, so a `<p>` that starts beside a float has **all** of its lines shortened, including the lines below
+   where the float has already ended. css2 §9.5 asks for the inset to be recomputed per line box.
+
+**Measured on `Web_browser` at 1024px:** agreement **84.8%** (41672/49152 exact-match samples every 4px; 84.1% before),
+the figure at **x=772.4 y=468.6 w=227.6 h=179.6** with its right edge on 1000.0, chromium's own edge. Band 576-640
+recovers **27.7% -> 80.4%**. The worst band is now 640-704 at **50.5%**, and the gaps above are the likeliest cause.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.
