@@ -1,6 +1,6 @@
 # Coverage — what this engine does and does not do
 
-**Snapshot, 2026-11-23.** Every row was checked against the code on that date; the evidence column says
+**Snapshot, 2026-11-23; three layout rows corrected and one added 2026-11-27.** Every row was checked against the code on that date; the evidence column says
 where. This is a *snapshot*, not an instrument: it does not move on its own, and it says nothing about how
 many real pages are affected by each gap.
 
@@ -58,11 +58,12 @@ are at the bottom.
 | --- | --- | --- |
 | Block flow | done | `layout.cpp` |
 | Inline flow, line breaking, `white-space` | done — breaks at whitespace and at the cluster offsets the shaper allows; overflows when there is no opportunity, as a browser does (measured 2026-11-23) | `text_layout.cpp`, `AetherisTextLayout` |
+| Inline box height in a line | done, 2026-11-27 — an inline **non-replaced** box's vertical padding and border paint outside the line box and do not make it taller (css2 §8.1, §10.6.1); an inline-block or a replaced element is atomic and does move it. It used to add the whole border box to the line, so a padded table-of-contents row was 28.8px instead of 16.8 | `layout_inline_children()` in `layout.cpp`, `AetherisAdvancedLayout` |
 | Flex | done for a single line, 2026-11-26 — basis, grow, shrink, the automatic-minimum floor, gaps, `justify-content`, `align-items`, and white-space runs excluded from the items and from both intrinsic widths. Not done: `flex-wrap` (one line only), `align-content`, `order`, `align-self` | `layout_flex_children()` |
-| Grid | partial — `grid-template-columns` read | `layout_grid_children()` |
+| Grid | partial, corrected 2026-11-27 — the `grid-template` shorthand is expanded into its three longhands, a track may be `minmax()`, and `grid-template-areas` places items. Not done: implicit tracks, `auto-fill`/`auto-fit` repetition | `layout_grid_children()` in `layout.cpp`, `AetherisAdvancedLayout` |
 | Absolute positioning | done | `layout_absolute_children()` |
 | Percentage `height` | done as `auto` when the containing block is indefinite, 2026-11-26 — it used to resolve against the element's own **width**. Not done: resolving against a *definite* parent height | `parse_height()` in `layout.cpp`, `AetherisAdvancedLayout` |
-| `position: sticky` | **absent** | no `sticky` in `src/rendering` |
+| `position: sticky` | done, corrected 2026-11-27 — a `StickyRegion` per sticky box, shifted at paint time so scrolling stays repaint-only | `render_tree.hpp` (`StickyRegion`), `paint_executor`, checklist row 3b |
 | `float` | **absent** | not read by layout |
 | Incremental layout | done — document skip, per-node reuse on origin | `render_document.cpp` |
 

@@ -188,8 +188,9 @@ All credited in `CREDITS.md`.
 - UI: 34 px chrome strip, tab session, input router, SDL2 window
 - Layout: flex and grid, with a flex item's base size from its content (`max_content_width`), a shrink
   floored at its automatic minimum size (`min_content_width`), a row's intrinsic width as the sum of its
-  items, and **a run of collapsible white space generating no flex or grid item** (css-flexbox-1 §4,
-  2026-11-26)
+  items, **a run of collapsible white space generating no flex or grid item** (css-flexbox-1 §4,
+  2026-11-26), and **an inline non-replaced box's vertical padding not raising the line** (css2 §8.1,
+  §10.6.1, 2026-11-27)
 - Scrolling: wheel, PageUp/PageDown/Space/Home/End, proportional scrollbar,
   clamped viewport, `--render-window --scroll-y` for headless checks
 - Releases: Linux tarball + Windows zip with all runtime DLLs
@@ -626,6 +627,28 @@ Compare the two renders before believing a layout story about them.
 everything up 73px pulled the *next* defect into the viewport: the article ends ~70px early, so the footer lands on
 screen where chromium still has paragraphs. The row offset improved and the percentage got worse. Read the row
 positions first, every time.
+
+---
+
+## 7l. An inline box's vertical padding paints outside the line and does not move it
+
+- **css2 §8.1 / §10.6.1**: the vertical padding, border and margin of an **inline, non-replaced** box start at the
+  top and bottom of its content area and have *nothing to do with* the line-height. Only the line-height is used
+  when calculating the height of the line box. The padding paints; it does not advance the next line.
+- The engine added `child->rect.height` — the whole border box, padding included — to the line's `max_bottom`. A
+  page's table of contents is `<a><div class="vector-toc-text" style="padding:6px 0">`, so every row came out
+  **28.8px** where a browser gives **16.8**, and the list pushed the article down.
+- `layout_inline_children` now contributes `max(line_height, content height)` for an inline non-replaced child, and
+  keeps the full border box for an **inline-block or a replaced element**, which are atomic and do move the line.
+- **Fixture, measured both ways**: two block `<a>` each holding a `padding:6px 0` span — gap **28.80 -> 16.80**,
+  block height **57.60 -> 33.60**.
+- **This moved no page-level number, and that is the correct outcome**: agreement 84.3% -> 84.1%, engine text rows
+  byte-identical, overflows steady at 139. A compatibility fix that makes the engine agree with a browser on a
+  construct the page uses is still worth its commit; it just does not show up in a whole-page percentage.
+
+**A note on what a percentage can and cannot say.** Four rows now have moved agreement the wrong way while the
+layout got better (0.11, 0.15, 3m, and this one). The percentage is dominated by whichever single defect is
+biggest. Print the per-band table and the row positions *alongside* it, and never read the number alone.
 
 ---
 

@@ -330,5 +330,22 @@ int main()
             "and the item itself is as tall as its content, not as wide as it is");
     }
 
+    // Row 0.18: the vertical padding of an inline, non-replaced box paints outside the line box but does not
+    // make the line taller (css2 §8.1, §10.6.1). It was added to the line, so a real page's table of contents
+    // - whose items are `<a><div class=vector-toc-text style='padding:6px 0'>` - came out 1.7x too tall.
+    {
+        auto rendered = RenderDocument::create(
+            "<div id='d' style='font-size: 14px; line-height: 1.2'>"
+            "<a style='display: block'><span style='padding: 6px 0'>one</span></a>"
+            "<a style='display: block'><span style='padding: 6px 0'>two</span></a></div>",
+            "", 400);
+        auto const& block = *rendered.layout_root().children[0];
+        auto const gap = block.children[1]->rect.y - block.children[0]->rect.y;
+        require(gap > 16.5f && gap < 17.1f,
+            "an inline box's vertical padding does not push the next line down");
+        require(block.rect.height < 40.0f,
+            "so two 16.8px lines are 33.6px, not 57.6");
+    }
+
     return 0;
 }
