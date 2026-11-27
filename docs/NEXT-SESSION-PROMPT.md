@@ -34,7 +34,7 @@ engine work rather than on rediscovery.
 | --- | --- |
 | `main` | `8dd1bafe` — "fix(layout): a percentage height is not a percentage of the width (row 0.15)" |
 | branch | `wip/row-0.18-inline-padding` at `18e63235` — **the inline-padding fix, built but never suite-run** |
-| audit repo | `91410e5f` |
+| audit repo | shared, and it moves without you — read `gh api repos/drsamonline/audit/commits/main` when you start, and rebase (never force) if a push is rejected |
 | suite | 67 tests; last green run 67/67 twice on `8dd1bafe` |
 | reference render | **84.1%** pixel agreement, engine text rows 15px below chromium's |
 | overflow count | 139 |
