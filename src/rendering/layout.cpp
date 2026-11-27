@@ -549,7 +549,15 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
         // every inline box measured its subtree once and then laid it out again, so a document
         // nested d deep cost 2^d passes over the same nodes.
         cursor_x = child->rect.x + child->rect.width;
-        max_bottom = std::max(max_bottom, child->rect.y + child->rect.height);
+        // css2 §8.1 and §10.6.1: the vertical padding and border of an **inline, non-replaced** box paint
+        // outside the line box but do not make the line taller - only its content does. Adding them made
+        // every line of a real page's table of contents 28.8px apart instead of 16.8, because
+        // `.vector-toc-text { padding:6px 0 }` sits on a <span>: the list came out 1.7x too tall and pushed
+        // the article 129px down the page (row 0.17). An inline-block or a replaced element is atomic and
+        // keeps its full box.
+        float const inline_extent = std::max(line_height, child->box.content.height);
+        max_bottom = std::max(max_bottom, child->rect.y
+            + (child->display == LayoutDisplay::Inline && !child->image ? inline_extent : child->rect.height));
         line_is_open = true;
         line_ends_in_whitespace = false;
         if (cursor_x >= x + available_width) {
