@@ -5,163 +5,127 @@ Paste everything below the line into a fresh session.
 ---
 
 You are continuing work on **Aetheris**, a browser engine at `drsamonline/The_Browser` (C++23, CMake + Ninja,
-clang via zig). Read this whole prompt before running anything.
+clang via zig). Read this whole prompt before running anything. It was written on 2026-11-27 after four days of
+layout work on `en.wikipedia.org/wiki/Web_browser`, and it is deliberately ordered so you spend your time on
+engine work rather than on rediscovery.
 
 ## The rules, which are not negotiable
 
-1. **Read upstream first, always.** `/scratch/work/ladybird/Libraries/LibWeb` (and `LibGfx`, `LibURL`, `LibHTTP`,
-   `Rust/src/layout`, `Rust/src/css`) is the reference implementation. Before designing, building or measuring
-   anything, read how upstream does it and **port the shape of the solution, not just the outcome**. Name the file
-   and line you read in the commit message.
-2. **`docs/CHECKLIST.md` is the plan, and a row is the unit of work.** One "go" batch moves one row. A commit either
-   moves a row or it does not belong to the plan. Tick a row **only in the commit that makes it true**, never in a
-   later docs commit. The Proof column needs a commit sha, a test name or a number — **no proof, no tick**.
-   A blocked row says what blocks it and where the unblocking work lives; an out-of-scope row is `[-]` with the
-   reason; new work found mid-item becomes a new `[ ]` row **in the same commit**, at its tier.
-3. **Every commit updates four docs** — `docs/CHECKLIST.md`, `docs/HANDOVER.md`, `docs/SESSION-HANDOFF-<date>.md`,
-   `docs/COVERAGE.md` — plus **exactly one entry per session** in the separate `drsamonline/audit` repo at
-   `log/2026-11/<date>-<slug>.md`, all in the same commit.
-4. **Run the suite twice** at `ctest --test-dir build -j 2` (two cores; never `-j4`) before committing, and report
-   both times.
-5. **Push immediately after each commit** and verify the tip:
-   `gh api repos/drsamonline/The_Browser/commits/main --jq '.sha[0:8]'`. The audit repo is shared — if a push is
-   rejected, rebase, never force.
+1. **Read upstream first, always.** `/scratch/work/ladybird/Libraries/LibWeb` (`Rust/src/layout`,
+   `Rust/src/css`, `CSS/Properties.json`) is the reference. Name the file and line you read in the commit message.
+2. **`docs/CHECKLIST.md` is the plan, and a row is the unit of work.** One "go" batch moves one row. Tick a row
+   **only in the commit that makes it true**, with a sha, a test name or a number as proof — **no proof, no tick**.
+   New work found mid-item becomes a new `[ ]` row in the same commit, at its tier.
+3. **Every commit updates four docs** — `docs/CHECKLIST.md`, `docs/HANDOVER.md`,
+   `docs/SESSION-HANDOFF-<date>.md`, `docs/COVERAGE.md` — plus **one entry** in the separate
+   `drsamonline/audit` repo at `log/2026-11/<date>-<slug>.md`, all in the same commit.
+4. **Run the suite twice** at `ctest --test-dir build -j 2` (two cores; never `-j4`) before committing, and
+   report both times.
+5. **Push immediately, verify the tip**: `gh api repos/drsamonline/The_Browser/commits/main --jq '.sha[0:8]'`.
+   If a push is rejected, rebase — never force.
 6. **Report in tables and bullets, no paragraphs.**
 7. **Never modify `sorex`, `nodus` or `volumen`.**
-
-## Environment setup — one command
-
-```sh
-cd /scratch/work/The_Browser && sh tools/setup.sh          # toolchain, harfbuzz, both build dirs, build
-sh tools/setup.sh --check                                   # report what is missing, change nothing
-```
-
-A pod recycle loses **every pip package** but keeps `/scratch/work`, so `toolchain/zigcc` survives as a wrapper
-pointing at a zig that is gone. `setup.sh` reinstalls and rewrites them; the CMake caches do not survive either, so
-the first build is ~300 steps (~40 min on two cores — run it in chunks, `ninja -C build -j2` under a 270 s timeout).
-
-**`setup.sh` does not fit in one 300 s call.** The two `cmake` configures take ~100 s and ~250 s on their own; run
-each `cmake -S . -B <dir> ...` by hand first (the exact flags are in `tools/setup.sh`, lines 55-70), then build in
-`ninja` chunks. A killed `setup.sh` looks like success — it writes its configure output to `/dev/null` and the
-pipeline's exit code is `tail`'s.
-
-**Upstream does not survive a recycle either.** Re-clone it before reading:
-
-```sh
-git clone --depth 1 --filter=blob:none --sparse https://github.com/LadybirdBrowser/ladybird.git
-cd ladybird && git sparse-checkout set Libraries/LibWeb
-```
-
-**The probes and the reference page do not survive either.** `tools/article-position.cpp` is compiled by hand —
-it is not a CMake target:
-
-```sh
-zigcxx -std=c++23 -O1 -g -fsanitize=undefined -DAETHERIS_RENDERING_FOUNDATION=1 -DAETHERIS_HAVE_HARFBUZZ=1 \
-  -Isrc -Isrc/rendering -Ithird_party/harfbuzz/src tools/article-position.cpp -o /scratch/work/ap \
-  build/lib/libAetherisRendering.a build/lib/libAetherisGumbo.a -Lbuild/lib -lharfbuzz \
-  /usr/lib/x86_64-linux-gnu/libwebp.so.7 /usr/lib/x86_64-linux-gnu/libssl.so.3 \
-  /usr/lib/x86_64-linux-gnu/libcrypto.so.3 -lm -lpthread
-```
-
-The reference page is two files: the HTML through `curl` (the proxy admits `en.wikipedia.org`), and its **two**
-`<link rel=stylesheet>` URLs fetched and concatenated. 416,840 bytes of HTML and 215,770 bytes of CSS reproduce
-the baselines below; any other size means you fetched a different page and the numbers are not comparable.
-
-## The traps that have cost the most time
-
-| trap | what to do |
-| --- | --- |
-| **A killed build reads as success** | Run `python3 tools/check-build.py` before trusting any suite run. It reports pending ninja steps and whether anything was linked after the last source edit. |
-| **A pod can come back with a stale snapshot** | `git fetch && git log --oneline -1 origin/main` versus `git log --oneline -1` before your first commit. If they differ, save the work as a patch, `git reset --hard origin/main`, re-apply, rebuild. |
-| **A pod can come back with an OLD `build/`** | If `zigcxx` fails with `exec: .../zig: not found` but binaries exist, the build tree is stale, not current. `setup.sh` fixes it. |
-| **Probes link statically** | Relink after any library rebuild or they print stale numbers — this produced a measurement that contradicted a fix that had actually worked. Debug library carries UBSan: link `-fsanitize=undefined` plus `libwebp.so.7`, `libssl.so.3`, `libcrypto.so.3` by full path (`-lcrypto` finds nothing: there is no dev symlink). |
-| **A metric can be wrong in the direction of "no change"** | Four instruments have now misled a session: an overflow counter that counted **off-canvas UI** as defects, a pixel-agreement percentage that **fell while the layout improved**, a `class=` lookup that matched the **document root**, and a page-sized agreement score that read **99.7%** on a fixture where two boxes were 40px from where chromium puts them. Before trusting a number, check it can distinguish the case you care about. |
-| **A test that cannot fail** | Two assertions were written on 2026-11-26 and one of them **passed on the unfixed engine**, because the thing it measured was not measured either way. Revert the fix, rebuild, and watch the test go red. If it stays green, the test is not proof. |
-| **A class name is not an identity** | `div.vector-header-start` appears twice on a real page (normal and sticky header). Print x/y/width and the parent when reporting an offender. |
-| **Judging a fix by one pixel or one crop** | Cost two reverts of a change that was correct. Judge by a metric that has an identity and a baseline, and report the number. |
-| **`active_font()` is a singleton** | Font-dependent probes must set `AETHERIS_FONT` before the first call, one font per process. |
-| **`RenderDocument::create` ignores `<style>`** | Pass author CSS explicitly; only `src/main.cpp` collects `<style>` elements. |
-| **Git needs `-c core.preloadIndex=false -c index.threads=1`** | Under load, plain git fails on threaded lstat. |
-| **Git identity is not persisted** | `git config --global user.email sohilmomin2000@gmail.com`, `user.name "Aetheris session"`; the audit repo uses `Dr Sohil Momin`. |
-| **The probe is slow on a real page** | `article-position` on the wikipedia page takes **~110 s** in the Debug library. One call per mode, never two in one shell command, and write the output to a file. |
+8. **Do not hand the user files.** Work lands as commits. A patch file is only ever insurance when the pod
+   cannot push, and it should be deleted once the commit is in.
 
 ## State at the start of your session
 
 | | |
 | --- | --- |
-| `main` | `ba8404e1` — "fix(layout): a page's indentation is not its content (rows 3m and 3l)" |
-| audit repo | `97d8517` |
-| suite | 67 tests, **67/67 twice** on every commit |
-| checklist | **96 rows: 81 ticked, 2 open (0.14, 3n), 1 blocked (0.1), 2 out of scope (3i, 5d), 5 historical "(superseded)" rows, and 3 duplicate rows in the `Closed — 2026-11-18` table** |
-| reference render | `en.wikipedia.org/wiki/Web_browser` at **80.4%** pixel agreement with chromium |
-| overflow count | **139** containers whose children reach past their content box |
+| `main` | `8dd1bafe` — "fix(layout): a percentage height is not a percentage of the width (row 0.15)" |
+| branch | `wip/row-0.18-inline-padding` at `18e63235` — **the inline-padding fix, built but never suite-run** |
+| audit repo | `91410e5f` |
+| suite | 67 tests; last green run 67/67 twice on `8dd1bafe` |
+| reference render | **84.1%** pixel agreement, engine text rows 15px below chromium's |
+| overflow count | 139 |
 
-Read `docs/SESSION-HANDOFF-2026-11-26.md` (10 sections) and `docs/HANDOVER.md` §7g and §7h before starting.
-They carry the reasoning, the numbers and the mistakes.
+Read `docs/SESSION-HANDOFF-2026-11-26.md` (§§ 1-15) before starting: it carries every number and every mistake.
 
-## The two instruments, and what they are for
+## Do this first — it is 40 minutes and it unblocks everything
 
-Both live in `tools/` and both have a baseline, so every fix can be judged by a number that moves.
+**Finish row 0.18, which is already written and pushed as a branch.**
 
-| tool | what it answers | baseline |
-| --- | --- | --- |
-| `tools/reference-render.sh page.html page.css [out]` | how far is this render from chromium's, and where | **80.4%** agreement, text rows 28-29px against chromium's 27-28 |
-| `tools/article-position.cpp` (via `--overflow`, `--top`, `id=`/`tag=`/`class=`) | which boxes overflow, what a node resolved to, which rules move it, and **both** intrinsic widths | **139** overflows |
+```sh
+cd /scratch/work && git clone https://github.com/drsamonline/The_Browser.git && cd The_Browser
+git checkout wip/row-0.18-inline-padding
+sh tools/setup.sh            # see "Environment" below: it will NOT fit in one call
+python3 tools/check-build.py # must report every binary current
+./build/bin/TestAetherisAdvancedLayout
+```
 
-`--overflow` ignores children wholly outside the viewport (hidden menus are placed there on purpose) and prints
-each offender's own x/y/width **and its parent's**. Read agreement **with** the row positions, never alone.
+Then prove the assertion can fail: revert the `layout.cpp` hunk, rebuild, watch it fail with *"an inline box's
+vertical padding does not push the next line down"*, restore. Then `ctest --test-dir build -j 2` **twice**, tick
+row 0.18 as `[x]`, add its audit entry, and merge to `main`.
 
-`class=`/`id=` prints, for the node: its children, the rules that change it, `max=` and `min=` for every node to
-depth 4, and the ancestor chain. **Both** intrinsic widths, because an item that overflows is either bigger than
-its base (a layout bug) or floored above the space it was given (a sizing bug) — and the fix is different.
+What it fixes: `layout_inline_children` added an inline box's vertical padding to the line, so a page's table of
+contents (`<a><div class="vector-toc-text" style="padding:6px 0">`) came out 28.8px per row instead of 16.8.
+css2 §8.1 / §10.6.1: inline vertical padding paints outside the line box and does not move it. Fixture in the
+test: two block `<a>` each holding a padded span are 16.8px apart, block 33.6 tall; before, 28.8 and 57.6.
+**No page-level effect** (84.3% → 84.1%) — it is a compatibility fix, not a page moved.
 
-## What to do next, in this order
+## Then, in this order
 
-| # | row | what it is | where to start |
+| # | row | what it is | why it is ordered here |
 | --- | --- | --- | --- |
-| 1 | **0.14** | The page title bar is painted **black** and placed ~410px below where chromium puts it. It is the worst band of the reference render by a factor of two (y 512-576 at 46.4%, y 576-640 at 22.9%) and it is what makes the whole-page percentage unreadable. | Crop both renders at y 500-700. Two separate questions: why black (row 0.8 fixed unparseable colours painting opaque black, so something here resolves to black rather than transparent) and why 410px low (a block-order question, not a paint one) |
-| 2 | **3n** | A lone flex item is never shrunk to its automatic minimum: `item.base = std::min(available_width, max_content_width(child))` caps it at the line width, so free space is exactly zero and the floor never runs | `layout_flex_children`, the base-size loop |
-| 3 | **0.1** | blocked: the coverage corpus needs open internet; 17 of 20 hosts are refused by the egress allowlist. The corpus renders from the URL now, so it would measure something real on a network that admits it | — |
-| 4 | **1g4b**, **3d3**, **5b** | ticked with named tails in their own cells: structured clone, `animation-direction`/`fill-mode`/`play-state`, and the origin check that has nowhere to run until a `fetch` or an iframe exists | the cells say what is left |
+| 1 | **0.17** | **`calc()` in a media query is silently false.** The evaluator cut the feature value at the first `px`, so `@media screen and (max-width: calc(1120px - 1px))` became `"calc(1120"` and never matched. Fixture: that query gave 300px, `max-width: 1119px` gave 50px. On the page it is why `#vector-toc-pinned-container` is **350px** instead of its `200px` cap, which pushes everything below it down. | The fix is written and works (`media_length()` in `css_parser.cpp`, `calc()` over px lengths): fixture 300 → **50**, TOC 350 → **200**. **It is NOT in the branch because enabling it regressed the page**: agreement 84.1% → **77.6%** and the spaces between text and links vanished — "often abbreviated asbrowser, is anapplication for accessingwebsites". Land it only together with the text bug it exposes, or land it and fix that immediately |
+| 2 | **0.19** (open it) | **A space before a link disappears once the narrow-layout rules apply.** The paragraph reads "asbrowser", "anapplication", "accessingwebsites" — the trailing space of a text run is dropped when an `<a>` follows. | This is what makes 0.17 unshippable. Find it with a four-line fixture: `<p>a <a href="#">b</a> c</p>` under `@media (max-width: calc(1120px - 1px))`, and `layout_inline_children`'s `line_ends_in_whitespace` path |
+| 3 | **3n** | A lone flex item is never shrunk to its automatic minimum: `item.base = std::min(available_width, max_content_width(child))` caps it at the line width, so free space is exactly 0 and the floor never runs | Small, self-contained, and it closes the last flex-sizing gap |
+| 4 | **0.1** | blocked: the coverage corpus needs open internet; 17 of 20 hosts are refused by the egress allowlist | — |
 
-**Twelve rows carry named tails in their own cells** (0.3, 0.5, 1g2, 1g4b, 3d1, 3d2, 3d3, 4.1, 4.2, 5a, 5b, 5c).
-None is a new row; each belongs to the row that owns it.
+**Row 0.17 has now had three wrong explanations** — "the TOC belongs in a column" (it does not; chromium stacks
+it at 1024px too), "the article ends early" (it does not; the TOC was simply not capped), and finally the media
+query. The lesson is in `HANDOVER.md` §7j: measure the *why* before writing it into a row, because the next
+person builds on the explanation, not the number.
 
-## The dead ends, so you do not repeat them
+## Environment — what actually happens on a pod
 
-Seven attempts on row 0.13 were reverted or rejected. Each looked right and none moved the metric:
-
-| attempt | why it failed |
+| | |
 | --- | --- |
-| a flex row's intrinsic width as the sum of its items | **correct** — but judged by one menu coordinate and a crop, and reverted twice before the metric showed it works (147 -> 141 overflows) |
-| `translate_subtree` + re-placing a flex line from the real widths | 147 -> 146, noise |
-| enforcing the resolved size on flex items (upstream's discipline) | the engine already did it; 0 change |
-| an absolutely-positioned child taking flow space | verified **correct**, not the bug |
-| a padded child overflowing its parent | verified **correct**, not the bug |
-| `reserve(24)` on `StyleProperties` (older row) | measured **33% slower**, reverted |
-| `"ab\tcd"` vs `"ab"` as a test of the minimum width | **passed on the unfixed engine** — a tab is not measured either way. Replaced, not kept |
+| **`/scratch/work` sometimes survives a recycle and sometimes comes back empty.** It survived on 2026-11-27 and was empty on 2026-11-26. Never assume it; commit early. |
+| **pip packages never survive.** `ziglang`, `cmake`, `ninja` must be reinstalled: `pip install -q ziglang cmake ninja`, then rewrite `/scratch/work/toolchain/zigcc` and `zigcxx` to `exec <ziglang>/zig cc|c++ "$@"`. |
+| **A toolchain reinstall invalidates the CMake cache** even when `build/` survives — expect **~300 steps**, ~40 min at ~10-20 s each on two cores. Run `ninja -C build -j2` in chunks under 280 s and let it resume. |
+| **`tools/setup.sh` does not fit in one call** (two `cmake` configures, ~100 s and ~270 s). Configure by hand, one call each, or run it and accept that the second configure may be killed. |
+| **A pod can fill its process table.** 10-17k unreaped zombies under PID 1 against a hard `ulimit -u` of 4096 makes `zig`, `ninja`, `chromium` and `git push` fail with `Cannot fork` / `failed to spawn: SystemResources`. Nothing recovers it; a recycle is the fix. Save your work as a pushed branch *before* you hit it. |
+| **Probes are not CMake targets.** `tools/article-position.cpp` must be compiled by hand, and **relinked after every library rebuild** or it prints stale numbers (this has produced a wrong measurement twice): see the command in `HANDOVER.md` §7g. |
+| **The reference page does not survive.** Re-fetch `en.wikipedia.org/wiki/Web_browser` (416,840 bytes of HTML) and concatenate its **two** `<link rel=stylesheet>` URLs (215,770 bytes of CSS) — any other size means a different page and the numbers are not comparable. |
 
-Upstream had already answered the layout question: `Rust/src/layout/flex_formatting_context.rs:4318` resolves every
-item's used main size before placement, `:4299` clamps the hypothetical main size at the automatic minimum, and
-`:1217` generates no item at all for a run of white space. The engine now does all three.
-**Read upstream before designing a fix — it saved a rewrite of working code, twice.**
+## The instruments, and what each can and cannot say
+
+| tool | answers | baseline |
+| --- | --- | --- |
+| `tools/reference-render.sh page.html page.css [out]` | how far a render is from chromium's, and where | **84.1%**, engine text rows 15px below chromium's |
+| `tools/article-position.cpp` (`--overflow`, `--overflow --all`, `--top`, `id=`, `tag=`, `class=`) | which boxes overflow, what a node resolved to, which rules move it, and **both** intrinsic widths | **139** overflows |
+| a paint-command probe (`cmds`, written ad hoc on 2026-11-26) | which command paints a given y band, with its type, rect and colour | — it named the black title bar in one line |
+
+**The whole-page percentage is dominated by whichever single defect is biggest, and it has moved the wrong way
+three times while the layout improved** (90.3 → 76.9 on row 0.11; 88.8 → 84.3 on row 0.15). Always print the
+per-band table and the row positions alongside it:
+
+```python
+# per-band agreement, 64px bands — the cheapest way to see WHERE a render differs
+for y0 in range(0, 768, 64): ...
+```
+
+## The traps that have cost the most time
+
+| trap | what to do |
+| --- | --- |
+| **A test that cannot fail** | Three assertions so far passed on the unfixed engine. Revert the fix, rebuild, watch it go red. If it stays green, the test is not proof. |
+| **An exact float comparison** | `16.8f == 16.799999` fails. Compare with a tolerance. |
+| **A stale probe** | Probes link the library statically. Relink after every rebuild. |
+| **A wrong premise** | Three rows in a row were opened with the wrong *why*. Measure it before writing it down. |
+| **A scaled screenshot** | Reading a resized composite gave a 17px row spacing where the render had 28px. Measure the PNG at 1:1 with a pixel scan, not with your eyes. |
+| **`git status` fails under load** | `-c core.preloadIndex=false -c index.threads=1`. |
+| **Git identity is not persisted** | `user.email sohilmomin2000@gmail.com`, `user.name "Aetheris session"`; the audit repo uses `Dr Sohil Momin`. |
+| **A media query can be silently false** | Check that a rule you expect actually applied — a node that reports `display=block` where the CSS says `grid` is a selector or a media-query failure, not a layout failure. |
 
 ## How to start
 
-1. Read `docs/CHECKLIST.md` and `docs/SESSION-HANDOFF-2026-11-26.md`.
-2. Configure and build (`tools/setup.sh` will not fit in one call — see above), then
-   `python3 tools/check-build.py`, then `ninja -C build -j2` until it reports nothing to do.
-3. Re-clone upstream if `/scratch/work/ladybird` is missing; rebuild the probe and the reference page if
-   `/scratch/work/ap` and `/scratch/work/reference` are missing.
-4. Take row **0.14**: crop both renders at y 500-700 first. The black bar hides everything else, so nothing
-   else can be judged until it is explained.
-5. Implement, add assertions **and prove each one fails without the fix**, run the suite twice, update the four
-   docs plus one audit entry, commit, push, verify the tip, and report in tables — with the overflow count and the
-   agreement percentage before and after.
+1. Read `docs/CHECKLIST.md` and `docs/SESSION-HANDOFF-2026-11-26.md` §15.
+2. Restore the environment (above), build in chunks, `python3 tools/check-build.py` until clean.
+3. Finish row **0.18** from `wip/row-0.18-inline-padding` (§ "Do this first").
+4. Then **0.17 + 0.19** together — the `calc()` media query and the space it loses — because either alone
+   makes the render worse.
+5. Report in tables, with the per-band numbers and the row positions, and stop at the boundary.
 
-Work one row per "go". Report and stop at the boundary.
-
-**Two things this session learned the hard way.** A pod recycle can come back with an **empty `/scratch/work`**
-— the repo, the build trees and the upstream clone are gone, and only a delivered patch survives; commit or
-patch before you stop. And a whole-page agreement percentage is dominated by whichever single defect is biggest,
-so it cannot judge a row that does not touch that defect — read the per-band table instead.
+Work one row per "go".
