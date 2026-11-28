@@ -472,5 +472,32 @@ int main()
             "a line below the float is full width again, so the intrusion is per line and not per block");
     }
 
+    // The case the page exposed: a word that fits the full line but not the room beside the float must drop
+    // past the float rather than be drawn over it. Upstream jumps to the next band start
+    // (Rust/src/layout/line_builder.rs:358-362, next_float_band_block_start_after); without that step a line
+    // ended 17.4px inside the float's box on the real page.
+    {
+        auto rendered = RenderDocument::create(
+            "<div id='d' style='width: 300px; font-size: 14px; line-height: 20px'>"
+            "<div id='f' style='float: right; width: 100px; height: 40px'></div>"
+            "<p id='p' style='margin: 0'>supercalifragilisticexpialidocious tail</p></div>", "", 400);
+        auto const& block = *rendered.layout_root().children[0];
+        auto const& floated = *block.children[0];
+        auto const& para = *block.children[1];
+        float const float_left = floated.rect.x;
+        float const float_bottom = floated.rect.y + floated.rect.height;
+        require(!para.children.empty(), "the paragraph beside the float has a text node");
+        bool saw_fragment_below_the_float = false;
+        for (auto const& fragment : para.children[0]->text_fragments) {
+            if (fragment.rect.y < float_bottom - 0.5f)
+                require(fragment.rect.x + fragment.rect.width <= float_left + 0.5f,
+                    "a word that does not fit beside a float drops past it instead of overflowing into it");
+            else
+                saw_fragment_below_the_float = true;
+        }
+        require(saw_fragment_below_the_float,
+            "the word that does not fit beside the float is placed below it");
+    }
+
     return 0;
 }

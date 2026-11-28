@@ -101,12 +101,11 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
     // A line that overlaps a float starts to the right of a left float and stops short of a right one.
     float const content_left = continuation_x < 0.0f ? x : continuation_x;
     float const content_right = x + available_width;
-    auto line_geometry = [&](std::size_t index, float& line_x, float& room) {
-        float const base_x = index == 0 ? x : content_left;
+    // The room a line box at `line_y` has, given the floats that overlap it.
+    auto line_geometry_at = [&](float line_y, float base_x, float& line_x, float& room) {
         float left_inset = 0;
         float right_inset = 0;
         if (bands) {
-            float const line_y = y + static_cast<float>(index) * h;
             for (std::size_t b = 0; b < band_count; ++b) {
                 FloatBox const& box = bands[b];
                 if (box.bottom <= line_y + 0.01f || box.top >= line_y + h - 0.01f)
@@ -119,6 +118,22 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
         }
         line_x = std::max(base_x, content_left + left_inset);
         room = std::max(0.0f, content_right - right_inset - line_x);
+    };
+
+    // The block offset a line has to move to when a float leaves it no room to hold anything. Upstream does
+    // exactly this in `LineBuilder::begin_new_line` (`Rust/src/layout/line_builder.rs:358-362`) through
+    // `next_float_band_block_start_after`; without it a word that does not fit beside a float overflows into it
+    // rather than dropping past (row 0.21).
+    auto block_offset_past_intruding_floats = [&](float from_y) {
+        float jump = from_y;
+        if (bands) {
+            for (std::size_t b = 0; b < band_count; ++b) {
+                FloatBox const& box = bands[b];
+                if (box.bottom > from_y + 0.01f && box.top < from_y + h - 0.01f)
+                    jump = std::max(jump, box.bottom);
+            }
+        }
+        return jump;
     };
 
     // Explicit breaks first, then tokens: a run of non-space characters is one token, and a space is
@@ -153,20 +168,37 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
     // Wrap. A line that is already full takes the next word on the next line; `nowrap` and `pre-wrap`
     // never break here.
     std::vector<std::vector<std::string>> wrapped;
+    // Where each line of `wrapped` sits. A line normally steps down by the line height; a line that a float
+    // leaves no room for jumps to the float's block end instead, so the two are not `y + index * h`.
+    std::vector<float> line_tops;
+    float current_y = y;
     for (auto const& raw : lines) {
         std::vector<std::string> line;
         float w = 0;
         for (auto const& word : raw) {
             float ww = measure_text(word, size, style);
             float sp = line.empty() ? 0 : measure_text(" ", size, style);
-            float line_x_unused = 0;
+            float probe_x = 0;
             float room = 0;
-            line_geometry(wrapped.size(), line_x_unused, room);
+            line_geometry_at(current_y, line.empty() ? x : content_left, probe_x, room);
             if (!nowrap && !prewrap && !line.empty() && w + sp + ww > room) {
                 wrapped.push_back(line);
+                line_tops.push_back(current_y);
                 line.clear();
                 w = 0;
                 sp = 0;
+                current_y += h;
+                line_geometry_at(current_y, content_left, probe_x, room);
+            }
+            // An empty line that still cannot hold the word moves past the float rather than overflowing into
+            // it. This is the case the real page exposed: a word that fits the full line but not the room the
+            // float leaves. Upstream: `next_float_band_block_start_after` (line_builder.rs:358-362).
+            while (!nowrap && !prewrap && line.empty() && ww > room) {
+                float const jumped = block_offset_past_intruding_floats(current_y);
+                if (jumped <= current_y + 0.01f)
+                    break;
+                current_y = jumped;
+                line_geometry_at(current_y, x, probe_x, room);
             }
             // A word that does not fit a line of its own. Browsers leave it overflowing; the properties
             // above ask for it to be broken instead, at offsets the shaper says are safe.
@@ -188,6 +220,8 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
             w += ww;
         }
         wrapped.push_back(line);
+        line_tops.push_back(current_y);
+        current_y += h;
     }
 
     // Place the fragments. The line's total width is the same whatever order its words end up in, so the
@@ -210,12 +244,13 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
         align_to_right = !paragraph_right_to_left;
     else if (centred)
         align_to_right = false;
-    float cy = y;
     std::size_t line_index = 0;
     for (auto const& line : wrapped) {
+        float const cy = line_tops[line_index];
         float line_x = x;
         float line_room = available_width;
-        line_geometry(line_index++, line_x, line_room);
+        line_geometry_at(cy, line_index == 0 ? x : content_left, line_x, line_room);
+        ++line_index;
         std::vector<float> widths;
         widths.reserve(line.size());
         float width = 0;
@@ -241,7 +276,6 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
                 out.push_back({ line[index], { cx, cy, widths[index], h }, cy + size });
             cx += widths[index];
         }
-        cy += h;
     }
     return out;
 }
