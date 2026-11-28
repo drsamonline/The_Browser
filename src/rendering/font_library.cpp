@@ -112,26 +112,84 @@ bool register_font_face(std::string const& family, std::vector<uint8_t> const& d
     return true;
 }
 
+namespace {
+
+// A generic family has no face of its own. A browser asks fontconfig; this engine has no fontconfig, so it tries
+// the system paths a Debian desktop uses, in order, and falls back to the embedded face only if none exists.
+//
+// This matters more than it looks. The embedded face is DejaVu Sans, and the browser's default `sans-serif` on
+// this machine is Noto Sans: the same string measures **440px in DejaVu and 385px in Noto**, so every line of a
+// page set in `sans-serif` held 14% fewer words and broke early (row 0.22).
+char const* system_font_path(std::string const& name)
+{
+    struct Generic {
+        char const* family;
+        char const* paths[3];
+    };
+    static Generic const generics[] = {
+        { "sans-serif",
+            { "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", nullptr } },
+        { "system-ui",
+            { "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", nullptr } },
+        { "serif",
+            { "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf", nullptr } },
+        { "monospace",
+            { "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf", nullptr } },
+    };
+    for (auto const& generic : generics) {
+        if (name != generic.family)
+            continue;
+        for (auto const* path : generic.paths) {
+            if (!path)
+                break;
+            if (std::ifstream probe(path); probe)
+                return path;
+        }
+        return nullptr;
+    }
+    return nullptr;
+}
+
+} // namespace
+
 TtfFont const* font_for_family(std::string_view family)
 {
     if (family.empty())
         return nullptr;
-    auto& faces = face_registry();
     // `font-family: "Body", serif` - the first name that has a face wins, and a name with no face falls through
-    // to the engine's own font, which is what a browser does with an unknown family.
+    // to the engine's own font, which is what a browser does with an unknown family. A generic name is resolved
+    // to a system face on first use and cached under its own name.
+    auto resolve = [](std::string const& name) -> TtfFont const* {
+        auto& faces = face_registry();
+        if (auto found = faces.find(name); found != faces.end())
+            return found->second;
+        char const* const path = system_font_path(name);
+        if (!path)
+            return nullptr;
+        auto const data = read_file(path);
+        if (data.empty())
+            return nullptr;
+        if (!register_font_face(name, data))
+            return nullptr;
+        auto found = face_registry().find(name);
+        return found != face_registry().end() ? found->second : nullptr;
+    };
+
     std::string name;
     for (char c : family) {
         if (c == ',') {
-            auto found = faces.find(trim_copy(name));
-            if (found != faces.end())
-                return found->second;
+            if (auto const* face = resolve(trim_copy(name)))
+                return face;
             name.clear();
             continue;
         }
         name += c;
     }
-    auto found = faces.find(trim_copy(name));
-    return found != faces.end() ? found->second : nullptr;
+    return resolve(trim_copy(name));
 }
 
 TtfFont const* active_font()
