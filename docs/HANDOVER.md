@@ -748,6 +748,47 @@ recovers **27.7% -> 80.4%**. The worst band is now 640-704 at **50.5%**, and the
 
 ---
 
+## 7p. Floats shorten line boxes, and upstream makes the line the unit
+
+- **css2 §9.5**: a float is out of flow and sits against the left or right edge of its containing block. A block's
+  **border box still overlaps it**; only the **line boxes** that intersect it are shortened. Narrowing the block
+  instead is the easy approximation and the wrong model - it is what this engine did until row 0.20, and the
+  assertion in `AetherisAdvancedLayout` that checks `after.rect.width < 150.0f` still encodes it.
+- **Upstream makes the line the unit of inline placement.** `LineBuilder::begin_new_line` calls
+  `recalculate_available_space` (`Rust/src/layout/line_builder.rs:2297-2304`), which asks
+  `available_space_for_line(block_offset, line_block_size)` (`Rust/src/layout/inline_formatting_context.rs:1958-1970`):
+
+  ```rust
+  let intrusions = self.intrusion_by_floats_into_containing_block(block_offset, block_offset + line_block_size);
+  AvailableSize::definite(self.input.available_space.inline_size.to_px_or_zero() - intrusions.left - intrusions.right)
+  ```
+
+  So the width available to a line is a **per-line query against the float context**, recomputed on every new line.
+- **A line with no room jumps past the float.** `begin_new_line` takes `next_float_band_block_start_after`
+  (`line_builder.rs:358-362`) and sets the next line's block offset to the next band start, rather than stepping by a
+  line height into a gap nothing can occupy.
+- **The bands are a sorted step function, not rectangles.** `FloatBand { block_start, left_intrusion: Option<..>,
+  right_intrusion: Option<..> }` (`Rust/src/layout/block_formatting_context.rs:1190-1197`) - each band's intrusions
+  hold from its `block_start` until the next band's. `None` means no float on that side. A float can intrude by zero or
+  a negative amount and must still push later floats on the same side.
+
+**Why this matters to this engine.** Its unit is the **run**, not the line: `TextLayout::layout` wraps a whole text run
+against one width. That single choice produces every failure row 0.21 has had:
+
+| symptom | why the run model causes it |
+| --- | --- |
+| per-line intrusion needs a `std::function` or a band array threaded into the wrapper | the wrapper has no concept of a line box |
+| a run that starts mid-line wrapped its continuation lines at its own x (x=708.5, one word per line) | there is no line box to start from |
+| a word that does not fit the shortened line overflows under the float instead of dropping a line | within a run the wrapper only breaks at the room *it* computed, and a run that begins mid-line has no line to break into |
+
+**The conclusion, and it is the reason three attempts were reverted:** the fix is not another patch to `TextLayout`.
+It is to move the wrap loop out of `TextLayout` and into `layout_inline_children`, one line at a time, asking the bands
+for the room at each line and skipping to the next band start when a line has no room - which is the shape of
+upstream's `LineBuilder`. Build it against a fixture first; the page cannot tell you which of three interacting
+mechanisms is wrong.
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.
