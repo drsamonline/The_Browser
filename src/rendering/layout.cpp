@@ -559,6 +559,35 @@ void LayoutEngine::layout_inline_children(LayoutNode& node, float x, float y, fl
             // uses: at the start of a line a leading space collapses away entirely.
             if (run_starts_in_space && cursor_x > x)
                 cursor_x += space_advance;
+            // A run whose first word does not fit what is left of the line breaks the line first, the same way an
+            // inline box does below via `may_break`. Without this the run was placed at the cursor and its first
+            // word overflowed into the float: on the real page a line ended at 789.8 against the float's 772.4
+            // (row 0.21).
+            {
+                std::string const& run_source = child_is_generated_text ? child->generated_text : child->dom_node->data;
+                std::size_t word_begin = 0;
+                while (word_begin < run_source.size()
+                    && std::isspace(static_cast<unsigned char>(run_source[word_begin])))
+                    ++word_begin;
+                std::size_t word_end = word_begin;
+                while (word_end < run_source.size()
+                    && !std::isspace(static_cast<unsigned char>(run_source[word_end])))
+                    ++word_end;
+                if (word_end > word_begin) {
+                    float probe_left = 0;
+                    float probe_right = 0;
+                    float_intrusion(floats, x, content_right, cursor_y, line_height, probe_left, probe_right);
+                    float const room = std::max(0.0f, content_right - probe_right - std::max(cursor_x, x + probe_left));
+                    float const first_word = TextLayout::measure_text(
+                        run_source.substr(word_begin, word_end - word_begin),
+                        TextLayout::font_size(child->style), child->style);
+                    if (cursor_x > x && first_word > room) {
+                        cursor_x = x;
+                        cursor_y = std::max(max_bottom, cursor_y + line_height);
+                        line_ends_in_whitespace = false;
+                    }
+                }
+            }
             float run_left = 0;
             float run_right = 0;
             float_intrusion(floats, x, content_right, cursor_y, line_height, run_left, run_right);
