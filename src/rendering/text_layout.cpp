@@ -180,7 +180,7 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
             float sp = line.empty() ? 0 : measure_text(" ", size, style);
             float probe_x = 0;
             float room = 0;
-            line_geometry_at(current_y, line.empty() ? x : content_left, probe_x, room);
+            line_geometry_at(current_y, current_y <= y + 0.01f ? x : content_left, probe_x, room);
             if (!nowrap && !prewrap && !line.empty() && w + sp + ww > room) {
                 wrapped.push_back(line);
                 line_tops.push_back(current_y);
@@ -193,7 +193,10 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
             // An empty line that still cannot hold the word moves past the float rather than overflowing into
             // it. This is the case the real page exposed: a word that fits the full line but not the room the
             // float leaves. Upstream: `next_float_band_block_start_after` (line_builder.rs:358-362).
-            while (!nowrap && !prewrap && line.empty() && ww > room) {
+            // Only a line box that is genuinely empty can move past a float. `line.empty()` means empty *within
+            // this run*, and a run that starts part-way along a line has content before it - that line breaks
+            // normally instead, and the run continues at the block's left edge.
+            while (!nowrap && !prewrap && line.empty() && ww > room && x <= content_left + 0.5f) {
                 float const jumped = block_offset_past_intruding_floats(current_y);
                 if (jumped <= current_y + 0.01f)
                     break;
@@ -249,7 +252,7 @@ std::vector<TextFragment> TextLayout::layout(std::string_view source, float x, f
         float const cy = line_tops[line_index];
         float line_x = x;
         float line_room = available_width;
-        line_geometry_at(cy, line_index == 0 ? x : content_left, line_x, line_room);
+        line_geometry_at(cy, cy <= y + 0.01f ? x : content_left, line_x, line_room);
         ++line_index;
         std::vector<float> widths;
         widths.reserve(line.size());
