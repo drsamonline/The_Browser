@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <render_document.hpp>
 
 #include <css_parser.hpp>
@@ -407,12 +408,12 @@ int main()
             "a float is sized to its own content, not to the column");
         require(after.rect.y < floated.rect.y + floated.rect.height - 1.0f,
             "the block after a float starts beside it, not below it");
-        // A right float shortens the line from its own side rather than moving it, so the block keeps the
-        // left edge and loses the width - the mirror of the left-float case below.
-        require(after.rect.width < 150.0f,
-            "and it is shortened by the width the float occupies");
-        require(after.rect.x + after.rect.width <= floated.rect.x + 0.5f,
-            "so it stops before the float rather than running under it");
+        // css2 §9.5: a block's *border box* overlaps a float - only its **line boxes** are shortened. So the block
+        // beside the float keeps its full width, and the shortening is asserted where it actually happens, by the
+        // per-line fixture below. This assertion used to demand `after.rect.width < 150.0f`, which encoded the
+        // narrowing approximation instead of the spec (row 0.21).
+        require(after.rect.width > 190.0f,
+            "a block beside a float keeps its full border box; only its line boxes are shortened");
     }
 
     // The mirror: a left float takes the left edge, and the content beside it starts to its right.
@@ -426,8 +427,49 @@ int main()
         auto const& after = *block.children[1];
         require(floated.rect.x < block.box.content.x + 1.0f,
             "a left float sits against the container's left edge");
-        require(after.rect.x > floated.rect.x + floated.rect.width - 1.0f,
-            "the content beside a left float starts to its right");
+        // The same model on the other side: the block's border box is full width and its *line boxes* start to
+        // the right of the float. The line-box half is asserted by the per-line fixture below (row 0.21).
+        require(after.rect.width > 190.0f,
+            "a block beside a left float keeps its full border box too");
+    }
+
+    // Row 0.21: a float shortens the line boxes that overlap it, and only those (css2 §9.5). Upstream makes the
+    // line the unit of placement - LineBuilder::begin_new_line recomputes the available width from the float bands
+    // (Rust/src/layout/line_builder.rs:2297-2304 -> inline_formatting_context.rs:1958-1970). Two things are
+    // asserted, and the second is the one every earlier attempt at this row got wrong: a line that overlaps the
+    // float stops short of it, and a line below the float is full width again.
+    {
+        auto rendered = RenderDocument::create(
+            "<div id='d' style='width: 300px; font-size: 14px; line-height: 20px'>"
+            "<div id='f' style='float: right; width: 100px; height: 40px'></div>"
+            "<p id='p' style='margin: 0'>"
+            "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau"
+            "</p></div>", "", 400);
+        auto const& block = *rendered.layout_root().children[0];
+        auto const& floated = *block.children[0];
+        auto const& para = *block.children[1];
+        float const float_left = floated.rect.x;
+        float const float_bottom = floated.rect.y + floated.rect.height;
+        require(float_left > 150.0f && float_left < 210.0f,
+            "the right float sits against the container's right edge");
+
+        require(!para.children.empty() && !para.children[0]->text_fragments.empty(),
+            "the paragraph beside the float has fragments");
+        float below_float_right_edge = 0.0f;
+        bool saw_line_below_the_float = false;
+        for (auto const& fragment : para.children[0]->text_fragments) {
+            bool const overlaps_float = fragment.rect.y < float_bottom - 0.5f;
+            if (overlaps_float)
+                require(fragment.rect.x + fragment.rect.width <= float_left + 0.5f,
+                    "a line that overlaps a float stops short of it");
+            else {
+                saw_line_below_the_float = true;
+                below_float_right_edge = std::max(below_float_right_edge, fragment.rect.x + fragment.rect.width);
+            }
+        }
+        require(saw_line_below_the_float, "the paragraph continues below the float");
+        require(below_float_right_edge > float_left,
+            "a line below the float is full width again, so the intrusion is per line and not per block");
     }
 
     return 0;
