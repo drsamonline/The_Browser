@@ -789,6 +789,66 @@ mechanisms is wrong.
 
 ---
 
+## 7q. A generic family has no face, and the reference browser has its own stack
+
+- **`font-family: sans-serif` is not a font, it is a request to the platform.** css-fonts-4 §2.1: the generic
+  families are keywords the UA resolves against what is installed. This engine resolved nothing: `font_for_family`
+  looked in its own face registry and then returned the embedded face, so a page whose `body` says `sans-serif` -
+  which is nearly every page - was set in the embedded **DejaVu Sans** regardless of the machine.
+- **On Linux the mechanism is fontconfig, and that is upstream's position, not a preference.** `SystemFontMatcher.h:44`
+  declares `resolve_generic_family` as "The installed family for a generic family, such as 'sans-serif'", and
+  `SystemFontMatcherDirectWrite.cpp:264-266` notes that DirectWrite "has no families for the generic families,
+  unlike fontconfig" - which is why the hardcoded table lives in the Windows backend. The hardcoded table is the
+  exception; the fontconfig answer is the rule.
+- **This engine links no fontconfig**, so `font_library.cpp` names the files fontconfig answers with, in preference
+  order, and caches the load under the generic's own name:
+
+  | generic | first candidate | second candidate | embedded fallback |
+  | --- | --- | --- | --- |
+  | `sans-serif`, `system-ui` | `/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf` | `.../liberation/LiberationSans-Regular.ttf` | DejaVu Sans |
+  | `serif` | `/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf` | `.../liberation/LiberationSerif-Regular.ttf` | DejaVu Sans |
+  | `monospace` | `/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf` | `.../liberation/LiberationMono-Regular.ttf` | DejaVu Sans |
+
+- **The list is a fallback chain only if it is tried, not probed.** The first version returned the first candidate
+  that *existed* and loaded only that one, so a present-but-unparseable file dropped straight to the embedded face
+  without ever reaching Liberation. Every candidate is now attempted until one loads. A failure is cached too: the
+  files are ~500KB and were being read and parsed again on every text run that named a missing family.
+- **Measure the face, don't infer it.** The numbers below are the rightmost dark pixel on a line of
+  `A web browser, often abbreviated as browser, is an application` at 14px with `white-space: nowrap`, in both
+  engines at 1024x768; the advances are PIL's for the same string at 14px:
+
+  | family | chromium ink | engine ink (after) | PIL advance | face |
+  | --- | --- | --- | --- | --- |
+  | `sans-serif` | **385** | **405** | Noto Sans 406.83 | engine: Noto Sans · chromium: Liberation Sans |
+  | `serif` | **349** | **416** | Noto Serif 417.95 | engine: Noto Serif · chromium: Liberation Serif |
+  | `monospace` | **519** | **520** | DejaVu Sans Mono 522.16 | both: DejaVu Sans Mono |
+  | `'Noto Sans'` | 405 | 440 | 406.83 | engine has no by-name face - embedded |
+  | `'Liberation Sans'` | 385 | 440 | 386.66 | engine has no by-name face - embedded |
+  | `'DejaVu Sans'` | 439 | 440 | 441.61 | embedded |
+  | `'Noto Serif'` / `'Liberation Serif'` / `'Times New Roman'` | 416 / 349 / 349 | 440 | 417.95 / 350.77 | chromium: its own default names |
+  | `Arial` / `Helvetica` | 385 / 385 | 440 | Liberation Sans 386.66 | fontconfig substitutes Arial to Liberation Sans |
+
+- **So the engine measures Noto Sans exactly, and the residual difference is the reference browser's face choice.**
+  `sans-serif` is 405 ink against a 406.83 advance - the last glyph ends 1.8px before its advance, which is what
+  "exact" looks like - and chromium's own `'Noto Sans'` line measures 405 too. The 20px is entirely that chromium
+  reaches `sans-serif` through its **default family name Arial** (385 = chromium's `Arial` = chromium's
+  `'Liberation Sans'`) and `serif` through **Times New Roman** (349 = its `'Liberation Serif'`), while agreeing with
+  fontconfig on `monospace`. That is a private font stack, not fontconfig's answer, and copying it is not what a
+  browser on Linux should do. Recorded, not chased.
+- **What it buys, and where.** Reference page = wikipedia `Web_browser`, self-contained, 1024x768, agreement sampled
+  every 4px: `main` **84.8%** (41672/49152), the font fix alone **85.2%** (41885/49152), and with row 0.21's branch
+  underneath **85.3%** (41924/49152). The gain is small on the page because most of the page's text is already in
+  faces it names; the change is worth landing because the *default* face is now the machine's, which is what makes
+  any further font work mean anything. Bands y320-y768 move most (y704 82.2 -> 90.3); y448 is the one band that goes
+  down (82.5 -> 79.4) and it is a face choice, not a placement error - the text there is now set in a face whose
+  line breaks differ from the reference's.
+- **Two things deliberately not done.** System families are still not registered by their real names, so
+  `font-family: 'Noto Sans'` on a page still lands on the embedded face; only generic names resolve. And nothing here
+  reads the machine's font configuration - a machine with no Noto and no Liberation still gets DejaVu, silently.
+
+
+---
+
 ## 8. Working in a shared environment
 
 This repo lives beside other browser projects worked on by other people.

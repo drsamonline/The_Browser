@@ -3,6 +3,7 @@
 #include "glyph_rasterizer.hpp"
 
 #include <map>
+#include <set>
 #include <tuple>
 #include <utility>
 
@@ -114,19 +115,33 @@ bool register_font_face(std::string const& family, std::vector<uint8_t> const& d
 
 namespace {
 
-// A generic family has no face of its own. A browser asks fontconfig; this engine has no fontconfig, so it tries
-// the system paths a Debian desktop uses, in order, and falls back to the embedded face only if none exists.
+// A generic family has no face of its own. On Linux the mechanism a browser uses is fontconfig, and upstream's
+// SystemFontMatcher treats fontconfig as *the* mechanism for the generics: resolve_generic_family documents
+// itself as "The installed family for a generic family, such as 'sans-serif'", and the DirectWrite backend
+// records that DirectWrite "has no families for the generic families, unlike fontconfig" - which is why the
+// hardcoded table there is the Windows exception rather than the rule.
 //
-// This matters more than it looks. The embedded face is DejaVu Sans, and the browser's default `sans-serif` on
-// this machine is Noto Sans: the same string measures **440px in DejaVu and 385px in Noto**, so every line of a
-// page set in `sans-serif` held 14% fewer words and broke early (row 0.22).
-char const* system_font_path(std::string const& name)
+// This engine links no fontconfig, so it names the files fontconfig resolves these generics to on a Debian
+// desktop, in preference order, and falls back to the embedded face only if none of them loads.
+//
+// What it changes, measured at 14px on `A web browser, often abbreviated as browser, is an application`: the
+// embedded DejaVu Sans advances 441.61px and Noto Sans 406.83px, so a line set in `sans-serif` held about 8%
+// fewer words than the system face and broke early (row 0.22).
+//
+// What it deliberately does *not* match: `fc-match sans-serif` answers Noto Sans, and so does this table, but the
+// reference browser does not follow fontconfig for the generics. It resolves `sans-serif` through its own default
+// family name - Arial, substituted to Liberation Sans, 386.66px - and `serif` through Times New Roman, likewise
+// Liberation Serif, 350.77px, while agreeing with fontconfig on `monospace`. That is the reference browser's own
+// font stack, not fontconfig's answer, and following fontconfig is what a browser on Linux should do, so the
+// residual difference is left standing rather than copied. See docs/HANDOVER.md 7q.
+struct GenericFamily {
+    char const* family;
+    char const* candidates[3];
+};
+
+GenericFamily const* generic_family(std::string const& name)
 {
-    struct Generic {
-        char const* family;
-        char const* paths[3];
-    };
-    static Generic const generics[] = {
+    static GenericFamily const generics[] = {
         { "sans-serif",
             { "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
                 "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", nullptr } },
@@ -141,17 +156,20 @@ char const* system_font_path(std::string const& name)
                 "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf", nullptr } },
     };
     for (auto const& generic : generics) {
-        if (name != generic.family)
-            continue;
-        for (auto const* path : generic.paths) {
-            if (!path)
-                break;
-            if (std::ifstream probe(path); probe)
-                return path;
-        }
-        return nullptr;
+        if (name == generic.family)
+            return &generic;
     }
     return nullptr;
+}
+
+// A name that resolved to nothing is remembered as such. Without this, every text run re-reads and re-parses a
+// half-megabyte font file to reach the same "no" - a per-run cost on a page that names a family the machine
+// does not have. Only failures are cached here; a successful load lives in the face registry, which is checked
+// first, so a face registered later still wins.
+std::set<std::string>& unresolved_families()
+{
+    static std::set<std::string> unresolved;
+    return unresolved;
 }
 
 } // namespace
@@ -167,16 +185,31 @@ TtfFont const* font_for_family(std::string_view family)
         auto& faces = face_registry();
         if (auto found = faces.find(name); found != faces.end())
             return found->second;
-        char const* const path = system_font_path(name);
-        if (!path)
+        auto& unresolved = unresolved_families();
+        if (unresolved.count(name))
             return nullptr;
-        auto const data = read_file(path);
-        if (data.empty())
-            return nullptr;
-        if (!register_font_face(name, data))
-            return nullptr;
-        auto found = face_registry().find(name);
-        return found != face_registry().end() ? found->second : nullptr;
+        TtfFont const* face = nullptr;
+        if (auto const* generic = generic_family(name)) {
+            // Every candidate is tried, not only the first that exists. A file can be present and still fail to
+            // parse, and the list is a fallback chain only if an unloadable candidate hands over to the next.
+            for (auto const* path : generic->candidates) {
+                if (!path)
+                    break;
+                auto const data = read_file(path);
+                if (data.empty())
+                    continue;
+                if (!register_font_face(name, data))
+                    continue;
+                auto found = face_registry().find(name);
+                if (found != face_registry().end()) {
+                    face = found->second;
+                    break;
+                }
+            }
+        }
+        if (!face)
+            unresolved.insert(name);
+        return face;
     };
 
     std::string name;
